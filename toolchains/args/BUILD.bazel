@@ -63,13 +63,15 @@ cc_args(
     args = [
         "-fstack-protector-strong",
         "-fstack-clash-protection",
-        "-fcf-protection",
         "-Wformat",
         "-Werror=format-security",
         # Inert without optimisation, and glibc warns when it is missing.
         "-O2",
         "-D_FORTIFY_SOURCE=2",
-    ],
+    ] + select({
+        "//toolchains/constraint:linux_aarch64": ["-mbranch-protection=standard"],
+        "//toolchains/constraint:linux_x86_64": ["-fcf-protection"],
+    }),
     visibility = ["//visibility:public"],
 )
 
