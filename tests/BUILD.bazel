@@ -17,7 +17,9 @@ load("//oci:debug_symbols_layer.bzl", "debug_symbols_layer")
 load("//tar:assert_tar.bzl", "assert_tar")
 load("//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 load("//toolchains:assert_cc_toolchain_features.bzl", "assert_cc_toolchain_features_test")
+load("//toolchains/gcc:defs.bzl", "SONIC_INSTALLED_RUNTIME_PATHS_FEATURE")
 load(":image_stub.bzl", "image_stub")
+load(":installed_runtime_paths_test.bzl", "installed_runtime_paths_test")
 
 #############################
 #   assert_tar & tar tests  #
@@ -111,6 +113,17 @@ assert_tar(
 #   cc toolchain tests      #
 #############################
 
+_INSTALLED_RUNTIME_PATHS = select({
+    "@platforms//cpu:aarch64": [
+        "/lib/aarch64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu/gconv",
+    ],
+    "@platforms//cpu:x86_64": [
+        "/lib/x86_64-linux-gnu",
+        "/usr/lib/x86_64-linux-gnu/gconv",
+    ],
+})
+
 cc_binary(
     name = "hello_cpp",
     srcs = ["//tests/testdata:hello.cc"],
@@ -129,6 +142,38 @@ build_test(
 cc_binary(
     name = "hello",
     srcs = ["//tests/testdata:hello.c"],
+)
+
+cc_binary(
+    name = "hello_with_installed_runtime_paths",
+    srcs = ["//tests/testdata:hello.c"],
+    features = [SONIC_INSTALLED_RUNTIME_PATHS_FEATURE],
+)
+
+cc_binary(
+    name = "hello_without_installed_runtime_paths",
+    srcs = ["//tests/testdata:hello.c"],
+    features = ["-" + SONIC_INSTALLED_RUNTIME_PATHS_FEATURE],
+)
+
+installed_runtime_paths_test(
+    name = "hello_default_runtime_paths_test",
+    enabled = False,
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":hello",
+)
+
+installed_runtime_paths_test(
+    name = "hello_installed_runtime_paths_test",
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":hello_with_installed_runtime_paths",
+)
+
+installed_runtime_paths_test(
+    name = "hello_without_installed_runtime_paths_test",
+    enabled = False,
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":hello_without_installed_runtime_paths",
 )
 
 build_test(
@@ -166,6 +211,40 @@ cc_binary(
     name = "libgreet.so",
     srcs = ["//tests/testdata:greet.c"],
     linkshared = True,
+)
+
+cc_binary(
+    name = "libgreet_with_installed_runtime_paths.so",
+    srcs = ["//tests/testdata:greet.c"],
+    features = [SONIC_INSTALLED_RUNTIME_PATHS_FEATURE],
+    linkshared = True,
+)
+
+cc_binary(
+    name = "libgreet_without_installed_runtime_paths.so",
+    srcs = ["//tests/testdata:greet.c"],
+    features = ["-" + SONIC_INSTALLED_RUNTIME_PATHS_FEATURE],
+    linkshared = True,
+)
+
+installed_runtime_paths_test(
+    name = "libgreet_default_runtime_paths_test",
+    enabled = False,
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":libgreet.so",
+)
+
+installed_runtime_paths_test(
+    name = "libgreet_installed_runtime_paths_test",
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":libgreet_with_installed_runtime_paths.so",
+)
+
+installed_runtime_paths_test(
+    name = "libgreet_without_installed_runtime_paths_test",
+    enabled = False,
+    paths = _INSTALLED_RUNTIME_PATHS,
+    target_under_test = ":libgreet_without_installed_runtime_paths.so",
 )
 
 build_test(

@@ -5,16 +5,20 @@ Cross-compilation is easy to add later if we need to.
 """
 
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
+load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
 load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
 load("@rules_cc//cc/toolchains:tool_map.bzl", "cc_tool_map")
 load("@rules_cc//cc/toolchains:toolchain.bzl", "cc_toolchain")
 load("//toolchains/gcc:gcc.bzl", "GCC_METADATA", "gcc_repo_name")
 load(
     "//toolchains/gcc/args:platform_dependent_args.bzl",
+    "INSTALLED_RUNTIME_PATH_ARGS",
     "PLATFORM_DEPENDENT_ARGS",
     "resolve_args",
     "resolve_packages",
 )
+
+SONIC_INSTALLED_RUNTIME_PATHS_FEATURE = "sonic_installed_runtime_paths"
 
 _PLATFORM_DEPENDENT_ARGS = PLATFORM_DEPENDENT_ARGS
 _PLATFORM_INDEPENDENT_ARGS = [
@@ -183,12 +187,29 @@ def sonic_host_toolchain(
         for spec in _PLATFORM_DEPENDENT_ARGS
     ]
 
+    # Preserve the default without installed runtime paths. Targets that require
+    # them can opt in; private execution tools can also explicitly opt out.
+    cc_args(
+        name = name + "_installed_runtime_paths",
+        actions = [
+            "@rules_cc//cc/toolchains/actions:link_actions",
+            "@rules_cc//cc/toolchains/actions:link_executable_actions",
+        ],
+        args = resolve_args(cpu, version, debian_gcc_major, INSTALLED_RUNTIME_PATH_ARGS),
+    )
+    cc_feature(
+        name = name + "_installed_runtime_paths_feature",
+        args = [":" + name + "_installed_runtime_paths"],
+        feature_name = SONIC_INSTALLED_RUNTIME_PATHS_FEATURE,
+    )
+    known_features = _FEATURES + [":" + name + "_installed_runtime_paths_feature"]
+
     cc_toolchain(
         name = name + "_cc_toolchain",
         args = _PLATFORM_INDEPENDENT_ARGS + platform_dependent_args,
         compiler = "gcc",
         enabled_features = _FEATURES,
-        known_features = _FEATURES,
+        known_features = known_features,
         tags = ["manual"],
         tool_map = name + "_tools",
     )

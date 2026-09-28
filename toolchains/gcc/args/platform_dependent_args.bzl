@@ -144,6 +144,13 @@ _CPP_INCLUDES_ARGS = [
     "../../../../../../../{{libc6-dev}}/usr/include/{multiarch}",
 ]
 
+# Optional runtime paths for installed target libraries. The toolchain does not
+# embed them by default; targets can explicitly enable the associated feature.
+INSTALLED_RUNTIME_PATH_ARGS = [
+    "-Wl,-rpath=/lib/{multiarch}",
+    "-Wl,-rpath=/usr/lib/{multiarch}/gconv",
+]
+
 _LINK_ARGS = [
     # Debian ships libc.so/libm.so as GNU ld scripts (GROUP/AS_NEEDED) that name
     # the real .so files by absolute host path, e.g. /lib/x86_64-linux-gnu/libc.so.6.
