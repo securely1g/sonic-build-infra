@@ -16,7 +16,10 @@ load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
 
 cc_args(
     name = "nostdinc",
-    actions = ["@rules_cc//cc/toolchains/actions:c_compile"],
+    actions = [
+        "@rules_cc//cc/toolchains/actions:c_compile",
+        "@rules_cc//cc/toolchains/actions:cpp_compile_actions",
+    ],
     args = ["-nostdinc"],
     visibility = ["//visibility:public"],
 )
