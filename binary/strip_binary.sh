@@ -18,9 +18,43 @@ tmp="${stripped_out}.input_copy.tmp"
 cp "$input" "$tmp"
 chmod u+w "$tmp" # Make the copy writable for patchelf
 
-# Drop DT_RPATH and DT_RUNPATH before the split, so neither half carries them.
-if [[ "$strip_rpaths" == "true" ]]; then
-  "$patchelf" --remove-rpath "$tmp"
+# Edit the linked copy before the split, so runtime and debug artifacts match.
+# Keep compiler features intact: LLVM may require runtime search directories.
+dynamic="$("$readelf" -d "$tmp")"
+# A static ELF has no dynamic section. Even dynamic ELFs may have no rpath;
+# patchelf is unnecessary in both cases and cannot edit a static executable.
+if [[ "$dynamic" == *"(RPATH)"* || "$dynamic" == *"(RUNPATH)"* ]]; then
+  if [[ "$strip_rpaths" == "true" ]]; then
+    "$patchelf" --remove-rpath "$tmp"
+  else
+    # Bazel-built images may need intentional deployment paths. Remove only
+    # entries into Bazel's solib/runfiles trees, retaining order and empty entries.
+    remaining="$("$patchelf" --print-rpath "$tmp")"
+    kept=()
+    changed=false
+    while true; do
+      entry="${remaining%%:*}"
+      case "$entry" in
+        _solib_*|*/_solib_*|*.runfiles|*.runfiles/*) changed=true ;;
+        *) kept+=("$entry") ;;
+      esac
+      [[ "$remaining" == *:* ]] || break
+      remaining="${remaining#*:}"
+    done
+    if [[ "$changed" == "true" ]]; then
+      if [[ "${#kept[@]}" == 0 ]]; then
+        "$patchelf" --remove-rpath "$tmp"
+      else
+        # patchelf otherwise upgrades DT_RPATH to DT_RUNPATH, changing precedence.
+        rpath_flags=()
+        if [[ "$dynamic" == *"(RPATH)"* && "$dynamic" != *"(RUNPATH)"* ]]; then
+          rpath_flags+=(--force-rpath)
+        fi
+        filtered="$(IFS=:; printf '%s' "${kept[*]}")"
+        "$patchelf" "${rpath_flags[@]}" --set-rpath "$filtered" "$tmp"
+      fi
+    fi
+  fi
 fi
 
 # The .debug file is named by the binary's build-id; that is how gdb re-finds it
