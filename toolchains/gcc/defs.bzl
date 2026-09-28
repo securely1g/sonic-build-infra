@@ -34,6 +34,8 @@ _FEATURES = [
     Label("@rules_cc//cc/toolchains/args:experimental_replace_legacy_action_config_features"),
 ]
 
+_KNOWN_FEATURES = _FEATURES + [Label("//toolchains/gcc:as_needed")]
+
 _GCC_CAPABILITIES = [Label("@rules_cc//cc/toolchains/capabilities:supports_pic")]
 
 def bin(cpu, version, tool):
@@ -188,7 +190,7 @@ def sonic_host_toolchain(
         args = _PLATFORM_INDEPENDENT_ARGS + platform_dependent_args,
         compiler = "gcc",
         enabled_features = _FEATURES,
-        known_features = _FEATURES,
+        known_features = _KNOWN_FEATURES,
         tags = ["manual"],
         tool_map = name + "_tools",
     )

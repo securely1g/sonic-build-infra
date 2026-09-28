@@ -426,3 +426,22 @@ build_test(
     name = "hello_dbg_deb_build_test",
     targets = [":hello_dbg_deb"],
 )
+
+# Older consumers explicitly request this feature. Newer toolchains always
+# enable as-needed, but retain the known name without duplicating link flags.
+cc_binary(
+    name = "hello_as_needed",
+    srcs = ["//tests/testdata:hello.c"],
+    features = ["as_needed"],
+)
+
+assert_cc_toolchain_features_test(
+    name = "as_needed_feature_compatibility_test",
+    enabled = ["as_needed"],
+    features = ["as_needed"],
+)
+
+build_test(
+    name = "hello_as_needed_build_test",
+    targets = [":hello_as_needed"],
+)
