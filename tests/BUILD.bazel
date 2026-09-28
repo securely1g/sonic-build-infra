@@ -5,6 +5,7 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_shared_library.bzl", "cc_shared_library")
 load("@rules_distroless//distroless:defs.bzl", "flatten")
+load("@rules_python//python:defs.bzl", "py_test")
 load("@tar.bzl", "mutate", "tar")
 load("//binary:assert_debug_symbols.bzl", "provides_debug_symbols_test")
 load("//binary:assert_position_independent.bzl", "assert_position_independent")
@@ -445,3 +446,92 @@ build_test(
     name = "hello_as_needed_build_test",
     targets = [":hello_as_needed"],
 )
+
+# Linked-ELF regression for toolchains that require runtime search features.
+# Test both dynamic tag kinds; filtering must preserve user paths and precedence.
+config_setting(
+    name = "make_built_base",
+    flag_values = {"//config:make_built_base": "true"},
+)
+
+[
+    cc_binary(
+        name = "hello_" + kind,
+        srcs = ["//tests/testdata:hello.c"],
+        linkopts = [
+            "-Wl,--" + ("disable" if kind == "rpath" else "enable") + "-new-dtags",
+            "-Wl,-rpath,$$ORIGIN/_solib_test:$$ORIGIN/../lib:$$ORIGIN/app.runfiles/workspace:/opt/sonic/lib",
+        ],
+    )
+    for kind in [
+        "rpath",
+        "runpath",
+    ]
+]
+
+cc_binary(
+    name = "hello_static",
+    srcs = ["//tests/testdata:hello.c"],
+    linkopts = ["-static"],
+)
+
+[
+    strip_binary(
+        name = "hello_" + kind + "_split",
+        src = ":hello_" + kind,
+        force_debug_build = True,
+    )
+    for kind in [
+        "rpath",
+        "runpath",
+        "static",
+    ]
+]
+
+[
+    filegroup(
+        name = "hello_" + kind + "_" + group,
+        srcs = [":hello_" + kind + "_split"],
+        output_group = group,
+    )
+    for kind in [
+        "rpath",
+        "runpath",
+        "static",
+    ]
+    for group in [
+        "stripped",
+        "debug",
+    ]
+]
+
+[
+    py_test(
+        name = "hello_" + kind + "_preservation_test",
+        srcs = ["strip_rpath_test.py"],
+        args = [
+            "$(location //toolchains/binutils:readelf)",
+            "$(location //toolchains/binutils:objcopy)",
+            "$(location :hello_" + kind + ")",
+            "$(location :hello_" + kind + "_stripped)",
+            "$(location :hello_" + kind + "_debug)",
+            kind.upper(),
+        ] + select({
+            ":make_built_base": ["all"],
+            "//conditions:default": ["build"],
+        }),
+        data = [
+            "//toolchains/binutils:objcopy",
+            "//toolchains/binutils:readelf",
+            ":hello_" + kind,
+            ":hello_" + kind + "_stripped",
+            ":hello_" + kind + "_debug",
+        ],
+        main = "strip_rpath_test.py",
+    )
+    for kind in [
+        "rpath",
+        "runpath",
+        "static",
+    ]
+]
