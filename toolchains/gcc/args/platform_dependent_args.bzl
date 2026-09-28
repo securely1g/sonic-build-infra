@@ -144,6 +144,13 @@ _CPP_INCLUDES_ARGS = [
     "../../../../../../../{{libc6-dev}}/usr/include/{multiarch}",
 ]
 
+# Runtime paths for installed target libraries. Keep these enabled by default,
+# while allowing private execution tools to rely only on declared runfiles.
+INSTALLED_RUNTIME_PATH_ARGS = [
+    "-Wl,-rpath=/lib/{multiarch}",
+    "-Wl,-rpath=/usr/lib/{multiarch}/gconv",
+]
+
 _LINK_ARGS = [
     # Debian ships libc.so/libm.so as GNU ld scripts (GROUP/AS_NEEDED) that name
     # the real .so files by absolute host path, e.g. /lib/x86_64-linux-gnu/libc.so.6.
@@ -160,7 +167,6 @@ _LINK_ARGS = [
     "-Wl,--remap-inputs=/usr/lib/{multiarch}/libc_nonshared.a={{libc6-dev}}/usr/lib/{multiarch}/libc_nonshared.a",
     "-B",
     "{{libc6}}/lib/{multiarch}",
-    "-Wl,-rpath=/lib/{multiarch}",
     "-Wl,-rpath-link=/lib/{multiarch}",
     "-B",
     "{{libc6-dev}}/usr/lib/{multiarch}",
@@ -168,7 +174,6 @@ _LINK_ARGS = [
     "{{libgcc-s1}}/lib/{multiarch}",
     "-L",
     "{{libstdcxx-dev}}/usr/lib/gcc/{multiarch}/{gcc_major}",
-    "-Wl,-rpath=/usr/lib/{multiarch}/gconv",
 
     # For rules_foreign_cc and rules_rust to work after changing its workdir
     "-B",
