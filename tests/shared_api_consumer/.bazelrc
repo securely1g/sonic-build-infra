@@ -1,0 +1,3 @@
+# The pinned SONiC registry supplies build-infra's rules_distroless version.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/1bce1094dcdc7e511baaa809fa622862585bcf8d
+common --registry=https://bcr.bazel.build/
