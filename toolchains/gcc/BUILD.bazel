@@ -2,6 +2,15 @@ load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
 
 licenses(["notice"])
 
+# Retain the opt-in feature name used by 0.0.4.sonic.1 consumers. Since 0.0.5,
+# the shared linker arguments already enable as-needed by default; this feature
+# must not add a duplicate flag.
+cc_feature(
+    name = "as_needed",
+    feature_name = "as_needed",
+    visibility = ["//visibility:public"],
+)
+
 # Shared by every generated cc toolchain.
 # https://github.com/bazelbuild/rules_cc/commit/283d572e0e1f4fe864f1f94db2c2cd27cb1dcc6e
 cc_feature(
