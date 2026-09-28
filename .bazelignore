@@ -1,0 +1,2 @@
+# This fixture is a standalone consumer module with its own repository mapping.
+tests/shared_api_consumer

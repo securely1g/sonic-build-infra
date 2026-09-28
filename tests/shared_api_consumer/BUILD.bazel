@@ -1,0 +1,38 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load(":swig_analysis.bzl", "swig_cases", "swig_tree")
+
+cc_library(
+    name = "headers",
+    hdrs = ["include/transitive.h"],
+    includes = ["include"],
+)
+
+cc_library(
+    name = "transitive",
+    deps = [":headers"],
+)
+
+filegroup(
+    name = "files_lib",
+    srcs = ["swig.swg"],
+)
+
+swig_tree(name = "tree_lib")
+
+swig_cases()
+
+sh_test(
+    name = "sysroot_test",
+    srcs = ["sysroot_test.sh"],
+    args = [
+        "$(location @assembled//:.sysroot-root)",
+        "$(location @reversed//:.sysroot-root)",
+    ],
+    data = [
+        "@assembled//:.sysroot-root",
+        "@assembled//:files",
+        "@reversed//:.sysroot-root",
+        "@reversed//:files",
+    ],
+)
