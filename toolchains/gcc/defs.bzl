@@ -24,6 +24,9 @@ _PLATFORM_INDEPENDENT_ARGS = [
     Label("//toolchains/gcc/args:add_build_ids"),
     Label("//toolchains/args:no_absolute_paths_for_builtins"),
     Label("//toolchains/args:warnings"),
+    Label("//toolchains/args:dpkg_buildflags"),
+    Label("//toolchains/args:dpkg_buildflags_link"),
+    Label("//toolchains/args:as_needed"),
 ]
 
 _FEATURES = [

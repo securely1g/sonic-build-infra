@@ -3,8 +3,10 @@
 Behaviour mirrors Debian's dh_strip. It operates on ELFs directly via binutils objcopy.
 """
 
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("//toolchains/binutils:binutils_toolchain.bzl", "BINUTILS_TOOLCHAIN_TYPE")
 load(":debug_symbols.bzl", "DebugSymbolsInfo")
+load(":drop_build_rpath.bzl", "drop_build_rpath")
 load(":keep_debug_info.bzl", "keep_debug_info")
 
 def _strip_binary_rule_impl(ctx):
@@ -27,15 +29,22 @@ def _strip_binary_rule_impl(ctx):
     args.add(debug.path)
     args.add(binutils.objcopy.executable)
     args.add(binutils.readelf.executable)
+    args.add(ctx.executable._patchelf)
 
     ctx.actions.run(
         executable = ctx.file._strip_tool,
         arguments = [args],
         inputs = [src, ctx.file._strip_tool],
         outputs = [stripped, debug],
+        env={
+            # If the base image is Make-built, it already has a /etc/ld.so.cache to look up installed binaries,
+            # and rpaths could mess resolution order (since they have precedence over LD_LIBRARY_PATH).
+            "STRIP_RPATH": "true" if ctx.attr._make_built_base[BuildSettingInfo].value else "false",
+        },
         tools = [
             binutils.readelf,
             binutils.objcopy,
+            ctx.attr._patchelf[DefaultInfo].files_to_run,
         ],
         mnemonic = "StripBinary",
         progress_message = "Stripping debug info from %{label}",
@@ -68,6 +77,16 @@ _strip_binary_rule = rule(
             cfg = "exec",
             doc = "The script that drives objcopy to split the ELF.",
         ),
+        "_patchelf": attr.label(
+            default = "@patchelf//:patchelf",
+            executable = True,
+            cfg = "exec",
+            doc = "Removes the rpath entries. binutils has no tool that edits .dynamic.",
+        ),
+        "_make_built_base": attr.label(
+            default = "//config:make_built_base",
+            doc = "Whether the deployed image's base resolves library paths without rpaths.",
+        ),
     },
     toolchains = [BINUTILS_TOOLCHAIN_TYPE],
 )
@@ -78,6 +97,11 @@ def _strip_binary_impl(name, src, force_debug_build, **kwargs):
         keep_debug_info_bin = "{}.debuggable".format(name)
         keep_debug_info(name = keep_debug_info_bin, src = src)
         binary = ":{}".format(keep_debug_info_bin)
+
+    # These binaries are meant to be deployed, so we always force-strip the sandbox-releative RPATHs.
+    no_build_rpath_bin = "{}.no_build_rpath".format(name)
+    drop_build_rpath(name = no_build_rpath_bin, src = binary)
+    binary = ":{}".format(no_build_rpath_bin)
 
     _strip_binary_rule(
         name = name,

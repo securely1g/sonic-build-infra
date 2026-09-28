@@ -160,7 +160,6 @@ _LINK_ARGS = [
     "-Wl,--remap-inputs=/usr/lib/{multiarch}/libc_nonshared.a={{libc6-dev}}/usr/lib/{multiarch}/libc_nonshared.a",
     "-B",
     "{{libc6}}/lib/{multiarch}",
-    "-Wl,-rpath=/lib/{multiarch}",
     "-Wl,-rpath-link=/lib/{multiarch}",
     "-B",
     "{{libc6-dev}}/usr/lib/{multiarch}",
@@ -168,7 +167,6 @@ _LINK_ARGS = [
     "{{libgcc-s1}}/lib/{multiarch}",
     "-L",
     "{{libstdcxx-dev}}/usr/lib/gcc/{multiarch}/{gcc_major}",
-    "-Wl,-rpath=/usr/lib/{multiarch}/gconv",
 
     # For rules_foreign_cc and rules_rust to work after changing its workdir
     "-B",

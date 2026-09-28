@@ -9,11 +9,19 @@ stripped_out="$2"
 debug_dir="$3"
 objcopy="$4"
 readelf="$5"
+patchelf="$6"
+strip_rpaths="${STRIP_RPATH:-false}"
 
 # objcopy rewrites in place, so work on a writable copy kept inside the action's
 # output tree (the input and /tmp may be read-only under sandboxing).
 tmp="${stripped_out}.input_copy.tmp"
 cp "$input" "$tmp"
+chmod u+w "$tmp" # Make the copy writable for patchelf
+
+# Drop DT_RPATH and DT_RUNPATH before the split, so neither half carries them.
+if [[ "$strip_rpaths" == "true" ]]; then
+  "$patchelf" --remove-rpath "$tmp"
+fi
 
 # The .debug file is named by the binary's build-id; that is how gdb re-finds it
 # via the .gnu_debuglink. The build-id is only known here, at action time.
@@ -35,6 +43,6 @@ mkdir -p "$(dirname "$debug_file")"
 
 # Strip the debug info from the binary and point it back at the debug file.
 # objcopy records only the basename in the .gnu_debuglink.
-"$objcopy" --strip-debug --add-gnu-debuglink="$debug_file" "$tmp" "$stripped_out"
+"$objcopy" --strip-debug --strip-unneeded --add-gnu-debuglink="$debug_file" "$tmp" "$stripped_out"
 
 rm -f "$tmp"

@@ -1,3 +1,5 @@
+load(":binutils_toolchain.bzl", "binutils_binary", "BINUTILS_TOOLS")
+
 licenses(["notice"])
 
 # Binutils that rules need *outside* of a cc action: //binary:strip_binary splits
@@ -15,3 +17,14 @@ toolchain_type(
     name = "toolchain_type",
     visibility = ["//visibility:public"],
 )
+
+# The toolchain's tools, callable by things that are not rules and so cannot resolve a toolchain themselves
+# (e.g. a CI script can use `bazel run @sonic-build-infra//toolchains/binutils:readelf`).
+[
+    binutils_binary(
+        name = tool,
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in BINUTILS_TOOLS
+]

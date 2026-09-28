@@ -45,28 +45,6 @@ def gcc_repo_name(cpu, version):
         ))
     return "gcc-{version}-linux-target-{cpu}-host-{cpu}".format(cpu = cpu, version = version)
 
-GCC = """#!/bin/bash
-
-args=("$@")
-
-EXECROOT="${EXECROOT:-"$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../../..")"}"
-
-for i in "${!args[@]}"; do
-    val="${args[i]}"
-
-    # Make --sysroot flag absolute for GCC.
-    if [[ "${val}" == "--sysroot="* ]]; then
-        if [[ "${val}" == "--sysroot=/"* ]]; then
-            # The path already seems to be absolute.
-            continue
-        fi
-       # args["${i}"]="--sysroot=$(pwd)/${val#--sysroot=}"
-    fi
-done
-
-exec "${EXECROOT}/${0%%-wrapped}" "${args[@]}"
-"""
-
 def _download_gcc(rctx):
     rctx.download_and_extract(
         url = rctx.attr.urls,
@@ -84,9 +62,6 @@ def _download_gcc(rctx):
         },
         executable = False,
     )
-    gcc_prefix = GCC_METADATA[target_arch].gcc
-    rctx.file("bin/{}-gcc-wrapped".format(gcc_prefix), GCC, executable = True)
-    rctx.file("bin/{}-g++-wrapped".format(gcc_prefix), GCC, executable = True)
 
 fetch_gcc = repository_rule(
     implementation = _download_gcc,

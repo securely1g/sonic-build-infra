@@ -4,6 +4,7 @@ Please note that, for simplicity, we don't support the whole interface of a deb 
 Feel free to add methods and attributes (e.g. 'Homepage') as needed.
 """
 
+load("@bazel_lib//lib:utils.bzl", "propagate_common_rule_attributes")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc:defs.bzl", "cc_common")
@@ -188,7 +189,7 @@ _sonic_deb_assemble = rule(
     toolchains = use_cc_toolchain() + [_TAR_TOOLCHAIN],
 )
 
-def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends):
+def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends, **kwargs):
     md5sums = name + "_md5sums"
     control = name + "_control"
 
@@ -205,6 +206,7 @@ def _sonic_deb_impl(name, visibility, data, package, version, maintainer, descri
         depends = depends,
         md5sums_file = ":" + md5sums,
     )
+
     _sonic_deb_assemble(
         name = name,
         data_tar = data,
@@ -213,6 +215,7 @@ def _sonic_deb_impl(name, visibility, data, package, version, maintainer, descri
         version = version,
         architecture = _DEB_ARCH,
         visibility = visibility,
+        **propagate_common_rule_attributes(kwargs)
     )
 
 sonic_deb = macro(
@@ -225,6 +228,8 @@ sonic_deb = macro(
     Add further fields / maintainer scripts (e.g. `Homepage`) here when a migrated package needs them.
     """,
     implementation = _sonic_deb_impl,
+    # So callers can set `tags` (and the other common attributes) on a deb.
+    inherit_attrs = "common",
     attrs = {
         "data": attr.label(
             mandatory = True,
