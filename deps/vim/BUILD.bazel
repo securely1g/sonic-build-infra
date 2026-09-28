@@ -1,0 +1,53 @@
+"""The layers of the `vim` `.deb` packages, as if installed by dpkg.
+
+rules_distroless doesn't execute post-install scripts, and the `vim` package
+updates its alternatives as a post-install.
+We replicate that here.
+"""
+
+load("@tar.bzl", "tar")
+
+alias(
+    name = "vim_pkg",
+    actual = select({
+        "@platforms//cpu:x86_64": "@vim_amd64//:data.tar.xz",
+        "@platforms//cpu:aarch64": "@vim_arm64//:data.tar.xz",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "vim_runtime_pkg",
+    actual = "@vim_runtime//:data.tar.xz",
+    visibility = ["//visibility:public"],
+)
+
+# The vim package's postinstall script creates alternative hardlinks for vim.
+# Instead of running the scripts under Bazel, we recreate the effects with mtree.
+_VIM_ALTERNATIVES = [
+    "editor",
+    "ex",
+    "rview",
+    "rvim",
+    "vi",
+    "view",
+    "vim",
+    "vimdiff",
+]
+
+_LINK = "./{path} uid=0 gid=0 time=0.0 mode=0777 type=link link={target}"
+
+_ALTERNATIVES_TAKEN_BY_THE_BASE = ["vim"]
+
+tar(
+    name = "vim_alternatives_pkg",
+    mtree = [
+        _LINK.format(path = "usr/bin/" + name, target = "/etc/alternatives/" + name)
+        for name in _VIM_ALTERNATIVES
+        if name not in _ALTERNATIVES_TAKEN_BY_THE_BASE
+    ] + [
+        _LINK.format(path = "etc/alternatives/" + name, target = "/usr/bin/vim.basic")
+        for name in _VIM_ALTERNATIVES
+    ],
+    visibility = ["//visibility:public"],
+)

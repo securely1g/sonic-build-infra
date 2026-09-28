@@ -52,3 +52,49 @@ cc_args(
     }),
     visibility = ["//visibility:public"],
 )
+
+# dpkg-buildflags hands these flags to every Debian package build,
+# so we have to replicate them in this toolchain.
+cc_args(
+    name = "dpkg_buildflags",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:compile_actions",
+    ],
+    args = [
+        "-fstack-protector-strong",
+        "-fstack-clash-protection",
+        "-fcf-protection",
+        "-Wformat",
+        "-Werror=format-security",
+        # Inert without optimisation, and glibc warns when it is missing.
+        "-O2",
+        "-D_FORTIFY_SOURCE=2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "dpkg_buildflags_link",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:link_actions",
+    ],
+    args = [
+        "-Wl,-z,relro",
+        "-Wl,-z,now",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# A binary gets a DT_NEEDED entry for every library on its link line.
+# Bazel puts a target's whole transitive dependency set there.
+# --as-needed keeps only the libraries we need.
+cc_args(
+    name = "as_needed",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:link_actions",
+    ],
+    args = [
+        "-Wl,--as-needed",
+    ],
+    visibility = ["//visibility:public"],
+)

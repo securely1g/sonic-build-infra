@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.4",
+    version = "0.0.6",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -16,6 +16,7 @@ bazel_dep(name = "tar.bzl", version = "0.10.5")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "aspect_rules_py", version = "1.11.2")
+bazel_dep(name = "patchelf", version = "0.18.0.bcr.1")
 
 # A local module providing a cc_binary in a separate module, used only by our
 # tests to prove that we correctly package binaries from another module.
@@ -66,6 +67,8 @@ ARCHITECTURES = [
 # one cc and one binutils toolchain per tag.
 register_toolchains("@gcc_toolchains//:all")
 
+DEBIAN_SNAPSHOT = "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.sources_list(
     architectures = ARCHITECTURES,
@@ -74,7 +77,7 @@ apt.sources_list(
         "trixie",
         "trixie-updates",
     ],
-    uris = ["https://snapshot.debian.org/archive/debian/20260727T143429Z"],
+    uris = [DEBIAN_SNAPSHOT],
 )
 apt.sources_list(
     architectures = ARCHITECTURES,
@@ -107,10 +110,16 @@ apt.install(
         # debug utilities
         "gdb",
         "gdbserver",
-        "vim",
+        # Needed for vim, though vim itself is fetched from the main buildimage,
+        # because we can't resolve the right virtual package from rules_distroless yet.
+        "libgpm2",
         "strace",
-        "openssh-client",
         "sshpass",
+        "openssh-client",
+        # openssh-client's shared libraries.
+        # The FIPS OpenSSH deb ships without deps, so we fetch these from apt.
+        "libedit2",
+        "libfido2-1",
 
         # for sonic-swss-common
         # trixie ships libyang 3, so the -dev package lost its soversion suffix.
@@ -151,6 +160,46 @@ use_repo(
 
     # The cc toolchains' sysroot, resolved per architecture.
     "sysroot",
+)
+
+# The `vim` .debs, because rules_distroless can't give us vim.
+#
+# `vim` is a virtual package that many packages provide, not just the one named `vim`.
+# rules_distroless resolves a name to a virtual provider before it looks for a real package,
+# so asking it for "vim" hands back vim-nox, which is a package with a bunch of extra
+# language runtimes and different configuration.
+# The Make build installs this concrete `vim` package, so we fetch those .debs directly
+# and unpack them for //deps/vim:BUILD.bazel to assemble into layers.
+# The reason why they're here instead of an `imported` file inside deps/vim is
+# that we want to use DEBIAN_SNAPSHOT, and we can't import it without building a whole extension,
+# which would be overkill.
+#
+# TODO(bazel-ready): drop all of this once rules_distroless prefers a real
+# package over a virtual one of the same name.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+_DEB_BUILD_FILE = """exports_files(["data.tar.xz"])"""
+
+http_archive(
+    name = "vim_amd64",
+    build_file_content = _DEB_BUILD_FILE,
+    sha256 = "7050d710bbcd5dee68865d90fd95a9aa865bf16d9a3874c5bb6a4f1d69231cfe",
+    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim_9.1.1230-2_amd64.deb"],
+)
+
+http_archive(
+    name = "vim_arm64",
+    build_file_content = _DEB_BUILD_FILE,
+    sha256 = "933d4a979a78574f3e57b0ddb87088c720a4526fdd254c39394c4b70f5e59aa7",
+    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim_9.1.1230-2_arm64.deb"],
+)
+
+# vim-runtime is Architecture: all, so one copy serves every platform.
+http_archive(
+    name = "vim_runtime",
+    build_file_content = _DEB_BUILD_FILE,
+    sha256 = "5addd2e7d3aae7d1907aba6c0c16c525e78ccfc0f6ee9ef9651c139a80c97058",
+    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim-runtime_9.1.1230-2_all.deb"],
 )
 
 # Raw apt package repos the cc toolchains reach into.

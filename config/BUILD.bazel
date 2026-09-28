@@ -68,6 +68,16 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Whether the images we build layer onto a base that Make assembled with dpkg.
+#
+# Those bases carry /etc/ld.so.cache and /etc/ld.so.conf.d, so the loader finds apt libraries on its own.
+# Once the base layer is Bazel-built, we should turn this off, because we won't have that cache.
+bool_flag(
+    name = "make_built_base",
+    build_setting_default = True,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "empty_sai",
     srcs = [],

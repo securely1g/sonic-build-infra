@@ -379,6 +379,8 @@ sonic_deb(
     description = "Hello test package",
     maintainer = "SONiC <sonic@example.com>",
     package = "hello",
+    # There is no make-based target to compare against.
+    tags = ["no-elf-equivalence"],
     version = "1.0",
 )
 
@@ -415,6 +417,8 @@ sonic_deb(
     description = "Debug symbols for hello",
     maintainer = "SONiC <sonic@example.com>",
     package = "hello-dbg",
+    # There is no make-based target to compare against.
+    tags = ["no-elf-equivalence"],
     version = "1.0",
 )
 
