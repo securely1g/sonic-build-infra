@@ -240,3 +240,13 @@ uv.project(
     pyproject = "//deps:pyproject.toml",
 )
 use_repo(uv, "pypi")
+
+# Installation tools run on the execution platform. The installer wheel is pure
+# Python; its resolver version does not select the target image's Python ABI.
+wheel_pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+wheel_pip.parse(
+    hub_name = "sonic_wheel_pip",
+    python_version = "3.11",
+    requirements_lock = "//python:wheel_requirements_lock.txt",
+)
+use_repo(wheel_pip, "sonic_wheel_pip")

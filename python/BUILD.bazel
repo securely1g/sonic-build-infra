@@ -1,1 +1,24 @@
 # Python rules for native extensions & container images.
+
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("@sonic_wheel_pip//:requirements.bzl", "requirement")
+
+exports_files(["wheel_requirements_lock.txt"])
+
+py_binary(
+    name = "wheel_layer_builder",
+    srcs = ["wheel_layer_builder.py"],
+    deps = [requirement("installer")],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "wheel_layer_test",
+    imports = ["."],
+    srcs = [
+        "wheel_layer_builder.py",
+        "wheel_layer_test.py",
+    ],
+    deps = [requirement("installer")],
+)
