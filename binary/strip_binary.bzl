@@ -6,7 +6,6 @@ Behaviour mirrors Debian's dh_strip. It operates on ELFs directly via binutils o
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("//toolchains/binutils:binutils_toolchain.bzl", "BINUTILS_TOOLCHAIN_TYPE")
 load(":debug_symbols.bzl", "DebugSymbolsInfo")
-load(":drop_build_rpath.bzl", "drop_build_rpath")
 load(":keep_debug_info.bzl", "keep_debug_info")
 
 def _strip_binary_rule_impl(ctx):
@@ -36,7 +35,7 @@ def _strip_binary_rule_impl(ctx):
         arguments = [args],
         inputs = [src, ctx.file._strip_tool],
         outputs = [stripped, debug],
-        env={
+        env = {
             # If the base image is Make-built, it already has a /etc/ld.so.cache to look up installed binaries,
             # and rpaths could mess resolution order (since they have precedence over LD_LIBRARY_PATH).
             "STRIP_RPATH": "true" if ctx.attr._make_built_base[BuildSettingInfo].value else "false",
@@ -98,11 +97,9 @@ def _strip_binary_impl(name, src, force_debug_build, **kwargs):
         keep_debug_info(name = keep_debug_info_bin, src = src)
         binary = ":{}".format(keep_debug_info_bin)
 
-    # These binaries are meant to be deployed, so we always force-strip the sandbox-releative RPATHs.
-    no_build_rpath_bin = "{}.no_build_rpath".format(name)
-    drop_build_rpath(name = no_build_rpath_bin, src = binary)
-    binary = ":{}".format(no_build_rpath_bin)
-
+    # Remove build-tree paths from the writable ELF copy before splitting it.
+    # Disabling runtime_library_search_directories through a transition is not
+    # portable: LLVM toolchains may require that feature during analysis.
     _strip_binary_rule(
         name = name,
         src = binary,
