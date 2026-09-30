@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.6",
+    version = "0.0.8",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -103,6 +103,23 @@ apt.install(
         "trixie-security",
     ],
 )
+
+# Build tools used by SAI metadata generation. Consumers select these package
+# payloads in the execution configuration so the tools and their runtime files
+# match the machine running the generator.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        "aspell",
+        "aspell-en",
+        "doxygen",
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
 apt.install(
     dependency_set = "trixie",
     packages = [
@@ -160,6 +177,9 @@ use_repo(
 
     # The cc toolchains' sysroot, resolved per architecture.
     "sysroot",
+
+    # Build tools and their runtime dependencies, resolved per architecture.
+    "build_tools",
 )
 
 # The `vim` .debs, because rules_distroless can't give us vim.
