@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.6",
+    version = "0.0.8",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -86,12 +86,15 @@ apt.sources_list(
     uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
 )
 
-# The cc toolchains' sysroot: libc, libstdc++ and kernel headers.
-# We keep it in a separate apt install set so that the toolchain can resolve
-# without fetching the entire closure of packages.
+# Shared sysroot packages for the cc toolchains and SAI metadata generation.
+# Compiler actions still select only their declared header/library directories;
+# SAI generators consume the execution-platform Doxygen and Aspell packages.
 apt.install(
     dependency_set = "sysroot",
     packages = [
+        "aspell",
+        "aspell-en",
+        "doxygen",
         "libc6-dev",
         "libgcc-14-dev",
         "libstdc++-14-dev",
@@ -158,7 +161,7 @@ use_repo(
     #     use_repo(apt, "trixie")
     "trixie",
 
-    # The cc toolchains' sysroot, resolved per architecture.
+    # Compiler and SAI generator packages, resolved per architecture.
     "sysroot",
 )
 
