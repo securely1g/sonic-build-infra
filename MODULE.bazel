@@ -86,19 +86,33 @@ apt.sources_list(
     uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
 )
 
-# Shared sysroot packages for the cc toolchains and SAI metadata generation.
-# Compiler actions still select only their declared header/library directories;
-# SAI generators consume the execution-platform Doxygen and Aspell packages.
+# The cc toolchains' sysroot: libc, libstdc++ and kernel headers.
+# We keep it in a separate apt install set so that the toolchain can resolve
+# without fetching the entire closure of packages.
 apt.install(
     dependency_set = "sysroot",
     packages = [
-        "aspell",
-        "aspell-en",
-        "doxygen",
         "libc6-dev",
         "libgcc-14-dev",
         "libstdc++-14-dev",
         "linux-libc-dev",
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+
+# Build tools used by SAI metadata generation. Consumers select these package
+# payloads in the execution configuration so the tools and their runtime files
+# match the machine running the generator.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        "aspell",
+        "aspell-en",
+        "doxygen",
     ],
     suites = [
         "trixie",
@@ -161,8 +175,11 @@ use_repo(
     #     use_repo(apt, "trixie")
     "trixie",
 
-    # Compiler and SAI generator packages, resolved per architecture.
+    # The cc toolchains' sysroot, resolved per architecture.
     "sysroot",
+
+    # Build tools and their runtime dependencies, resolved per architecture.
+    "build_tools",
 )
 
 # The `vim` .debs, because rules_distroless can't give us vim.
