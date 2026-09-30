@@ -8,6 +8,7 @@ exports_files(["wheel_requirements_lock.txt"])
 
 py_binary(
     name = "wheel_layer_builder",
+    python_version = "3.11",
     srcs = ["wheel_layer_builder.py"],
     deps = [requirement("installer")],
     visibility = ["//visibility:public"],
@@ -15,6 +16,7 @@ py_binary(
 
 py_test(
     name = "wheel_layer_test",
+    python_version = "3.11",
     imports = ["."],
     srcs = [
         "wheel_layer_builder.py",
