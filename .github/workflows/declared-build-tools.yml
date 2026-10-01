@@ -1,0 +1,91 @@
+name: Declared build tools
+
+on:
+  pull_request:
+    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+  push:
+    branches: [master]
+    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: declared-build-tools-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Build tools (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+            platform: x86_64_trixie
+            bazel_arch: x86_64
+            bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+            platform: aarch64_trixie
+            bazel_arch: arm64
+            bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    container: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARCHITECTURE: ${{ matrix.architecture }}
+      PLATFORM: ${{ matrix.platform }}
+      BAZEL_ARCH: ${{ matrix.bazel_arch }}
+      BAZEL_SHA: ${{ matrix.bazel_sha }}
+    steps:
+      - name: Prepare Bazel bootstrap dependencies
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git python3 tar xz-utils
+          [[ "$(dpkg --print-architecture)" == "$ARCHITECTURE" ]]
+          test ! -e /usr/bin/aspell
+          test ! -e /usr/bin/doxygen
+          curl --fail --location --retry 3 --output /usr/local/bin/bazel \
+            "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-$BAZEL_ARCH"
+          printf '%s  %s\n' "$BAZEL_SHA" /usr/local/bin/bazel | sha256sum --check --strict
+          chmod +x /usr/local/bin/bazel
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build executable tools and exercise sandboxed invocation
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          flags=(--registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main \
+                 --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
+                 --lockfile_mode=update)
+          bazel --ignore_all_rc_files build "${flags[@]}" \
+            --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
+            //tools/build_tools:aspell //tools/build_tools:doxygen \
+            //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
+          cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
+          bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
+            --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
+            //tools/build_tools:runtime_test 2>&1 | tee ci-artifacts/test.log
+          test -s MODULE.bazel.lock
+      - name: Collect resolution and test evidence
+        if: always()
+        run: |
+          mkdir -p ci-artifacts
+          if [[ -f MODULE.bazel.lock ]]; then cp MODULE.bazel.lock ci-artifacts/; fi
+          if [[ -d bazel-testlogs ]]; then cp -aL bazel-testlogs ci-artifacts/testlogs; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: declared-build-tools-${{ matrix.architecture }}
+          path: ci-artifacts/
+          if-no-files-found: error
+          retention-days: 30
