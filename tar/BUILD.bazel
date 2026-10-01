@@ -1,0 +1,37 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+load(":debug_symbols_tar.bzl", "debug_symbols_tar")
+
+py_binary(
+    name = "root_owned_tar",
+    srcs = ["root_owned_tar.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "root_owned_tar_test",
+    imports = ["."],
+    srcs = [
+        "root_owned_tar.py",
+        "root_owned_tar_test.py",
+    ],
+)
+
+write_file(
+    name = "ownership_fixture",
+    out = ".build-id/ab/fixture.debug",
+    content = ["fixture symbols", ""],
+)
+
+debug_symbols_tar(
+    name = "ownership_fixture_tar",
+    srcs = [":ownership_fixture"],
+)
+
+py_test(
+    name = "debug_symbols_ownership_test",
+    srcs = ["debug_symbols_ownership_test.py"],
+    args = ["$(location :ownership_fixture_tar)"],
+    data = [":ownership_fixture_tar"],
+)

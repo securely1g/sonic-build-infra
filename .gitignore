@@ -4,3 +4,7 @@ bazel-*
 # Avoid committing the module lock until we get the size down
 # from rules_distroless. Otherwise we end up with around 5MB of text.
 MODULE.bazel.lock
+
+# Retained source CI evidence.
+/ci-artifacts/
+!ci/bazel-ci.sh

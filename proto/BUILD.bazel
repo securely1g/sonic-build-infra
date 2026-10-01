@@ -1,0 +1,40 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load(":protoc_main.bzl", "protoc_main")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["protoc.py.tpl"])
+
+filegroup(
+    name = "compiler_payloads",
+    srcs = [
+        "@build_tools//libprotobuf-dev:data",
+        "@build_tools//protobuf-compiler",
+    ],
+)
+
+protoc_main(
+    name = "protoc_main",
+    out = "protoc_main.py",
+    architecture = select({
+        "@platforms//cpu:x86_64": "amd64",
+        "@platforms//cpu:aarch64": "arm64",
+    }),
+    payloads = [":compiler_payloads"],
+)
+
+py_binary(
+    name = "protoc",
+    srcs = ["protoc_main.py"],
+    data = [":compiler_payloads"],
+    main = "protoc_main.py",
+    deps = ["@rules_python//python/runfiles"],
+)
+
+py_test(
+    name = "protoc_version_test",
+    srcs = ["protoc_version_test.py"],
+    args = ["$(rlocationpath :protoc)"],
+    data = [":protoc"],
+    deps = ["@rules_python//python/runfiles"],
+)

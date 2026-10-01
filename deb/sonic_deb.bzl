@@ -32,6 +32,36 @@ _DEB_ARCH_LINE = select(
     no_match_error = _UNSUPPORTED_CPU_ERROR,
 )
 
+def _sonic_normalize_data_tar_impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".tar")
+    tool = ctx.executable._normalize_tool
+    ctx.actions.run(
+        executable = tool,
+        arguments = [ctx.file.data_tar.path, out.path],
+        inputs = [ctx.file.data_tar],
+        outputs = [out],
+        tools = depset(
+            direct = [tool],
+            transitive = [ctx.attr._normalize_tool[DefaultInfo].default_runfiles.files],
+        ),
+        mnemonic = "DebNormalizeData",
+        progress_message = "Ordering dpkg payload directories for %s" % ctx.label.name,
+    )
+    return [DefaultInfo(files = depset([out]))]
+
+_sonic_normalize_data_tar = rule(
+    doc = "Add missing payload parents and emit directories before their children for dpkg.",
+    implementation = _sonic_normalize_data_tar_impl,
+    attrs = {
+        "data_tar": attr.label(allow_single_file = True, mandatory = True),
+        "_normalize_tool": attr.label(
+            default = Label("//deb:normalize_data_tar"),
+            executable = True,
+            cfg = "exec",
+        ),
+    },
+)
+
 def _sonic_md5sums_from_tar_impl(ctx):
     """Generate the dpkg `md5sums` control file by streaming the data tar."""
     out = ctx.actions.declare_file(ctx.label.name + ".md5sums")
@@ -190,12 +220,17 @@ _sonic_deb_assemble = rule(
 )
 
 def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends, **kwargs):
+    normalized_data = name + "_normalized_data"
     md5sums = name + "_md5sums"
     control = name + "_control"
 
+    _sonic_normalize_data_tar(
+        name = normalized_data,
+        data_tar = data,
+    )
     _sonic_md5sums_from_tar(
         name = md5sums,
-        data_tar = data,
+        data_tar = ":" + normalized_data,
     )
     _sonic_control_tar(
         name = control,
@@ -209,7 +244,7 @@ def _sonic_deb_impl(name, visibility, data, package, version, maintainer, descri
 
     _sonic_deb_assemble(
         name = name,
-        data_tar = data,
+        data_tar = ":" + normalized_data,
         control_tar = ":" + control,
         package = package,
         version = version,
@@ -235,7 +270,7 @@ sonic_deb = macro(
             mandatory = True,
             allow_files = True,
             configurable = False,
-            doc = "A tar holding the actual contents of the deb archive. Will be included verbatim.",
+            doc = "A payload tar. File bytes, modes and links are preserved; missing parents are added and entries ordered for dpkg.",
         ),
         "package": attr.string(mandatory = True, configurable = False, doc = "Debian `Package:` field."),
         "version": attr.string(mandatory = True, configurable = False, doc = "Debian `Version:` field."),
