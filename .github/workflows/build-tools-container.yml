@@ -1,0 +1,135 @@
+name: Build tools container
+
+on:
+  pull_request:
+    paths: ['containers/build-tools/**', '.github/workflows/build-tools-container.yml']
+  push:
+    branches: [master]
+    paths: ['containers/build-tools/**', '.github/workflows/build-tools-container.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-tools-container-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/securely1g/sonic-build-tools
+  SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+  PUBLISH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+
+jobs:
+  native:
+    name: Build tools (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build native image and exercise installed tools
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          [[ "$(dpkg --print-architecture)" == "$ARCHITECTURE" ]]
+          recipe=$(python3 containers/build-tools/identity.py)
+          tag="$IMAGE:sha-$SOURCE_REVISION-$ARCHITECTURE"
+          docker build --provenance=false --build-arg "TARGETARCH=$ARCHITECTURE" \
+            --build-arg "SOURCE_REVISION=$SOURCE_REVISION" \
+            --build-arg "RECIPE_SHA256=$recipe" \
+            --tag "$tag" --file containers/build-tools/Dockerfile .
+          mkdir evidence
+          docker run --rm "$tag" python3 /opt/sonic-build-tools-recipe/smoke_test.py | tee evidence/smoke-test.log
+          docker run --rm "$tag" cat /etc/sonic-build-tools.json > evidence/marker.json
+          docker image inspect "$tag" > evidence/local-image.json
+      - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish immutable native reference
+        if: env.PUBLISH == 'true'
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          tag="$IMAGE:sha-$SOURCE_REVISION-$ARCHITECTURE"
+          docker push "$tag"
+          docker image inspect "$tag" --format '{{index .RepoDigests 0}}' > evidence/image.txt
+          [[ "$(cat evidence/image.txt)" =~ ^ghcr.io/securely1g/sonic-build-tools@sha256:[0-9a-f]{64}$ ]]
+      - name: Retain native image identity and installed package inventory
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-tools-${{ matrix.architecture }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish build tools image index
+    needs: native
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: build-tools-*
+          path: evidence
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble the AMD64 and ARM64 index
+        run: |
+          set -euo pipefail
+          amd64=$(cat evidence/build-tools-amd64/image.txt)
+          arm64=$(cat evidence/build-tools-arm64/image.txt)
+          docker buildx imagetools create --tag "$IMAGE:sha-$SOURCE_REVISION" "$amd64" "$arm64"
+          docker buildx imagetools inspect "$IMAGE:sha-$SOURCE_REVISION" --format '{{json .Manifest}}' > evidence/index.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          native = {}
+          for arch in ('amd64', 'arm64'):
+              path = Path('evidence/build-tools-' + arch)
+              marker = json.loads((path / 'marker.json').read_text())
+              assert marker['architecture'] == arch
+              native[arch] = {'image': (path / 'image.txt').read_text().strip(), 'recipe_sha256': marker['recipe_sha256']}
+          assert native['amd64']['recipe_sha256'] == native['arm64']['recipe_sha256']
+          index = json.loads(Path('evidence/index.json').read_text())
+          assert {entry['platform']['architecture'] for entry in index['manifests']} == {'amd64', 'arm64'}
+          release = {'image': os.environ['IMAGE'] + '@' + index['digest'], 'recipe_sha256': native['amd64']['recipe_sha256'], 'source_revision': os.environ['SOURCE_REVISION'], 'native': native}
+          Path('evidence/release.json').write_text(json.dumps(release, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              print('```json\n' + json.dumps(release, indent=2) + '\n```', file=summary)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-tools-release
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

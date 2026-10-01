@@ -1,0 +1,14 @@
+aspell=0.60.8.1-4
+aspell-en=2020.12.07-0-1
+doxygen=1.9.8+ds-2.1
+bash
+binutils
+build-essential
+ca-certificates
+curl
+gdb
+git
+perl
+python3
+tar
+xz-utils
