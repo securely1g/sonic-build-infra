@@ -1,0 +1,98 @@
+name: Source build tools and packages
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazel-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Source build tools (${{ matrix.arch }})
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: AMD64
+            architecture: amd64
+            machine: x86_64
+            runner: ubuntu-24.04
+            bazel_arch: x86_64
+            bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
+            bazel_args: ""
+            bazel_config: default
+          - arch: ARM64
+            architecture: arm64
+            machine: aarch64
+            runner: ubuntu-24.04-arm
+            bazel_arch: arm64
+            bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
+            bazel_args: --config=aarch64
+            bazel_config: aarch64
+    runs-on: ${{ matrix.runner }}
+    container:
+      # This immutable multiarchitecture manifest selects the native image.
+      image: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+      options: --init
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      CI_IMAGE: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    steps:
+      - name: Install build and package inspection tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            binutils build-essential ca-certificates curl git python3 tar xz-utils
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify native Trixie environment
+        run: |
+          source /etc/os-release
+          test "$ID" = debian
+          test "$VERSION_CODENAME" = trixie
+          test "$(uname -m)" = '${{ matrix.machine }}'
+          test "$(dpkg --print-architecture)" = '${{ matrix.architecture }}'
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p artifacts/validation
+          cp /etc/os-release artifacts/validation/os-release
+          dpkg-query -W -f='${binary:Package}\t${Version}\n' > artifacts/validation/host-packages.txt
+
+      - name: Install pinned Bazel
+        run: |
+          test "$(cat .bazelversion)" = 8.5.1
+          curl --fail --location --retry 3 --output /tmp/bazel \
+            'https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${{ matrix.bazel_arch }}'
+          printf '%s  %s\n' '${{ matrix.bazel_sha }}' /tmp/bazel | sha256sum --check --strict
+          install -m 0755 /tmp/bazel /usr/local/bin/bazel
+
+      - name: Test compiler, Debian normalization and package assembly
+        run: >-
+          bazel test ${{ matrix.bazel_args }} --jobs=4
+          --nocache_test_results --test_output=errors
+          --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/test-events.json"
+          //proto:protoc_version_test //deb:normalize_data_tar_test
+          //tests:hello_deb_build_test //tests:hello_deb_members_assert
+          //tests:hello_deb_md5sums_assert
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: protobuf-build-tools-${{ matrix.arch }}-${{ github.sha }}
+          path: artifacts/validation/
+          if-no-files-found: error
