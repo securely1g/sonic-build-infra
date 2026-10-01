@@ -1,6 +1,6 @@
 bazel-*
 *.pyc
 
-# Avoid committing the module lock until we get the size down
-# from rules_distroless. Otherwise we end up with around 5MB of text.
+# Archive generated resolution state in CI; explicit dependency pins stay in source.
 MODULE.bazel.lock
+ci-artifacts/

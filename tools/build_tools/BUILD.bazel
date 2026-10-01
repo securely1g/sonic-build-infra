@@ -1,0 +1,66 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load(":defs.bzl", "build_tool", "build_tools_runtime", "check_build_tools", "python_runtime")
+
+python_runtime(name = "python_runtime")
+
+[
+    build_tools_runtime(
+        name = "runtime_" + architecture,
+        architecture = architecture,
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = [
+            "@build_tools//aspell",
+            "@build_tools//aspell-en",
+            "@build_tools//doxygen",
+        ],
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":runtime_amd64",
+        "@platforms//cpu:aarch64": ":runtime_arm64",
+    }),
+)
+
+[
+    build_tool(
+        name = tool,
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "aspell",
+        "doxygen",
+    ]
+]
+
+py_test(
+    name = "runtime_test",
+    srcs = ["runtime_test.py"],
+    args = [
+        "$(location :aspell)",
+        "$(location :doxygen)",
+    ],
+    data = [
+        ":aspell",
+        ":doxygen",
+    ],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+check_build_tools(
+    name = "launcher_action_check",
+    aspell = ":aspell",
+    doxygen = ":doxygen",
+    visibility = ["//visibility:public"],
+)
