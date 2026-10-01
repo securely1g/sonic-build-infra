@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.8",
+    version = "0.0.12",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -104,7 +104,7 @@ apt.install(
     ],
 )
 
-# Build tools used by SAI metadata generation. Consumers select these package
+# Build tools used by SAI metadata and protobuf source generation. Consumers select these package
 # payloads in the execution configuration so the tools and their runtime files
 # match the machine running the generator.
 apt.install(
@@ -113,6 +113,8 @@ apt.install(
         "aspell",
         "aspell-en",
         "doxygen",
+        "libprotobuf-dev",
+        "protobuf-compiler",
     ],
     suites = [
         "trixie",
@@ -260,3 +262,13 @@ uv.project(
     pyproject = "//deps:pyproject.toml",
 )
 use_repo(uv, "pypi")
+
+# Installation tools run on the execution platform. The installer wheel is pure
+# Python; its resolver version does not select the target image's Python ABI.
+wheel_pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+wheel_pip.parse(
+    hub_name = "sonic_wheel_pip",
+    python_version = "3.11",
+    requirements_lock = "//python:wheel_requirements_lock.txt",
+)
+use_repo(wheel_pip, "sonic_wheel_pip")

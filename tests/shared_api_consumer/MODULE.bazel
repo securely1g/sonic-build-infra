@@ -1,0 +1,42 @@
+module(
+    name = "shared_api_consumer",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "sonic-build-infra", version = "0.0.12", repo_name = "sonic_build_infra")
+local_path_override(
+    module_name = "sonic-build-infra",
+    path = "../..",
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+fixture_packages = use_repo_rule("//:fixtures.bzl", "fixture_packages")
+
+fixture_packages(name = "packages")
+
+debian_sysroot = use_repo_rule("@sonic_build_infra//sysroot:repositories.bzl", "debian_sysroot")
+
+debian_sysroot(
+    name = "assembled",
+    packages = [
+        "@packages//:first.tar.xz",
+        "@packages//:second.tar.xz",
+    ],
+)
+
+debian_sysroot(
+    name = "reversed",
+    packages = [
+        # do not sort: archive order controls overlays
+        "@packages//:second.tar.xz",
+        "@packages//:first.tar.xz",
+    ],
+)
+
+debian_sysroot(
+    name = "unsafe",
+    packages = ["@packages//:absolute.tar.xz"],
+)

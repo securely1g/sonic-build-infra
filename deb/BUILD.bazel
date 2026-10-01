@@ -2,9 +2,27 @@
 # See sonic_deb.bzl for the public `sonic_deb` macro.
 
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
 
 py_binary(
     name = "md5sums_from_tar",
     srcs = ["md5sums_from_tar.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "normalize_data_tar",
+    srcs = ["normalize_data_tar.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "normalize_data_tar_test",
+    srcs = [
+        "normalize_data_tar.py",
+        "normalize_data_tar_test.py",
+    ],
+    imports = ["."],
+    main = "normalize_data_tar_test.py",
     visibility = ["//visibility:public"],
 )
