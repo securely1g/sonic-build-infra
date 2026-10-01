@@ -2,9 +2,64 @@
 # See sonic_deb.bzl for the public `sonic_deb` macro.
 
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+load(":dpkg_deb_main.bzl", "dpkg_deb_main")
+
+exports_files(["dpkg_deb.py.tpl"])
+
+filegroup(
+    name = "dpkg_deb_payloads",
+    srcs = [
+        "@build_tools//coreutils",
+        "@build_tools//dpkg",
+        "@build_tools//tar",
+    ],
+)
+
+dpkg_deb_main(
+    name = "dpkg_deb_main",
+    out = "dpkg_deb_main.py",
+    architecture = select({
+        "@platforms//cpu:x86_64": "amd64",
+        "@platforms//cpu:aarch64": "arm64",
+    }),
+    payloads = [":dpkg_deb_payloads"],
+)
+
+py_binary(
+    name = "dpkg_deb",
+    srcs = ["dpkg_deb_main.py"],
+    data = [":dpkg_deb_payloads"],
+    main = "dpkg_deb_main.py",
+    visibility = ["//visibility:public"],
+    deps = ["@rules_python//python/runfiles"],
+)
 
 py_binary(
     name = "md5sums_from_tar",
     srcs = ["md5sums_from_tar.py"],
     visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "build_deb",
+    srcs = ["build_deb.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "build_deb_test",
+    srcs = ["build_deb_test.py"],
+    args = [
+        "--build-deb",
+        "$(rlocationpath :build_deb)",
+        "--dpkg-deb",
+        "$(rlocationpath :dpkg_deb)",
+    ],
+    data = [
+        ":build_deb",
+        ":dpkg_deb",
+    ],
+    visibility = ["//visibility:public"],
+    deps = ["@rules_python//python/runfiles"],
 )

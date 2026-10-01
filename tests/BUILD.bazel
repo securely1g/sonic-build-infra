@@ -399,7 +399,10 @@ assert_deb_members(
 assert_deb_control(
     name = "hello_deb_control_assert",
     deb = ":hello_deb",
-    expected = ":hello_deb_control.expected.txt",
+    expected = select({
+        "@platforms//cpu:x86_64": ":hello_deb_control.expected.txt",
+        "@platforms//cpu:aarch64": ":hello_deb_control.arm64.expected.txt",
+    }),
 )
 
 assert_deb_md5sums(
@@ -426,6 +429,30 @@ sonic_deb(
 build_test(
     name = "hello_dbg_deb_build_test",
     targets = [":hello_dbg_deb"],
+)
+
+# Install this runtime and its matching symbols in native CI. The fixture above
+# intentionally contains only text and exercises the historical control contract.
+sonic_deb(
+    name = "hello_runtime_deb",
+    data = ":hello_deploy_tar",
+    depends = ["libc6 (>= 2.34)"],
+    description = "Installed SONiC packaging regression fixture",
+    maintainer = "SONiC <sonic@example.com>",
+    package = "sonic-infra-hello",
+    tags = ["no-elf-equivalence"],
+    version = "1.0",
+)
+
+sonic_deb(
+    name = "hello_runtime_dbg_deb",
+    data = ":hello_deploy_tar.debug_symbols",
+    depends = ["sonic-infra-hello (= 1.0)"],
+    description = "Matching symbols for the installed SONiC packaging fixture",
+    maintainer = "SONiC <sonic@example.com>",
+    package = "sonic-infra-hello-dbg",
+    tags = ["no-elf-equivalence"],
+    version = "1.0",
 )
 
 # Linked-ELF regression for toolchains that require runtime search features.
