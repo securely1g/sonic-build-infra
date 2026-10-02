@@ -43,7 +43,10 @@ tests=(
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
 if [[ -f python/wheel_layer.bzl ]]; then
-  tests+=(//python:wheel_layer_test //tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
+  tests+=(//python:wheel_layer_test)
+fi
+if [[ -f tar/root_owned_tar.bzl ]]; then
+  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"

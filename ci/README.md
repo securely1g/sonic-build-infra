@@ -9,16 +9,19 @@ Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
 Both native workflows resolve dependencies through `sonic-bazel-registry/main`
 and the Bazel Central Registry, independently of local Bazel settings. The source
-script selects matching execution/target platforms. The repository deliberately excludes
-its large generated module lock; CI retains the resolved lock as evidence.
+script selects matching execution/target platforms. Module versions, source
+checksums and package snapshots remain explicit inputs. The repository deliberately
+excludes its large generated module lock; CI retains the resolved lock as evidence.
 
 The explicit source tests cover C/C++ linking, shared-library/PIC behavior,
 stripping and deployment debug-provider/content behavior. The protoc smoke test
 generates C++, Python and Python type stubs with imported schemas and proto3
 optional fields using its declared compiler runtime. The shared API branch
 also runs the nine external-consumer analysis/sysroot tests and rejects the
-unsafe archive fixture. The wheel-layer branch also runs wheel installation,
-archive ownership and debug-header ownership tests. These checks do not claim
+unsafe archive fixture. Wheel installation tests run when the wheel-layer rule
+is present; archive ownership and debug-header ownership tests run when the
+ownership rule is present. These rule families are selected independently, so
+either can be developed and validated on its own. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
 
 Each run retains test XML/logs, build events, native host metadata, revision,
