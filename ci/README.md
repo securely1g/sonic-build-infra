@@ -7,8 +7,9 @@ revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
-Both native workflows resolve dependencies through `sonic-bazel-registry/main`
-and the Bazel Central Registry, independently of local Bazel settings. The source
+Local builds and both native workflows resolve dependencies through
+`sonic-bazel-registry/main` and the Bazel Central Registry. CI selects these URLs
+explicitly so user-specific Bazel settings cannot change its registries. The source
 script selects matching execution/target platforms. Module versions, source
 checksums and package snapshots remain explicit inputs. The repository deliberately
 excludes its large generated module lock; CI retains the resolved lock as evidence.

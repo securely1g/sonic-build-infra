@@ -1,0 +1,2 @@
+installer==0.7.0 \
+    --hash=sha256:05d1933f0a5ba7d8d6296bb6d5018e7c94fa473ceb10cf198a92ccea19c27b53
