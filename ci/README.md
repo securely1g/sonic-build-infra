@@ -7,8 +7,9 @@ revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
-Both native workflows resolve dependencies through `sonic-bazel-registry/main`
-and the Bazel Central Registry, independently of local Bazel settings. The source
+Local builds and both native workflows resolve dependencies through
+`sonic-bazel-registry/main` and the Bazel Central Registry. CI selects these URLs
+explicitly so user-specific Bazel settings cannot change its registries. The source
 script selects matching execution/target platforms. Module versions, source
 checksums and package snapshots remain explicit inputs. The repository deliberately
 excludes its large generated module lock; CI retains the resolved lock as evidence.
@@ -23,6 +24,12 @@ is present; archive ownership and debug-header ownership tests run when the
 ownership rule is present. These rule families are selected independently, so
 either can be developed and validated on its own. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
+
+AMD64 additionally prepares the declared kernel build runtime and checks its
+archive boundaries, compiler, Python packaging modules and Debian shared-library
+dependency calculation. The runtime check uses `chroot` in the disposable CI
+container and requires its default root, `CAP_SYS_CHROOT` and `CAP_MKNOD` access.
+It compiles a small host program but creates no DEB packages or kernel image.
 
 Each run retains test XML/logs, build events, native host metadata, revision,
 resolved module locks, sample executables, and their runtime/debug deployment

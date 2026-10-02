@@ -49,6 +49,9 @@ fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
   tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
+if [[ "$debian_arch" == amd64 && -f tools/build_tools/prepare_rootfs.py ]]; then
+  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test)
+fi
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
 for target in "${tests[@]}"; do
