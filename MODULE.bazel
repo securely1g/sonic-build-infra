@@ -131,6 +131,48 @@ apt.install(
         "perl",
         "libprotobuf-dev",
         "protobuf-compiler",
+        # Offline Debian/Kbuild execution for sonic-linux-kernel. Essential
+        # packages are explicit where binary Depends omit that host baseline.
+        # Keep source Build-Depends roots for dpkg-checkbuilddeps: the APT hub
+        # records status only for explicit roots. Other runtime deps resolve
+        # transitively; do not repeat tools already listed above.
+        "bash",
+        "bc",
+        "build-essential",
+        "coreutils",
+        "cpio",
+        "dash",
+        "debhelper",
+        "dh-python",
+        "diffutils",
+        "findutils",
+        "gzip",
+        "kernel-wedge",
+        "kmod",
+        "libelf-dev",
+        # These runtime-library roots expose the data/control labels consumed
+        # by _KERNEL_LINK_LIBRARIES for dpkg-shlibdeps metadata.
+        "libelf1t64",
+        "libc6",
+        "libc-bin",
+        "libgcc-s1",
+        "libssl-dev",
+        "libssl3t64",
+        "libzstd1",
+        "lz4",
+        "openssl",
+        "pahole",
+        "python3-dacite",
+        "python3",
+        "python3-jinja2",
+        "quilt",
+        "rsync",
+        "sed",
+        "util-linux",
+        "xz-utils",
+        "zlib1g",
+        "zstd",
+        "gcc-14",
     ],
     suites = [
         "trixie",
