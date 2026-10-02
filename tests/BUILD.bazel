@@ -399,7 +399,10 @@ assert_deb_members(
 assert_deb_control(
     name = "hello_deb_control_assert",
     deb = ":hello_deb",
-    expected = ":hello_deb_control.expected.txt",
+    expected = select({
+        "@platforms//cpu:x86_64": ":hello_deb_control.expected.txt",
+        "@platforms//cpu:aarch64": ":hello_deb_control.arm64.expected.txt",
+    }),
 )
 
 assert_deb_md5sums(
