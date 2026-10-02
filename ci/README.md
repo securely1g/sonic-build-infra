@@ -7,12 +7,15 @@ revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, Git, Python, tar and xz installed.
-The script pins registry resolution independently of local Bazel settings and
-selects matching execution/target platforms. The repository deliberately excludes
+Both native workflows resolve dependencies through `sonic-bazel-registry/main`
+and the Bazel Central Registry, independently of local Bazel settings. The source
+script selects matching execution/target platforms. The repository deliberately excludes
 its large generated module lock; CI retains the resolved lock as evidence.
 
 The explicit source tests cover C/C++ linking, shared-library/PIC behavior,
-stripping and deployment debug-provider/content behavior. The shared API branch
+stripping and deployment debug-provider/content behavior. The protoc smoke test
+generates C++, Python and Python type stubs with imported schemas and proto3
+optional fields using its declared compiler runtime. The shared API branch
 also runs the nine external-consumer analysis/sysroot tests and rejects the
 unsafe archive fixture. The wheel-layer branch also runs wheel installation,
 archive ownership and debug-header ownership tests. These checks do not claim
