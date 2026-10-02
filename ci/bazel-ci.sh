@@ -19,8 +19,8 @@ uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
 # The repository intentionally excludes its large generated module lock. Retain
-# the resolved lock with each run, and pin the SONiC registry used for resolution.
-registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/1bce1094dcdc7e511baaa809fa622862585bcf8d
+# the resolved lock with each run, and follow the SONiC registry's main branch.
+registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
@@ -38,6 +38,7 @@ tests=(
   //tests:greet_shared_strip_test
   //tests:hello_deploy_tar_content_test
   //tests:hello_deploy_tar_provides_debug_symbols_test
+  //proto:protoc_version_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
