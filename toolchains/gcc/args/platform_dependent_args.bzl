@@ -40,7 +40,7 @@ def resolve_packages(sysroot, gcc_repo, args):
         sysroot: logical package name -> the label of the directory holding it,
                  from the `gcc.debian_toolchain()` tag that declared this
                  toolchain.
-        gcc_repo: the GCC distribution repo, for the one directory that does
+        gcc_repo: the GCC distribution repo, for the compiler files that do
                   not come from apt.
         args: the resolved args, which name the packages they need.
 
@@ -51,8 +51,9 @@ def resolve_packages(sysroot, gcc_repo, args):
     # Every package this toolchain could reach into.
     available = dict(sysroot)
 
-    # The one directory that comes from the GCC distribution rather than from apt.
+    # These directories come from the GCC distribution rather than from apt.
     available["gcc-builtin"] = gcc_repo + "//:builtin_headers"
+    available["gcc-binutils"] = gcc_repo + "//:compiler_binutils"
 
     return {
         key: label
@@ -189,6 +190,16 @@ _LINK_ARGS = [
 ]
 
 PLATFORM_DEPENDENT_ARGS = [
+    struct(
+        suffix = "_subprograms",
+        actions = [
+            "@rules_cc//cc/toolchains/actions:assembly_actions",
+            "@rules_cc//cc/toolchains/actions:c_compile",
+            "@rules_cc//cc/toolchains/actions:cpp_compile_actions",
+            "@rules_cc//cc/toolchains/actions:link_actions",
+        ],
+        args = ["-B{{gcc-binutils}}/bin/{gcc}-"],
+    ),
     struct(
         suffix = "_c_includes",
         actions = ["@rules_cc//cc/toolchains/actions:c_compile"],

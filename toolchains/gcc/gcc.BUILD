@@ -20,14 +20,22 @@ licenses(["notice"])
 
 exports_files(glob(["bin/**"]))
 
-# Directory-based rules in this toolchain only referece things in
-# lib/ or include/ subdirectories.
 directory(
     name = "toolchain_root",
     srcs = glob([
         "lib/**",
         "include/**",
     ]),
+)
+
+# GCC starts these subprocesses by name. Declare both the files and their
+# search prefix so compilation does not fall back to the worker's binutils.
+directory(
+    name = "compiler_binutils",
+    srcs = [
+        "bin/{target_arch}-linux-as",
+        "bin/{target_arch}-linux-ld",
+    ],
 )
 
 # GCC builtin headers (stddef.h, stdarg.h, etc.)
