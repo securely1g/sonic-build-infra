@@ -6,7 +6,7 @@ and paths; push events also validate `master`. Checkout uses the proposed merge
 revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
-Bazel 8.5.1, a C/C++ compiler, binutils, Git, Python, tar and xz installed.
+Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
 Both native workflows resolve dependencies through `sonic-bazel-registry/main`
 and the Bazel Central Registry, independently of local Bazel settings. The source
 script selects matching execution/target platforms. The repository deliberately excludes
@@ -26,6 +26,17 @@ resolved module locks, sample executables, and their runtime/debug deployment
 tars. Successful runs include checksums in `provenance.json`. Download the
 architecture-specific artifact from the Actions run page. Partial evidence is
 retained when a validation step fails.
+
+The installed deployment-tar check verifies the complete runtime file set,
+payload ownership and modes, declared data bytes, native ELF architecture,
+execution of the extracted program, matching build IDs, debuglink checksum,
+and GDB source-line lookup through the extracted debug tree. Its report is
+retained as `deploy-archives.json` alongside both archives.
+
+CI selects runtime/debug tar outputs directly. The separate Debian-control
+workflow is removed so source PRs do not create fixture DEBs. Legacy Debian
+rules and fixtures remain available for explicitly authorized DEB validation;
+they are outside the automatic source CI selections.
 
 Both architecture checks must be required on the PR target branch. Repository
 settings enforce this separately from the workflow; skipped or missing jobs
