@@ -12,6 +12,7 @@ Since it's finnicky, we extract the behaviour.
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@tar.bzl//tar:mtree.bzl", "mutate")
 load("@tar.bzl//tar:tar.bzl", "tar")
+load(":root_owned_tar.bzl", "root_owned_tar")
 
 def _join_package(path):
     pkg = native.package_name()
@@ -31,13 +32,20 @@ def _debug_symbols_tar_impl(name, visibility, srcs):
         replace_prefixes = {"**/.build-id": ".build-id"},
     )
 
+    # tar.bzl may synthesize parent directories with the build user's ownership.
+    # Normalize the completed archive, including those synthesized headers.
+    raw_tar = name + "_raw"
     tar(
-        name = name,
+        name = raw_tar,
         srcs = [":" + symbols_dir],
         mutate = mutate(
             strip_prefix = _join_package(symbols_dir),
             package_dir = "./usr/lib/debug",
         ),
+    )
+    root_owned_tar(
+        name = name,
+        src = ":" + raw_tar,
         visibility = visibility,
     )
 
