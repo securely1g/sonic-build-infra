@@ -28,7 +28,7 @@ local_path_override(
 
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
 
-bazel_dep(name = "rules_distroless", version = "0.0.0.commit-01bb79d7eef4eb3ce9511d3dfaf0ab386bd8d12d")
+bazel_dep(name = "rules_distroless", version = "0.9.4-sonic.1")
 
 GCC_TOOLCHAINS = {
     "14.2.0": {
