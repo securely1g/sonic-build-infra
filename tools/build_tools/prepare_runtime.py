@@ -52,10 +52,15 @@ def extract_payload(root: Path, payload: Path) -> None:
                 target.chmod(member.mode & 0o777)
                 os.utime(target, (0, 0))
         for target, name in hardlinks:
+            # Later archive entries may have replaced a queued link's parent
+            # with a symlink. Recheck both paths at the moment we create it.
+            target = safe_path(root, str(target.relative_to(root)))
             source = safe_path(root, name)
+            if not source.resolve().is_relative_to(root):
+                raise ValueError(f"hardlink source escapes output: {name}")
             if not source.is_file():
                 raise ValueError(f"missing hardlink target: {name}")
-            os.link(source, target)
+            os.link(source.resolve(), target)
 
 
 def loader_path(root: Path, architecture: str) -> Path:
