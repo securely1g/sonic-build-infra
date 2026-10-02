@@ -38,6 +38,13 @@ tests=(
   //tests:greet_shared_strip_test
   //tests:hello_deploy_tar_content_test
   //tests:hello_deploy_tar_provides_debug_symbols_test
+  //proto:protoc_version_test
+  //deb:build_deb_test
+  //tests:hello_deb_build_test
+  //tests:hello_deb_members_assert
+  //tests:hello_deb_control_assert
+  //tests:hello_deb_md5sums_assert
+  //tests:hello_dbg_deb_build_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
@@ -52,7 +59,8 @@ for target in "${tests[@]}"; do
   mkdir -p "$artifacts/tests/$testdir"
   cp "bazel-testlogs/$testdir/test.xml" "bazel-testlogs/$testdir/test.log" "$artifacts/tests/$testdir/"
 done
-outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols)
+outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
+         //tests:hello_runtime_deb //tests:hello_runtime_dbg_deb)
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
@@ -63,6 +71,23 @@ for target in "${outputs[@]}"; do
   [[ "${#files[@]}" -eq 1 && -f "${files[0]}" ]]
   cp "${files[0]}" "$artifacts/outputs/"
 done
+# A real install checks the dpkg unpack contract that tar extraction alone misses.
+# Use only in a disposable root-owned CI container; opt in for local validation.
+if [[ "${SONIC_PACKAGE_INSTALL_TEST:-0}" == 1 ]]; then
+  bash ci/install-deb-test.sh "$artifacts/outputs" "$artifacts/installed-package.txt"
+fi
+# The payload is text only: the execution tool must stay native while the
+# package control selects the opposite target architecture. No emulator or
+# cross C++ toolchain is involved in this packaging boundary check.
+case "$cpu" in
+  x86_64) package_cpu=aarch64 ;;
+  aarch64) package_cpu=x86_64 ;;
+esac
+"${bazel_cmd[@]}" test "${flags[@]}" --platforms="//platforms:${package_cpu}_trixie" \
+  --test_output=errors --build_event_json_file="$artifacts/cross-package.bep.json" \
+  //tests:hello_deb_control_assert
+mkdir -p "$artifacts/tests/cross-package"
+cp bazel-testlogs/tests/hello_deb_control_assert/test.{xml,log} "$artifacts/tests/cross-package/"
 cp MODULE.bazel MODULE.bazel.lock "$artifacts/"
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (
