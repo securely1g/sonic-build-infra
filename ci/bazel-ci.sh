@@ -19,8 +19,8 @@ uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
 # The repository intentionally excludes its large generated module lock. Retain
-# the resolved lock with each run, and pin the SONiC registry used for resolution.
-registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/1bce1094dcdc7e511baaa809fa622862585bcf8d
+# the resolved lock with each run, and follow the SONiC registry's main branch.
+registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
@@ -42,7 +42,10 @@ tests=(
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
 if [[ -f python/wheel_layer.bzl ]]; then
-  tests+=(//python:wheel_layer_test //tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
+  tests+=(//python:wheel_layer_test)
+fi
+if [[ -f tar/root_owned_tar.bzl ]]; then
+  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
