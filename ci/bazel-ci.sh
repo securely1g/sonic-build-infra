@@ -58,12 +58,19 @@ outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
 mkdir -p "$artifacts/outputs"
+declare -A output_paths
 for target in "${outputs[@]}"; do
   mapfile -t files < <("${bazel_cmd[@]}" cquery "${flags[@]}" --output=files "config($target, target)")
   printf '%s output: %s\n' "$target" "${files[*]}"
   [[ "${#files[@]}" -eq 1 && -f "${files[0]}" ]]
   cp "${files[0]}" "$artifacts/outputs/"
+  output_paths["$target"]="$artifacts/outputs/$(basename "${files[0]}")"
 done
+python3 ci/verify_deploy_archives.py \
+  --runtime "${output_paths[//tests:hello_deploy_tar]}" \
+  --debug "${output_paths[//tests:hello_deploy_tar.debug_symbols]}" \
+  --source-data tests/testdata/file.txt --architecture "$debian_arch" \
+  > "$artifacts/deploy-archives.json"
 cp MODULE.bazel MODULE.bazel.lock "$artifacts/"
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (
