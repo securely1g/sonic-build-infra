@@ -25,6 +25,12 @@ ownership rule is present. These rule families are selected independently, so
 either can be developed and validated on its own. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
 
+AMD64 additionally prepares the declared kernel build runtime and checks its
+archive boundaries, compiler, Python packaging modules and Debian shared-library
+dependency calculation. The runtime check uses `chroot` in the disposable CI
+container and requires its default root, `CAP_SYS_CHROOT` and `CAP_MKNOD` access.
+It compiles a small host program but creates no DEB packages or kernel image.
+
 Each run retains test XML/logs, build events, native host metadata, revision,
 resolved module locks, sample executables, and their runtime/debug deployment
 tars. Successful runs include checksums in `provenance.json`. Download the
