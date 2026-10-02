@@ -1,9 +1,6 @@
-name: Debian package control
+name: Approved fixture-DEB validation
 
 on:
-  pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -15,18 +12,38 @@ concurrency:
 
 jobs:
   native:
-    name: Bazel (${{ matrix.arch }})
+    name: PR ${{ matrix.pr }} fixture DEB (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: AMD64
+          - pr: 9
+            tested_sha: eca037d19738d98dfdc31d0b583315fe51c4a80b
+            arch: AMD64
             runner: ubuntu-24.04
             machine: x86_64
             debian_arch: amd64
             bazel_arch: x86_64
             bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
-          - arch: ARM64
+          - pr: 9
+            tested_sha: eca037d19738d98dfdc31d0b583315fe51c4a80b
+            arch: ARM64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+            debian_arch: arm64
+            bazel_arch: arm64
+            bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
+          - pr: 16
+            tested_sha: ac6583668dbb92421b48009119f3472ee3e40b27
+            arch: AMD64
+            runner: ubuntu-24.04
+            machine: x86_64
+            debian_arch: amd64
+            bazel_arch: x86_64
+            bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
+          - pr: 16
+            tested_sha: ac6583668dbb92421b48009119f3472ee3e40b27
+            arch: ARM64
             runner: ubuntu-24.04-arm
             machine: aarch64
             debian_arch: arm64
@@ -41,6 +58,9 @@ jobs:
         shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
+      EXPECTED_SOURCE_SHA: ${{ matrix.tested_sha }}
+      TESTED_PR: ${{ matrix.pr }}
+      VALIDATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
       EXPECTED_MACHINE: ${{ matrix.machine }}
       EXPECTED_DEBIAN_ARCH: ${{ matrix.debian_arch }}
       CI_IMAGE: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
@@ -52,6 +72,7 @@ jobs:
           apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl git python3 tar xz-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ matrix.tested_sha }}
           persist-credentials: false
       - name: Verify native execution and install Bazel 8.5.1
         env:
@@ -64,30 +85,58 @@ jobs:
           . /etc/os-release
           [[ "$ID" == debian && "$VERSION_CODENAME" == trixie ]]
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_SOURCE_SHA" ]]
           curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
           printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
-      - name: Check native Debian package control fields
+      - name: Build the approved fixture and verify native control fields
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
+          python3 - <<'PY_RECEIPT'
+          import json, os, platform, subprocess
+          from pathlib import Path
+          receipt = {
+              "pr": int(os.environ["TESTED_PR"]),
+              "source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "workflow_sha": os.environ["VALIDATION_WORKFLOW_SHA"],
+              "run_url": os.environ["GITHUB_SERVER_URL"] + "/" + os.environ["GITHUB_REPOSITORY"] + "/actions/runs/" + os.environ["GITHUB_RUN_ID"],
+              "native_machine": platform.machine(),
+              "debian_architecture": subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip(),
+              "container": os.environ["CI_IMAGE"],
+              "bazel_version": subprocess.check_output(["bazel", "--version"], text=True).strip(),
+              "registries": ["https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main", "https://bcr.bazel.build/"],
+              "target": "//tests:hello_deb_control_assert",
+          }
+          assert receipt["source_sha"] == os.environ["EXPECTED_SOURCE_SHA"]
+          assert receipt["native_machine"] == os.environ["EXPECTED_MACHINE"]
+          assert receipt["debian_architecture"] == os.environ["EXPECTED_DEBIAN_ARCH"]
+          Path("ci-artifacts/provenance.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          PY_RECEIPT
           platform="//platforms:${EXPECTED_MACHINE}_trixie"
           bazel --ignore_all_rc_files test \
-            --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/1bce1094dcdc7e511baaa809fa622862585bcf8d \
-            --registry=https://bcr.bazel.build/ \
+            --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main \
+            --registry=https://bcr.bazel.build/ --lockfile_mode=update \
             --platforms="$platform" --host_platform="$platform" --jobs=4 \
             --test_output=errors --build_event_json_file=ci-artifacts/tests.bep.json \
             //tests:hello_deb_control_assert
-          cp bazel-testlogs/tests/hello_deb_control_assert/test.log ci-artifacts/
-          cp bazel-testlogs/tests/hello_deb_control_assert/test.xml ci-artifacts/
-          git rev-parse HEAD HEAD^{tree} > ci-artifacts/revisions.txt
-          cp MODULE.bazel.lock ci-artifacts/
+          cp "bazel-bin/tests/hello_1.0_${EXPECTED_DEBIAN_ARCH}.deb" ci-artifacts/
+          dpkg-deb --field "ci-artifacts/hello_1.0_${EXPECTED_DEBIAN_ARCH}.deb" > ci-artifacts/control.txt
+          sha256sum ci-artifacts/*.deb > ci-artifacts/package.sha256
+      - name: Collect fixture test evidence
+        if: always()
+        run: |
+          mkdir -p ci-artifacts
+          for fixture_evidence in MODULE.bazel.lock bazel-testlogs/tests/hello_deb_control_assert/test.log bazel-testlogs/tests/hello_deb_control_assert/test.xml; do
+            if [[ -f "$fixture_evidence" ]]; then cp "$fixture_evidence" ci-artifacts/; fi
+          done
 
       - name: Retain native control-test evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: deb-control-${{ matrix.arch }}-${{ github.sha }}
+          name: fixture-deb-pr${{ matrix.pr }}-${{ matrix.arch }}-${{ matrix.tested_sha }}
           path: ci-artifacts/
           if-no-files-found: error
           retention-days: 14
