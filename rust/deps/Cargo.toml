@@ -1,0 +1,59 @@
+# Union of third-party dependencies used by Common and SWSS.
+[package]
+name = "sonic-rust-deps"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[dependencies]
+ahash = { version = "0.8.11" }
+async-trait = { version = "0.1" }
+bindgen = { version = "0.70.1" }
+byteorder = { version = "1.5.0" }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["cargo", "derive", "string", "unicode", "unstable-styles", "wrap_help"] }
+color-eyre = { version = "0.6" }
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+env_logger = { version = "0.11.6" }
+futures-timer = { version = "3.0.4" }
+genetlink = { version = "0.2" }
+getset = { version = "0.1" }
+lazy_static = { version = "1.4" }
+libc = { version = "0.2.158" }
+log = { version = "0.4.22" }
+netlink-packet-core = { version = "0.7" }
+netlink-packet-generic = { version = "0.3" }
+netlink-packet-utils = { version = "0.5" }
+netlink-sys = { version = "0.8" }
+once_cell = { version = "1.18.0" }
+opentelemetry = { version = "0.25", features = ["metrics", "trace"] }
+opentelemetry-http = { version = "0.25" }
+opentelemetry-otlp = { version = "0.25", features = ["metrics", "tonic"] }
+opentelemetry-proto = { version = "0.25", features = ["gen-tonic", "metrics", "tonic"] }
+opentelemetry-semantic-conventions = { version = "0.25" }
+opentelemetry-stdout = { version = "0.25" }
+opentelemetry_sdk = { version = "0.25", features = ["rt-tokio"] }
+paste = { version = "1.0.15" }
+prost = { version = "0.13" }
+prost-types = { version = "0.13" }
+rand = { version = "0.8.5" }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest-middleware = { version = "0.3" }
+reqwest-tracing = { version = "0.5", features = ["opentelemetry_0_25"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1.0" }
+serde_yaml = { version = "0.9" }
+serial_test = { version = "3.0" }
+tempfile = { version = "3.12" }
+tokio = { version = "1", features = ["full", "macros", "net", "rt", "rt-multi-thread", "test-util", "time"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.12" }
+tonic-health = { version = "0.12" }
+tracing = { version = "0.1", features = ["max_level_debug", "release_max_level_info"] }
+tracing-opentelemetry = { version = "0.25" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "serde"] }
+wait-timeout = { version = "0.2.1" }
+which = { version = "7.0.3" }

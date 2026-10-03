@@ -99,6 +99,91 @@ class WorkspaceIsolationTest(unittest.TestCase):
         self.assertIn("--batch", child_command)
 
 
+class SharedCompatibilityTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.consumer = self.root / "consumer"
+        self.shared = self.root / "shared"
+        for path in (self.consumer, self.shared):
+            path.mkdir()
+            (path / "Cargo.lock").write_bytes(CARGO)
+            (path / "MODULE.bazel").write_text('module(name = "sonic-rust-deps")\nbazel_dep(name = "rules_rust", version = "0.74.0")\n')
+        self.manifest = '[package]\nname="app"\nversion="0.1.0"\n[dependencies]\nserde={version="1", features=["derive"]}\n'
+        (self.consumer / "Cargo.toml").write_text(self.manifest)
+        (self.shared / "Cargo.toml").write_text(self.manifest)
+
+    def test_matching_pins_and_features(self):
+        result = prepare.validate_consumer(self.consumer, self.shared)
+        self.assertEqual(result["checked_dependencies"][0]["version"], "1.0.228")
+
+    def test_changed_native_lock_is_rejected(self):
+        (self.consumer / "Cargo.lock").write_bytes(CARGO.replace(b"feedbeef", b"badbad00"))
+        with self.assertRaisesRegex(ValueError, "Cargo.lock pin"):
+            prepare.validate_consumer(self.consumer, self.shared)
+
+    def test_new_native_feature_is_rejected_until_shared_manifest_is_updated(self):
+        (self.consumer / "Cargo.toml").write_text(self.manifest.replace('["derive"]', '["derive", "rc"]'))
+        with self.assertRaisesRegex(ValueError, "requested features"):
+            prepare.validate_consumer(self.consumer, self.shared)
+
+    def test_manifest_version_drift_is_rejected_even_with_old_lock(self):
+        (self.consumer / "Cargo.toml").write_text(self.manifest.replace('version="1"', 'version="2"'))
+        with self.assertRaisesRegex(ValueError, "does not satisfy"):
+            prepare.validate_consumer(self.consumer, self.shared)
+
+    def test_inherited_features_are_checked(self):
+        (self.consumer / "Cargo.toml").write_text('[workspace]\nmembers=["app"]\n[workspace.dependencies]\nserde={version="1", features=["derive"]}\n')
+        (self.consumer / "app").mkdir()
+        (self.consumer / "app/Cargo.toml").write_text('[package]\nname="app"\nversion="0.1.0"\n[dependencies]\nserde={workspace=true, features=["rc"]}\n')
+        with self.assertRaisesRegex(ValueError, "requested features"):
+            prepare.validate_consumer(self.consumer, self.shared)
+
+    def test_default_features_cannot_be_disabled_centrally(self):
+        (self.shared / "Cargo.toml").write_text(self.manifest.replace('features=', 'default-features=false, features='))
+        with self.assertRaisesRegex(ValueError, "requested features"):
+            prepare.validate_consumer(self.consumer, self.shared)
+
+    def test_stable_cargo_ranges_and_build_metadata(self):
+        for version, requirement in [("1.0.228", "1"), ("0.9.34+deprecated", "0.9"), ("0.2.158", "^0.2"),
+                                     ("0.0.4", "~0.0.3"), ("1.2.9", "1.2.*"), ("1.3.0", ">=1.2, <2")]:
+            with self.subTest(version=version, requirement=requirement):
+                self.assertTrue(prepare.version_matches(version, requirement))
+        for version, requirement in [("2.0.0", "1"), ("0.3.0", "0.2"), ("0.0.4", "0.0.3"), ("1.3.0", "~1.2.0")]:
+            with self.subTest(version=version, requirement=requirement):
+                self.assertFalse(prepare.version_matches(version, requirement))
+
+    def test_shared_only_does_not_require_a_native_cargo_workspace(self):
+        args = argparse.Namespace(workspace=self.consumer, shared_dependency="sonic-rust-deps=sonic_rust_deps",
+                                  staging_dir=self.root, bazel_arg=[], dependency=[], consumer_workspace=[],
+                                  shared_only=True, overrides_rc=self.root / "overrides.bazelrc", receipt=self.root / "receipt.json")
+        (self.consumer / "Cargo.toml").unlink()
+        (self.consumer / "Cargo.lock").unlink()
+        (self.shared / "source-resolution.json").write_text('{}')
+        with patch.object(prepare, "stage_dependency", return_value=self.shared), \
+             patch.object(prepare, "prepare_one", return_value={"workspace": str(self.shared)}), \
+             patch.object(prepare, "validate_consumer") as validate:
+            prepare.prepare_shared(args)
+        validate.assert_not_called()
+        self.assertEqual(json.loads(args.receipt.read_text())["shared_dependency"]["workspace"], str(self.shared))
+        self.assertIn(f"common --override_module=sonic-rust-deps={self.shared}\n", args.overrides_rc.read_text())
+
+    def test_component_overrides_do_not_leak_into_shared_generator(self):
+        args = argparse.Namespace(workspace=self.consumer, shared_dependency="sonic-rust-deps=sonic_rust_deps",
+                                  staging_dir=self.root, dependency=[], consumer_workspace=[], shared_only=True,
+                                  bazel_arg=["--override_module=sonic-swss-common=/common", "--override_module=rules_rust=/rust", "--config=aarch64",
+                                             "--platforms=@sonic_build_infra//platforms:aarch64_trixie", "--@common//bazel:yang_modules=False",
+                                             "--override_module=sonic-rust-deps=/local/shared"],
+                                  overrides_rc=self.root / "overrides.bazelrc", receipt=self.root / "receipt.json")
+        (self.shared / "source-resolution.json").write_text('{}')
+        with patch.object(prepare, "stage_dependency", return_value=self.shared), \
+             patch.object(prepare, "prepare_one", return_value={"workspace": str(self.shared)}) as generate:
+            prepare.prepare_shared(args)
+        self.assertEqual(generate.call_args.args[0].bazel_arg, ["--override_module=rules_rust=/rust", "--config=aarch64"])
+        self.assertIn("--override_module=sonic-swss-common=/common", args.bazel_arg)
+
+
 class PreparationTest(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

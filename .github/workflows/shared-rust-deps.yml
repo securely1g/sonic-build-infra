@@ -1,0 +1,95 @@
+name: Shared Rust dependencies
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-rust-deps-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Shared Rust (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: AMD64
+            runner: ubuntu-24.04
+            machine: x86_64
+            debian_arch: amd64
+            bazel_arch: x86_64
+            bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+            debian_arch: arm64
+            bazel_arch: arm64
+            bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    container:
+      image: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      EXPECTED_MACHINE: ${{ matrix.machine }}
+      EXPECTED_DEBIAN_ARCH: ${{ matrix.debian_arch }}
+      CI_IMAGE: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    steps:
+      - name: Install native build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl gdb git python3 tar xz-utils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify native execution and install Bazel 8.5.1
+        env:
+          BAZEL_ARCH: ${{ matrix.bazel_arch }}
+          BAZEL_SHA: ${{ matrix.bazel_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == "$EXPECTED_MACHINE" ]]
+          [[ "$(dpkg --print-architecture)" == "$EXPECTED_DEBIAN_ARCH" ]]
+          . /etc/os-release
+          [[ "$ID" == debian && "$VERSION_CODENAME" == trixie ]]
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
+          printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
+          install -m 0755 /tmp/bazel /usr/local/bin/bazel
+      - name: Check preparation and build shared Rust tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/rust -p '*_test.py'
+          mkdir -p rust/deps/ci-artifacts
+          python3 tools/rust/prepare.py --workspace rust/deps --receipt rust/deps/preparation.json 2>&1 | tee rust/deps/ci-artifacts/preparation.log
+          cd rust/deps
+          bazel test --jobs=2 --test_output=errors --build_event_json_file=ci-artifacts/test-events.json //tests:serde_roundtrip_test //tests:tracing_test 2>&1 | tee ci-artifacts/tests.log
+          git diff --exit-code -- Cargo.lock
+      - name: Collect shared dependency evidence
+        if: always()
+        run: |
+          mkdir -p rust/deps/ci-artifacts
+          for file in Cargo.toml Cargo.lock Cargo.Bazel.lock MODULE.bazel.lock preparation.json; do
+            if [[ -f rust/deps/$file ]]; then cp rust/deps/$file rust/deps/ci-artifacts/; fi
+          done
+          git rev-parse HEAD > rust/deps/ci-artifacts/source-commit.txt
+          uname -m > rust/deps/ci-artifacts/machine.txt
+      - name: Retain shared Rust dependency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sonic-rust-deps-${{ matrix.arch }}-${{ github.sha }}
+          path: rust/deps/ci-artifacts/
+          if-no-files-found: error
+          retention-days: 14

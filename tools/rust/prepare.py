@@ -2,10 +2,12 @@
 """Generate crate_universe metadata before a SONiC Bazel build (Python 3.11+)."""
 
 import argparse
+import copy
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -184,6 +186,149 @@ def stage_dependency(args, workspace, module, apparent, staging):
     return destination
 
 
+def version_matches(version, requirement):
+    """Check stable Cargo version requirements; reject unsupported syntax explicitly."""
+    selected = tuple(int(part) for part in version.split("+", 1)[0].split("."))
+    if len(selected) != 3:
+        raise ValueError(f"Expected a stable three-part Cargo version: {version}")
+    for term in requirement.split(","):
+        match = re.fullmatch(r"\s*(\^|~|>=|<=|>|<|=)?\s*(\d+|\*)(?:\.(\d+|\*))?(?:\.(\d+|\*))?\s*", term)
+        if not match:
+            raise ValueError(f"Unsupported Cargo version requirement: {requirement}")
+        operator = match[1] or "^"
+        parts = [part for part in match.groups()[1:] if part is not None]
+        numbers = [int(part) for part in parts if part != "*"]
+        if "*" in parts and parts[len(numbers):] != ["*"]:
+            raise ValueError(f"Unsupported Cargo wildcard requirement: {requirement}")
+        lower = tuple(numbers + [0] * (3 - len(numbers)))
+        partial_upper = list(lower)
+        if numbers:
+            partial_upper[len(numbers) - 1] += 1
+        if "*" in parts or operator == "~":
+            boundary = max(0, len(numbers) - 1) if "*" in parts else (0 if len(numbers) == 1 else 1)
+        else:
+            boundary = next((index for index, part in enumerate(numbers) if part), max(0, len(numbers) - 1))
+        upper = list(lower)
+        upper[boundary] += 1
+        upper[boundary + 1:] = [0] * (2 - boundary)
+        if not numbers:
+            valid = True
+        elif operator == ">=":
+            valid = selected >= lower
+        elif operator == "<=":
+            valid = selected <= lower if len(numbers) == 3 else selected < tuple(partial_upper)
+        elif operator == ">":
+            valid = selected > lower if len(numbers) == 3 else selected >= tuple(partial_upper)
+        elif operator == "<":
+            valid = selected < lower
+        elif operator == "=":
+            valid = selected[:len(numbers)] == tuple(numbers)
+        else:
+            valid = lower <= selected < tuple(upper)
+        if not valid:
+            return False
+    return True
+
+
+def consumer_manifests(workspace):
+    root = tomllib.loads((workspace / "Cargo.toml").read_text())
+    paths = [workspace / "Cargo.toml"] if "package" in root else []
+    for pattern in root.get("workspace", {}).get("members", []):
+        paths.extend(path / "Cargo.toml" for path in workspace.glob(pattern))
+    return root, sorted(set(paths))
+
+
+def validate_consumer(workspace, shared):
+    """Verify native Cargo pins and requested features before using shared Bazel targets."""
+    cargo = workspace / "Cargo.lock"
+    native_lock = tomllib.loads(cargo.read_text())
+    shared_lock = tomllib.loads((shared / "Cargo.lock").read_text())
+    fields = ("name", "version", "source", "checksum")
+    shared_pins = {tuple(package.get(field) for field in fields) for package in shared_lock["package"]}
+    for package in native_lock["package"]:
+        if package.get("source", "").startswith("registry+"):
+            if tuple(package.get(field) for field in fields) not in shared_pins:
+                raise ValueError(f"{workspace}: Cargo.lock pin is missing or different in shared dependencies: "
+                                 f"{package['name']} {package['version']}")
+    shared_deps = tomllib.loads((shared / "Cargo.toml").read_text())["dependencies"]
+    root, manifests = consumer_manifests(workspace)
+    inputs = {"Cargo.toml": sha256((workspace / "Cargo.toml").read_bytes())}
+    checked = []
+    for manifest in manifests:
+        relative = str(manifest.relative_to(workspace))
+        inputs[relative] = sha256(manifest.read_bytes())
+        data = tomllib.loads(manifest.read_text())
+        sections = [data, *data.get("target", {}).values()]
+        for section in sections:
+            for kind in ("dependencies", "build-dependencies", "dev-dependencies"):
+                for alias, value in section.get(kind, {}).items():
+                    dependency = {"version": value} if isinstance(value, str) else dict(value)
+                    if dependency.get("workspace"):
+                        inherited = root["workspace"]["dependencies"][alias]
+                        inherited = {"version": inherited} if isinstance(inherited, str) else dict(inherited)
+                        inherited["features"] = sorted(set(inherited.get("features", [])) | set(dependency.get("features", [])))
+                        dependency = inherited
+                    # SONiC source dependencies still compile in their owning modules.
+                    if "path" in dependency or "git" in dependency:
+                        continue
+                    name = dependency.get("package", alias)
+                    selected = shared_deps.get(name)
+                    if selected is None:
+                        raise ValueError(f"{relative}: shared manifest has no dependency {name}")
+                    if isinstance(selected, str):
+                        selected = {"version": selected}
+                    candidates = [package for package in shared_lock["package"]
+                                  if package["name"] == name and package.get("source", "").startswith("registry+")
+                                  and version_matches(package["version"], selected["version"])]
+                    if len(candidates) != 1 or not version_matches(candidates[0]["version"], dependency["version"]):
+                        raise ValueError(f"{relative}: shared {name} version does not satisfy {dependency['version']}")
+                    missing = set(dependency.get("features", [])) - set(selected.get("features", []))
+                    if missing or (dependency.get("default-features", True) and not selected.get("default-features", True)):
+                        raise ValueError(f"{relative}: shared {name} does not enable requested features: {sorted(missing)}")
+                    checked.append({"manifest": relative, "kind": kind, "name": name,
+                                    "version": candidates[0]["version"], "features": dependency.get("features", [])})
+    return {"workspace": str(workspace), "cargo_lock_sha256": sha256(cargo.read_bytes()),
+            "cargo_lock_unchanged": True, "input_sha256": inputs, "checked_dependencies": checked}
+
+
+def prepare_shared(args):
+    module, apparent = args.shared_dependency.split("=", 1)
+    shared = stage_dependency(args, args.workspace, module, apparent, args.staging_dir.resolve())
+    # Overrides for source owners belong to the consumer graph. The third-party
+    # graph has no dependency on those owners and Bazel rejects unknown modules.
+    generator_args = copy.copy(args)
+    direct_modules = set(re.findall(r'name\s*=\s*"([^"]+)"', (shared / "MODULE.bazel").read_text()))
+    direct_modules.discard(module)
+    generator_args.bazel_arg = [flag for flag in args.bazel_arg
+                               if not flag.startswith(("--platforms=", "--@", "--//"))
+                               and (not flag.startswith("--override_module=")
+                                    or flag.split("=", 2)[1] in direct_modules)]
+    evidence = prepare_one(generator_args, shared, "crates", "Cargo.lock", "Cargo.Bazel.lock", shared / "preparation.json")
+    evidence["source_resolution"] = json.loads((shared / "source-resolution.json").read_text())
+    write_json(shared / "preparation.json", evidence)
+    overrides = [f"--override_module={module}={shared}"]
+    args.bazel_arg.extend(overrides)
+    dependencies = []
+    for item in args.dependency:
+        dependency_module, dependency_apparent = item.split("=", 1)
+        path = stage_dependency(args, args.workspace, dependency_module, dependency_apparent, args.staging_dir.resolve())
+        dependency_evidence = validate_consumer(path, shared)
+        dependency_evidence["source_resolution"] = json.loads((path / "source-resolution.json").read_text())
+        dependencies.append(dependency_evidence)
+        override = f"--override_module={dependency_module}={path}"
+        args.bazel_arg.append(override)
+        overrides.append(override)
+    dependencies.extend(validate_consumer(path.resolve(), shared) for path in args.consumer_workspace)
+    result = {} if args.shared_only else validate_consumer(args.workspace, shared)
+    result.update({"schema_version": 2, "shared_dependency": evidence, "dependencies": dependencies,
+                   "dependency_overrides": overrides, "helper_sha256": sha256(Path(__file__).read_bytes())})
+    # Publish overrides only after all checks succeeded. Failed preparation cannot
+    # accidentally reuse an older graph or a partially checked consumer.
+    args.overrides_rc.parent.mkdir(parents=True, exist_ok=True)
+    args.overrides_rc.write_text(RC_MARKER + "".join("common " + flag + "\n" for flag in overrides))
+    write_json(args.receipt, result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
@@ -196,13 +341,21 @@ def main():
     parser.add_argument("--bazel-arg", action="append", default=[])
     parser.add_argument("--dependency", action="append", default=[], metavar="MODULE=APPARENT_REPO",
                         help="Stage and prepare a direct dependency first (root Cargo locks, @crates alias)")
+    parser.add_argument("--shared-dependency", metavar="MODULE=APPARENT_REPO",
+                        help="Prepare one shared third-party graph instead of a graph in every consumer")
+    parser.add_argument("--shared-only", action="store_true",
+                        help="Prepare a shared module for registry CI; the test root has no Cargo workspace")
+    parser.add_argument("--consumer-workspace", type=Path, action="append", default=[],
+                        help="Also validate a local owning source checkout against the shared graph")
     parser.add_argument("--staging-dir", type=Path)
     parser.add_argument("--overrides-rc", type=Path, help="Write required downstream module overrides here")
     args = parser.parse_args()
     args.workspace = args.workspace.resolve()
     args.receipt = args.receipt.resolve()
-    if args.dependency and (not args.staging_dir or not args.overrides_rc):
-        parser.error("--dependency requires --staging-dir and --overrides-rc")
+    if (args.dependency or args.shared_dependency) and (not args.staging_dir or not args.overrides_rc):
+        parser.error("--dependency and --shared-dependency require --staging-dir and --overrides-rc")
+    if (args.shared_only or args.consumer_workspace) and not args.shared_dependency:
+        parser.error("--shared-only and --consumer-workspace require --shared-dependency")
     if args.overrides_rc:
         if args.overrides_rc.is_symlink():
             parser.error("The generated overrides file must not be a symlink")
@@ -221,6 +374,9 @@ def main():
     # not leave old root metadata usable by an accidental later build command.
     generated.unlink(missing_ok=True)
     args.receipt.unlink(missing_ok=True)
+    if args.shared_dependency:
+        prepare_shared(args)
+        return
     dependencies = []
     overrides = []
     for item in args.dependency:
