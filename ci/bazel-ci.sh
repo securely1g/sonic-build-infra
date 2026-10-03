@@ -6,6 +6,7 @@ root=$PWD
 artifacts="$root/ci-artifacts"
 mkdir -p "$artifacts"
 exec > >(tee "$artifacts/validation.log") 2>&1
+python3 tools/rust/prepare_test.py
 case "$(uname -m)" in
   x86_64) cpu=x86_64; debian_arch=amd64 ;;
   aarch64) cpu=aarch64; debian_arch=arm64 ;;
