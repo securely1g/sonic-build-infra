@@ -20,8 +20,9 @@ uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
 # The repository intentionally excludes its large generated module lock. Retain
-# the resolved lock with each run, and follow the SONiC registry's main branch.
+# the resolved lock with each run. Registry main contains the landed tar patch.
 registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
@@ -40,6 +41,7 @@ tests=(
   //tests:hello_deploy_tar_content_test
   //tests:hello_deploy_tar_provides_debug_symbols_test
   //proto:protoc_version_test
+  //tests:deploy_tar_timestamps_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
@@ -57,7 +59,8 @@ for target in "${tests[@]}"; do
   mkdir -p "$artifacts/tests/$testdir"
   cp "bazel-testlogs/$testdir/test.xml" "bazel-testlogs/$testdir/test.log" "$artifacts/tests/$testdir/"
 done
-outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols)
+outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
+  //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
