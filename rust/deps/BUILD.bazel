@@ -1,0 +1,249 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "Cargo.toml",
+    "Cargo.lock",
+    "Cargo.Bazel.lock",
+])
+
+# Public names point to one generated crate graph for every consumer.
+
+alias(
+    name = "ahash",
+    actual = "@crates//:ahash",
+)
+
+alias(
+    name = "async-trait",
+    actual = "@crates//:async-trait",
+)
+
+alias(
+    name = "bindgen",
+    actual = "@crates//:bindgen",
+)
+
+alias(
+    name = "byteorder",
+    actual = "@crates//:byteorder",
+)
+
+alias(
+    name = "chrono",
+    actual = "@crates//:chrono",
+)
+
+alias(
+    name = "clap",
+    actual = "@crates//:clap",
+)
+
+alias(
+    name = "color-eyre",
+    actual = "@crates//:color-eyre",
+)
+
+alias(
+    name = "criterion",
+    actual = "@crates//:criterion",
+)
+
+alias(
+    name = "env_logger",
+    actual = "@crates//:env_logger",
+)
+
+alias(
+    name = "futures-timer",
+    actual = "@crates//:futures-timer",
+)
+
+alias(
+    name = "genetlink",
+    actual = "@crates//:genetlink",
+)
+
+alias(
+    name = "getset",
+    actual = "@crates//:getset",
+)
+
+alias(
+    name = "lazy_static",
+    actual = "@crates//:lazy_static",
+)
+
+alias(
+    name = "libc",
+    actual = "@crates//:libc",
+)
+
+alias(
+    name = "log",
+    actual = "@crates//:log",
+)
+
+alias(
+    name = "netlink-packet-core",
+    actual = "@crates//:netlink-packet-core",
+)
+
+alias(
+    name = "netlink-packet-generic",
+    actual = "@crates//:netlink-packet-generic",
+)
+
+alias(
+    name = "netlink-packet-utils",
+    actual = "@crates//:netlink-packet-utils",
+)
+
+alias(
+    name = "netlink-sys",
+    actual = "@crates//:netlink-sys",
+)
+
+alias(
+    name = "once_cell",
+    actual = "@crates//:once_cell",
+)
+
+alias(
+    name = "opentelemetry",
+    actual = "@crates//:opentelemetry",
+)
+
+alias(
+    name = "opentelemetry-http",
+    actual = "@crates//:opentelemetry-http",
+)
+
+alias(
+    name = "opentelemetry-otlp",
+    actual = "@crates//:opentelemetry-otlp",
+)
+
+alias(
+    name = "opentelemetry-proto",
+    actual = "@crates//:opentelemetry-proto",
+)
+
+alias(
+    name = "opentelemetry-semantic-conventions",
+    actual = "@crates//:opentelemetry-semantic-conventions",
+)
+
+alias(
+    name = "opentelemetry-stdout",
+    actual = "@crates//:opentelemetry-stdout",
+)
+
+alias(
+    name = "opentelemetry_sdk",
+    actual = "@crates//:opentelemetry_sdk",
+)
+
+alias(
+    name = "paste",
+    actual = "@crates//:paste",
+)
+
+alias(
+    name = "prost",
+    actual = "@crates//:prost",
+)
+
+alias(
+    name = "prost-types",
+    actual = "@crates//:prost-types",
+)
+
+alias(
+    name = "rand",
+    actual = "@crates//:rand",
+)
+
+alias(
+    name = "reqwest",
+    actual = "@crates//:reqwest",
+)
+
+alias(
+    name = "reqwest-middleware",
+    actual = "@crates//:reqwest-middleware",
+)
+
+alias(
+    name = "reqwest-tracing",
+    actual = "@crates//:reqwest-tracing",
+)
+
+alias(
+    name = "serde",
+    actual = "@crates//:serde",
+)
+
+alias(
+    name = "serde_json",
+    actual = "@crates//:serde_json",
+)
+
+alias(
+    name = "serde_yaml",
+    actual = "@crates//:serde_yaml",
+)
+
+alias(
+    name = "serial_test",
+    actual = "@crates//:serial_test",
+)
+
+alias(
+    name = "tempfile",
+    actual = "@crates//:tempfile",
+)
+
+alias(
+    name = "tokio",
+    actual = "@crates//:tokio",
+)
+
+alias(
+    name = "tokio-stream",
+    actual = "@crates//:tokio-stream",
+)
+
+alias(
+    name = "tonic",
+    actual = "@crates//:tonic",
+)
+
+alias(
+    name = "tonic-health",
+    actual = "@crates//:tonic-health",
+)
+
+alias(
+    name = "tracing",
+    actual = "@crates//:tracing",
+)
+
+alias(
+    name = "tracing-opentelemetry",
+    actual = "@crates//:tracing-opentelemetry",
+)
+
+alias(
+    name = "tracing-subscriber",
+    actual = "@crates//:tracing-subscriber",
+)
+
+alias(
+    name = "wait-timeout",
+    actual = "@crates//:wait-timeout",
+)
+
+alias(
+    name = "which",
+    actual = "@crates//:which",
+)

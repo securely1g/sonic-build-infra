@@ -1,0 +1,19 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+rust_test(
+    name = "serde_roundtrip_test",
+    srcs = ["serde_roundtrip_test.rs"],
+    deps = [
+        "//:serde",
+        "//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "tracing_test",
+    srcs = ["tracing_test.rs"],
+    deps = [
+        "//:tracing",
+        "//:tracing-subscriber",
+    ],
+)

@@ -1,0 +1,2 @@
+# Native ARM64 CI can forward the same config used by its component build.
+common:aarch64 --platforms=@platforms//host:host
