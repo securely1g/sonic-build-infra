@@ -1,6 +1,6 @@
-# Local builds use a merged SONiC registry snapshot containing the declared modules.
-# CI ignores this file and uses the maintained registry main branch.
-common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/2d30a2bb2f70a0a9df9c5f545363fe3d59278452
+# Local builds pin the registry snapshot containing the reviewed tar.bzl patch.
+# CI ignores this file and uses its matching temporary registry branch.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/bc7d6f89f0045327aaddcc8cfe9ae9a23e60f8e0
 # If a dependency is not found there, use the Bazel Central Registry
 common --registry=https://bcr.bazel.build/
 

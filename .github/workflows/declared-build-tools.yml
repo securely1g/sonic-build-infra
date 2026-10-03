@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
-          flags=(--registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main \
+          flags=(--registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/codex/tar-default-mtime \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --lockfile_mode=update)
           bazel --ignore_all_rc_files build "${flags[@]}" \
