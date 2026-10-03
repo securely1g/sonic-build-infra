@@ -73,3 +73,39 @@ For this repository's native ARM64 configuration, add `--config=aarch64`.
 The consuming edge's `cfg = "exec"` selects the tools for the machine running
 the generator. A target architecture alone must not select these executables.
 Native CI does not establish remote execution or every cross-compilation pair.
+
+## Kernel build runtime
+
+`@sonic_build_infra//tools/build_tools:kernel_runtime` produces one directory
+containing the shared `build_tools` package closure, including GCC 14, Debian
+packaging programs, Kbuild utilities and their libraries. The packages use the
+same dated APT snapshots and integrity checks as the generator tools. No kernel
+binary is downloaded or embedded in this runtime.
+
+The `sonic-linux-kernel` source-build rule selects this target with
+`attr.label(allow_single_file = True, cfg = "exec")`. It copies the tree to
+private scratch and enters it with `chroot`, allowing Debian's scripts to use
+their normal `/usr/bin`, Perl and Python paths without reading tools from the
+worker. This execution path requires root with `CAP_SYS_CHROOT` and `CAP_MKNOD`
+inside a disposable Linux worker. The cacheable runtime itself contains no
+device nodes and is prepared without root, network access or package maintainer
+script execution. Its `kernel-runtime.json` records the architecture, package
+versions, input hashes and a path-independent identity.
+
+Empty directories contain a zero-byte `.bazel-keep-directory` file so Bazel's
+remote-cache downloader preserves them, including targets of directory symlinks.
+
+The preparation action supplies Debian's merged `/usr` layout and explicit
+build-command alternatives. It retains package status and library ownership,
+shlibs and symbols metadata so `dpkg-shlibdeps` can calculate the source-built
+kernel tools' dependencies. The compiler's execution-side libc headers remain
+part of this runtime; they do not replace any consuming target's sysroot.
+
+AMD64 source CI runs `prepare_rootfs_test` for metadata, archive boundaries and
+directory/symlink preservation through a cache transport that drops empty directories,
+then `kernel_runtime_test` in the declared root. The latter imports packaging
+modules, compiles and executes a libelf/OpenSSL host program, and verifies its
+Debian shared-library dependencies. These tests produce no DEBs. Kernel package
+compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
+`sonic-buildimage` consumer. ARM64 kernel compilation is outside this change's
+validated scope.
