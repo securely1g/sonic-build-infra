@@ -2,6 +2,8 @@ load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
 load(":debug_symbols_tar.bzl", "debug_symbols_tar")
+load(":sonic_tar.bzl", "sonic_tar", "timestamped_mtree")
+load(":timestamp_tests.bzl", "bsdtar_test_tool", "timestamp_defaults_test", "timestamp_rejection_tests")
 
 py_binary(
     name = "root_owned_tar",
@@ -11,17 +13,20 @@ py_binary(
 
 py_test(
     name = "root_owned_tar_test",
-    imports = ["."],
     srcs = [
         "root_owned_tar.py",
         "root_owned_tar_test.py",
     ],
+    imports = ["."],
 )
 
 write_file(
     name = "ownership_fixture",
     out = ".build-id/ab/fixture.debug",
-    content = ["fixture symbols", ""],
+    content = [
+        "fixture symbols",
+        "",
+    ],
 )
 
 debug_symbols_tar(
@@ -34,4 +39,59 @@ py_test(
     srcs = ["debug_symbols_ownership_test.py"],
     args = ["$(location :ownership_fixture_tar)"],
     data = [":ownership_fixture_tar"],
+)
+
+timestamp_defaults_test(name = "timestamp_defaults_test")
+
+timestamp_rejection_tests()
+
+bsdtar_test_tool(
+    name = "timestamp_test_bsdtar",
+    testonly = True,
+)
+
+_TIMESTAMP_TEST_ENTRIES = [
+    "#mtree",
+    ". type=dir uid=0 gid=0 mode=0755",
+    "usr/bin/file type=file uid=0 gid=0 mode=0640 content=payload",
+    "escaped\\040name type=file uid=0 gid=0 mode=0640 time=0 content=payload",
+    "link type=link uid=0 gid=0 mode=0777 link=usr/bin/file",
+    "fixed type=file uid=42 gid=43 mode=0751 time=123 content=payload",
+    "",
+]
+
+write_file(
+    name = "timestamp_fixed_manifest",
+    out = "timestamp_fixed.mtree",
+    content = timestamped_mtree(_TIMESTAMP_TEST_ENTRIES),
+)
+
+write_file(
+    name = "timestamp_raw_manifest",
+    out = "timestamp_raw.mtree",
+    content = _TIMESTAMP_TEST_ENTRIES,
+)
+
+py_test(
+    name = "reproducible_tar_test",
+    srcs = ["reproducible_tar_test.py"],
+    args = [
+        "$(location :timestamp_test_bsdtar)",
+        "$(location :timestamp_fixed_manifest)",
+        "$(location :timestamp_raw_manifest)",
+    ],
+    data = [
+        ":timestamp_fixed_manifest",
+        ":timestamp_raw_manifest",
+        ":timestamp_test_bsdtar",
+    ],
+)
+
+sonic_tar(
+    name = "timestamp_default_tar",
+    srcs = ["//tests/testdata:file.txt"],
+    mtree = [
+        "usr/bin/file.txt type=file uid=0 gid=0 mode=0644 content=$(location //tests/testdata:file.txt)",
+    ],
+    visibility = ["//visibility:public"],
 )

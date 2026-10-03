@@ -235,6 +235,38 @@ assert_stripped(
 #############################
 
 sonic_deploy_tar(
+    name = "timestamp_deploy_tar",
+    srcs = ["//tests/testdata:file.txt"],
+    binaries = {
+        "usr/bin/hello uid=0 gid=0 mode=0755 type=file": ":hello",
+    },
+    force_debug_build = True,
+    mtree = [
+        "usr type=dir uid=0 gid=0 mode=0755 time=0",
+        "usr/bin type=dir uid=0 gid=0 mode=0755",
+        "usr/share type=dir uid=0 gid=0 mode=0755",
+        "usr/share/file.txt type=file uid=0 gid=0 mode=0644 content=$(location //tests/testdata:file.txt)",
+        "usr/bin/hello-link type=link uid=0 gid=0 mode=0777 link=hello",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "deploy_tar_timestamps_test",
+    srcs = ["deploy_tar_timestamps_test.py"],
+    args = [
+        "$(location //tar:timestamp_default_tar)",
+        "$(location :timestamp_deploy_tar)",
+        "$(location :timestamp_deploy_tar.debug_symbols)",
+    ],
+    data = [
+        ":timestamp_deploy_tar",
+        ":timestamp_deploy_tar.debug_symbols",
+        "//tar:timestamp_default_tar",
+    ],
+)
+
+sonic_deploy_tar(
     name = "hello_deploy_tar",
     srcs = ["//tests/testdata:file.txt"],
     binaries = {
