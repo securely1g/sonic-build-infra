@@ -24,6 +24,13 @@ ownership rule is present. These rule families are selected independently, so
 either can be developed and validated on its own. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
 
+Archive timestamp checks cover the shared defaults, explicit zero/custom times,
+escaped paths, and both plain and stripped-binary tar entry points. The real
+bsdtar regression changes only input filesystem timestamps: the old manifest
+must produce different bytes while the normalized manifest must produce
+identical archives. The source workflow retains a plain tar and a runtime/debug
+pair using omitted timestamps as well as the existing deployment samples.
+
 Each run retains test XML/logs, build events, native host metadata, revision,
 resolved module locks, sample executables, and their runtime/debug deployment
 tars. Successful runs include checksums in `provenance.json`. Download the

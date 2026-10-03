@@ -1,10 +1,11 @@
 """Rule to wrap tar(), which ensures binaries are stripped, and creates tars with debug symbols"""
 
 load("@bazel_lib//lib:utils.bzl", "propagate_common_rule_attributes")
-load("@tar.bzl//tar:tar.bzl", "tar", "tar_rule")
+load("@tar.bzl//tar:tar.bzl", "tar_rule")
 load("//binary:debug_symbols.bzl", "DebugSymbolsInfo")
 load("//binary:strip_binary.bzl", "strip_binary")
 load(":debug_symbols_tar.bzl", "debug_symbols_tar")
+load(":sonic_tar.bzl", "sonic_tar")
 
 def _runtime_tar_impl(ctx):
     tar_info = ctx.attr.tar[DefaultInfo]
@@ -73,7 +74,7 @@ def _sonic_deploy_tar_impl(name, force_debug_build, binaries = {}, srcs = [], mt
     # and attaches DebugSymbolsInfo.
     rttar_kwargs = dict(kwargs)
     rttar_kwargs.pop("visibility", None)
-    tar(
+    sonic_tar(
         name = name + "_rttar",
         srcs = srcs + stripped_targets,
         mtree = mtree + binary_mtree,
@@ -101,7 +102,7 @@ sonic_deploy_tar = macro(
     doc = """Wrapper around tar(), which ensures binaries are stripped, and creates tars with debug symbols.
 
 It produces two targets:
-- `:<name>`: A tar containing stripped binaries. It behaves exactly as a `tar()`, except this target is augmented to return a `DebugSymbolsInfo` provider, containing the debug symbols of all its binaries.
+- `:<name>`: A tar containing stripped binaries, with fixed default timestamps for explicit entries and a `DebugSymbolsInfo` provider containing its binaries' debug symbols.
 - `:<name>.debug_symbols`: A standalone tar containing the debug symbols from the binaries on this tar.
 """,
     implementation = _sonic_deploy_tar_impl,
@@ -117,10 +118,11 @@ It produces two targets:
         "mtree": attr.string_list(
             default = [],
             configurable = False,
+            doc = "Flat mtree entries; missing times default to 1672560000 for files/directories and 0 for links. /set, /unset, .. and continued lines are unsupported.",
         ),
         "binaries": attr.string_keyed_label_dict(
             doc = """Maps an mtree prefix (e.g. \"./usr/bin/foo uid=0 gid=0 mode=0755 type=file\") to a binary target.
-The binary will then be replaced with its stripped version behind the scenes.
+The binary will then be replaced with its stripped version behind the scenes. Missing time defaults to 1672560000; explicit time values are preserved.
 """,
             default = {},
             configurable = False,
