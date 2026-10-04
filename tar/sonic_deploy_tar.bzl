@@ -101,7 +101,7 @@ sonic_deploy_tar = macro(
     doc = """Wrapper around tar(), which ensures binaries are stripped, and creates tars with debug symbols.
 
 It produces two targets:
-- `:<name>`: A tar containing stripped binaries. It behaves exactly as a `tar()`, except this target is augmented to return a `DebugSymbolsInfo` provider, containing the debug symbols of all its binaries.
+- `:<name>`: A tar containing stripped binaries, with fixed default timestamps for explicit entries and a `DebugSymbolsInfo` provider containing its binaries' debug symbols.
 - `:<name>.debug_symbols`: A standalone tar containing the debug symbols from the binaries on this tar.
 """,
     implementation = _sonic_deploy_tar_impl,
@@ -117,10 +117,15 @@ It produces two targets:
         "mtree": attr.string_list(
             default = [],
             configurable = False,
+            doc = "Mtree entries; tar.bzl supplies default_mtime where neither the entry nor an inherited /set value supplies a timestamp.",
+        ),
+        "default_mtime": attr.string(
+            default = "1672560000",
+            doc = "Fallback archive timestamp, passed to tar.bzl. Explicit and inherited times are preserved; an empty string retains tar.bzl's original behavior.",
         ),
         "binaries": attr.string_keyed_label_dict(
             doc = """Maps an mtree prefix (e.g. \"./usr/bin/foo uid=0 gid=0 mode=0755 type=file\") to a binary target.
-The binary will then be replaced with its stripped version behind the scenes.
+The binary will then be replaced with its stripped version behind the scenes. Missing time uses default_mtime; explicit time values are preserved.
 """,
             default = {},
             configurable = False,
