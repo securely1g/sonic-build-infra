@@ -67,20 +67,23 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
           printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
-      - name: Check preparation and build shared Rust tests
+      - name: Build shared Rust tests from tracked Cargo inputs
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tools/rust -p '*_test.py'
           mkdir -p rust/deps/ci-artifacts
-          python3 tools/rust/prepare.py --workspace rust/deps --receipt rust/deps/preparation.json 2>&1 | tee rust/deps/ci-artifacts/preparation.log
           cd rust/deps
-          bazel test --jobs=2 --test_output=errors --build_event_json_file=ci-artifacts/test-events.json //tests:serde_roundtrip_test //tests:tracing_test 2>&1 | tee ci-artifacts/tests.log
+          bazel test --jobs=2 --lockfile_mode=update --test_output=errors --build_event_json_file=ci-artifacts/test-events.json //tests:serde_roundtrip_test //tests:tracing_test 2>&1 | tee ci-artifacts/tests.log
+          bazel cquery --noimplicit_deps 'kind("rust_library rule", deps(//:serde))' > ci-artifacts/serde-dependencies.txt
+          cp bazel-testlogs/tests/serde_roundtrip_test/test.xml ci-artifacts/serde-test.xml
+          cp bazel-testlogs/tests/tracing_test/test.xml ci-artifacts/tracing-test.xml
+          test ! -e Cargo.Bazel.lock
           git diff --exit-code -- Cargo.lock
       - name: Collect shared dependency evidence
         if: always()
         run: |
           mkdir -p rust/deps/ci-artifacts
-          for file in Cargo.toml Cargo.lock Cargo.Bazel.lock MODULE.bazel.lock preparation.json; do
+          for file in Cargo.toml Cargo.lock MODULE.bazel MODULE.bazel.lock; do
             if [[ -f rust/deps/$file ]]; then cp rust/deps/$file rust/deps/ci-artifacts/; fi
           done
           git rev-parse HEAD > rust/deps/ci-artifacts/source-commit.txt

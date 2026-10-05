@@ -1,10 +1,11 @@
-load("@rules_rust//rust:defs.bzl", "rust_test")
+load("@rules_rs//rs:rust_test.bzl", "rust_test")
 
 rust_test(
     name = "serde_roundtrip_test",
     srcs = ["serde_roundtrip_test.rs"],
     deps = [
         "//:serde",
+        "//:serde_core",
         "//:serde_json",
     ],
 )

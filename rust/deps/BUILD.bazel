@@ -3,7 +3,6 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "Cargo.toml",
     "Cargo.lock",
-    "Cargo.Bazel.lock",
 ])
 
 # Public names point to one generated crate graph for every consumer.
@@ -181,6 +180,11 @@ alias(
 alias(
     name = "serde",
     actual = "@crates//:serde",
+)
+
+alias(
+    name = "serde_core",
+    actual = "@crates//:serde_core-1.0.228",
 )
 
 alias(
