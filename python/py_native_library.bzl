@@ -7,7 +7,7 @@ _INIT_PY_TEMPLATE = '''"""Auto-generated wrapper for native extension."""
 try:
     from . import _{module_name}
 except ImportError:
-    import atexit, ctypes, importlib.util, os, sys
+    import ctypes, importlib.util, os, sys
 
     def _find_runfiles():
         runfiles = os.environ.get("RUNFILES_DIR", "")
@@ -44,8 +44,6 @@ except ImportError:
                     if "invalid ELF header" not in str(e):
                         retry.append(path)
             pending = retry
-        if loaded:
-            atexit.register(os._exit, 0)
         return bool(loaded)
 
     def _load_extension():
@@ -64,7 +62,9 @@ except ImportError:
 from .{module_name} import *
 '''
 
-_SKIP_LIB_PREFIXES = ("libasan", "libtsan", "libmsan", "libubsan", "liblsan", "libmemusage", "libpcprofile")
+# Sanitizer runtimes require instrumented programs and may terminate an ordinary
+# Python process from their ELF constructors (for example, HWASan exits 99).
+_SKIP_LIB_PREFIXES = ("libasan", "libhwasan", "libtsan", "libmsan", "libubsan", "liblsan", "libmemusage", "libpcprofile")
 
 def _py_native_library_impl(ctx):
     pkg = ctx.attr.package_name

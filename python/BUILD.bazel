@@ -1,10 +1,64 @@
 # Python rules for native extensions & container images.
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@sonic_wheel_pip//:requirements.bzl", "requirement")
+load(":py_native_library.bzl", "py_native_library")
 
 exports_files(["wheel_requirements_lock.txt"])
+
+py_test(
+    name = "py_native_library_test",
+    size = "small",
+    srcs = ["py_native_library_test.py"],
+    args = ["$(location :_process_probe.so)"],
+    data = [
+        ":_process_probe.so",
+        "py_native_library.bzl",
+    ],
+    python_version = "3.11",
+    deps = [":process_probe"],
+)
+
+cc_binary(
+    name = "_process_probe.so",
+    srcs = ["process_probe.c"],
+    linkshared = True,
+    tags = ["manual"],
+    deps = ["@rules_python//python/cc:current_py_cc_headers"],
+)
+
+cc_import(
+    name = "process_probe_preload",
+    shared_library = ":_process_probe.so",
+    tags = ["manual"],
+)
+
+cc_binary(
+    name = "libhwasan_process_probe.so",
+    srcs = ["sanitizer_preload_probe.c"],
+    linkshared = True,
+    tags = ["manual"],
+)
+
+cc_import(
+    name = "sanitizer_preload_probe",
+    shared_library = ":libhwasan_process_probe.so",
+    tags = ["manual"],
+)
+
+py_native_library(
+    name = "process_probe",
+    testonly = True,
+    cc_deps = [
+        ":process_probe_preload",
+        ":sanitizer_preload_probe",
+    ],
+    native_py = "process_probe.py",
+    native_so = ":_process_probe.so",
+)
 
 py_binary(
     name = "wheel_layer_builder",
