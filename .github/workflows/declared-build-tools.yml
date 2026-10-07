@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['tools/build_tools/**', 'MODULE.bazel', 'third_party/rules_distroless/**', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['tools/build_tools/**', 'MODULE.bazel', 'third_party/rules_distroless/**', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
@@ -43,6 +43,7 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
+      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
     steps:
       - name: Prepare Bazel bootstrap dependencies
         run: |
@@ -64,7 +65,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
-          flags=(--registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main \
+          printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
+          flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --lockfile_mode=update)
           bazel --ignore_all_rc_files build "${flags[@]}" \
