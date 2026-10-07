@@ -1,0 +1,15 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "lib",
+    srcs = glob(["python/sonic_apt/*.py"]),
+    imports = ["python"],
+)
+
+py_test(
+    name = "selection_test",
+    srcs = ["tests/selection_test.py"],
+    deps = [":lib"],
+)

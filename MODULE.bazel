@@ -36,7 +36,21 @@ local_path_override(
 
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
 
-bazel_dep(name = "rules_distroless", version = "0.9.4-sonic.1")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
+
+# Overrides apply only in the root module. Image build roots apply these same
+# infra-owned patches by immutable URL; see third_party/rules_distroless/README.md.
+archive_override(
+    module_name = "rules_distroless",
+    urls = ["https://github.com/bazel-contrib/rules_distroless/releases/download/v0.9.4/rules_distroless-v0.9.4.tar.gz"],
+    integrity = "sha256-XUP09E8PD7YUGUoHptz3spM4z8irf2EprR5EA8GtHHM=",
+    strip_prefix = "rules_distroless-0.9.4",
+    patches = [
+        "//third_party/rules_distroless:patches/0001-include-fragments.patch",
+        "//third_party/rules_distroless:patches/0002-locked-apt-layers.patch",
+    ],
+    patch_args = ["-p1"],
+)
 
 GCC_TOOLCHAINS = {
     "14.2.0": {

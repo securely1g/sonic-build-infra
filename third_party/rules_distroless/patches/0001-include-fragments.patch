@@ -1,0 +1,23 @@
+Subject: [PATCH] Export Protobuf include fragments from Debian packages
+
+Origin: sonic-bazel-registry rules_distroless 0.9.4-sonic.1,
+patches/0002-include-fragments.patch.
+
+Protobuf public headers include files such as google/protobuf/port_def.inc.
+Distroless 0.9.4 omits these fragments from the imported compilation inputs,
+so Bazel's C++ sandbox cannot find them. Preserve the existing SONiC fix by
+exporting .inc files under usr/include alongside normal headers.
+
+---
+diff --git a/apt/private/deb_import.bzl b/apt/private/deb_import.bzl
+--- a/apt/private/deb_import.bzl
++++ b/apt/private/deb_import.bzl
+@@ -233,7 +233,7 @@
+             a_files.append(line)
+         elif line.endswith(".pc") and line.find("pkgconfig"):
+             pc_files.append(line)
+-        elif line.endswith(".h"):
++        elif line.endswith(".h") or (line.startswith("usr/include/") and line.endswith(".inc")):
+             h_files.append(line)
+         elif line.endswith(".hpp"):
+             hpp_files.append(line)

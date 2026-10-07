@@ -1,0 +1,1097 @@
+From: Guohan Lu <securely1g@gmail.com>
+Subject: [PATCH] Import reviewed APT locks and assemble selected package layers
+
+Carry https://github.com/securely1g/rules_distroless/pull/1 as a patch
+to the upstream 0.9.4 release, owned by sonic-build-infra. Keep its existing dependency and tar-tool versions.
+
+SONiC image builders need to retain packages supplied by their base image.
+Expose the complete locked package set through a public provider, import
+reviewed v2 locks without resolving again, and let flatten accept a checked
+ordered subset of declared archives. This removes consumer reliance on
+private repository names, generated Bazel lock internals, and a second tar
+assembly implementation.
+
+The existing .inc header fix remains in its separate preceding patch.
+Tests import an existing Debian package and build only tar archives.
+
+Signed-off-by: Guohan Lu <securely1g@gmail.com>
+---
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -35,3 +35,12 @@
+ bazel_dep(name = "gazelle", version = "0.34.0", dev_dependency = True, repo_name = "bazel_gazelle")
+ bazel_dep(name = "bazel_skylib_gazelle_plugin", version = "1.5.0", dev_dependency = True)
+ bazel_dep(name = "buildifier_prebuilt", version = "8.0.1", dev_dependency = True)
++
++# Lazy existing-package inputs used by the checked-import regression.
++apt_locked_test = use_extension("//apt:extensions.bzl", "apt")
++apt_locked_test.from_lock(
++    name = "apt_locked_test",
++    lock = "//apt/tests:locked_test.json",
++    dependency_set = "locked_test",
++)
++use_repo(apt_locked_test, "apt_locked_test")
+diff --git a/apt/BUILD.bazel b/apt/BUILD.bazel
+index 8d7350c..0654f6a 100644
+--- a/apt/BUILD.bazel
++++ b/apt/BUILD.bazel
+@@ -11,6 +11,7 @@ bzl_library(
+     deps = [
+         "//apt/private:dpkg_status",
+         "//apt/private:dpkg_statusd",
++        "//apt/private:package_set",
+     ],
+ )
+ 
+@@ -23,6 +24,7 @@ bzl_library(
+         "//apt/private:apt_dep_resolver",
+         "//apt/private:deb_filemap",
+         "//apt/private:deb_import",
++        "//apt/private:from_lock",
+         "//apt/private:lockfile",
+         "//apt/private:translate_dependency_set",
+         "//apt/private:util",
+diff --git a/apt/README.md b/apt/README.md
+new file mode 100644
+index 0000000..2d2d716
+--- /dev/null
++++ b/apt/README.md
+@@ -0,0 +1,72 @@
++# Checked APT packages
++
++Use `apt.install` and dated package sources when preparing a dependency update.
++The generated `@<dependency_set>//:lock.json` contains the resolved v2 lock.
++It currently includes every set resolved by that extension, not only the named
++hub. Review and check in the required sets, their complete dependency closure,
++source URLs, versions and SHA256 hashes. Keep the canonical package lock even
++when generated Bazel module-resolution metadata is ignored.
++
++Ordinary builds can import the reviewed selection without resolving indices:
++
++```starlark
++apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
++apt.from_lock(
++    name = "runtime_packages",
++    lock = "//packages:apt.lock.json",
++    dependency_set = "runtime",  # Defaults to name when omitted.
++)
++use_repo(apt, "runtime_packages")
++```
++
++The lock must be a source file exported by its Bazel package. `from_lock` does
++not fetch package indices or consult cached resolution facts. It downloads the
++existing Debian archives using their checked hashes and reuses the normal
++Distroless data/control extraction. No package is compiled or repackaged as a
++DEB. Sources declared for separate `apt.install` calls can still resolve; omit
++those calls and sources from a workspace that must only use checked imports.
++Keep dependency-update resolution separate from ordinary builds.
++
++Each hub exports the original `:lock.json` and `:package_set`. Load
++`AptPackageSetInfo` from `@rules_distroless//apt:defs.bzl` in consuming rules:
++
++| Field | Meaning |
++| --- | --- |
++| `architecture` | Debian architecture selected by the target platform. |
++| `dependency_set` | Set name within the lock. |
++| `packages` | Complete closure, sorted by key; structs contain `key`, `metadata`, `data` and `control`. |
++| `files` | Depset of every data/control archive File in the closure. |
++| `lock` | File containing the canonical lock, byte-identical to a `from_lock` input. |
++
++The target's `DefaultInfo` contains only data archives. `data` and `control`
++struct fields are Files; `metadata` is the corresponding lock package dict.
++Consumers should use these files rather than reconstruct generated repository
++names. The imported set rejects missing dependency edges, mismatched metadata,
++foreign architecture keys and conflicting versions/content for one package.
++An `Architecture: all` package may have separate keys for each target
++architecture, so its dependencies remain correctly scoped.
++
++V2 package entries may additionally contain `payload_sha256`/`payload_size`
++and `control_sha256`/`control_size`. Each pair is optional and is preserved by
++the provider. These describe the transformed data archive and extracted control
++archive, respectively. A consuming verification action must compare them with
++the actual files when it requires checked extracted content; the provider does
++not execute hashing. Keep them in the same canonical lock rather than copying
++source package metadata into a second lock schema.
++
++Locked imports contain the package data/control needed for image assembly.
++They do not fetch the optional repository Contents indices used to infer
++cross-package C/C++ header and symlink providers. Continue using the resolver's
++development-package support when those inferred compilation interfaces are
++required.
++
++Selection based on an image's installed packages happens during action
++execution. A selection action can consume the package-set provider, inspect its
++base image and policy inputs, and emit an ordered archive manifest for
++`flatten(tars = ["@runtime_packages//:package_set"], tar_manifest = ... )`.
++The selected paths must be declared data archives. Keep image-specific retained
++package policy and runtime compatibility validation with the image owner.
++
++Validation targets `//apt/tests:locked_package_set_tests` and
++`//apt/tests:locked_import_test` exercise invalid closures and import an existing
++pinned Debian package on native AMD64 and ARM64. They do not produce DEBs.
+diff --git a/apt/defs.bzl b/apt/defs.bzl
+index df59c3d..7f2fce1 100644
+--- a/apt/defs.bzl
++++ b/apt/defs.bzl
+@@ -2,6 +2,9 @@
+ 
+ load("//apt/private:dpkg_status.bzl", _dpkg_status = "dpkg_status")
+ load("//apt/private:dpkg_statusd.bzl", _dpkg_statusd = "dpkg_statusd")
++load("//apt/private:package_set.bzl", _AptPackageSetInfo = "AptPackageSetInfo", _apt_package_set = "apt_package_set")
+ 
+ dpkg_status = _dpkg_status
+ dpkg_statusd = _dpkg_statusd
++AptPackageSetInfo = _AptPackageSetInfo
++apt_package_set = _apt_package_set
+diff --git a/apt/extensions.bzl b/apt/extensions.bzl
+index 0f9bb39..d345645 100644
+--- a/apt/extensions.bzl
++++ b/apt/extensions.bzl
+@@ -5,6 +5,7 @@ load("//apt/private:apt_deb_repository.bzl", "deb_repository")
+ load("//apt/private:apt_dep_resolver.bzl", "dependency_resolver")
+ load("//apt/private:deb_filemap.bzl", "deb_filemap")
+ load("//apt/private:deb_import.bzl", "deb_import")
++load("//apt/private:from_lock.bzl", "import_locked_set")
+ load("//apt/private:lockfile.bzl", "lockfile")
+ load("//apt/private:translate_dependency_set.bzl", "translate_dependency_set")
+ load("//apt/private:util.bzl", "util")
+@@ -233,6 +234,20 @@ def _fetch_and_parse_sources(mctx, repo, glock, snapshot_suites, formats):
+     return used_keys
+ 
+ def _distroless_extension(mctx):
++    # Checked imports do not use the resolver, index downloads, or cached facts.
++    # A separate apt.install may still resolve packages for explicit updates.
++    hub_names = {}
++    for mod in mctx.modules:
++        for install_tag in mod.tags.install:
++            if install_tag.dependency_set:
++                hub_names[install_tag.dependency_set] = True
++    for mod in mctx.modules:
++        for locked_tag in mod.tags.from_lock:
++            if locked_tag.name in hub_names:
++                fail("APT dependency set is declared more than once: " + locked_tag.name)
++            hub_names[locked_tag.name] = True
++            import_locked_set(mctx, locked_tag)
++
+     # Detect facts API availability
+     use_facts = hasattr(mctx, "facts")
+     cached_facts = mctx.facts if use_facts else {}
+@@ -611,10 +626,20 @@ lock = tag_class(
+     },
+ )
+ 
++from_lock = tag_class(
++    doc = "Import an exact dependency set from a reviewed v2 lock without resolving package indices.",
++    attrs = {
++        "name": attr.string(mandatory = True, doc = "Name of the generated hub repository."),
++        "lock": attr.label(mandatory = True, doc = "Canonical checked-in v2 APT lock."),
++        "dependency_set": attr.string(doc = "Set to import from the lock; defaults to name."),
++    },
++)
++
+ apt = module_extension(
+     doc = _doc,
+     implementation = _distroless_extension,
+     tag_classes = {
++        "from_lock": from_lock,
+         "install": install,
+         "sources_list": sources_list,
+         "lock": lock,
+diff --git a/apt/private/BUILD.bazel b/apt/private/BUILD.bazel
+index 427479c..d827049 100644
+--- a/apt/private/BUILD.bazel
++++ b/apt/private/BUILD.bazel
+@@ -28,6 +28,27 @@ bzl_library(
+     deps = [":util"],
+ )
+ 
++bzl_library(
++    name = "package_set",
++    srcs = ["package_set.bzl"],
++    visibility = ["//apt:__subpackages__"],
++    deps = [":lockfile"],
++)
++
++bzl_library(
++    name = "from_lock",
++    srcs = ["from_lock.bzl"],
++    visibility = ["//apt:__subpackages__"],
++    deps = [
++        ":deb_filemap",
++        ":deb_import",
++        ":lockfile",
++        ":package_set",
++        ":translate_dependency_set",
++        ":util",
++    ],
++)
++
+ bzl_library(
+     name = "apt_deb_repository",
+     srcs = ["apt_deb_repository.bzl"],
+@@ -90,6 +111,7 @@ bzl_library(
+     visibility = ["//apt:__subpackages__"],
+     deps = [
+         ":lockfile",
++        ":package_set",
+         ":starlark_codegen_utils",
+         ":util",
+         "//apt:defs",
+diff --git a/apt/private/deb_import.bzl b/apt/private/deb_import.bzl
+index 4000b3b..c8a7a41 100644
+--- a/apt/private/deb_import.bzl
++++ b/apt/private/deb_import.bzl
+@@ -182,7 +182,7 @@ def _remap_linkopts(rctx, extract_dir, so_regular_files, self_files, depends_fil
+ 
+     return result.linkopts
+ 
+-def _discover_contents(rctx, depends_on, depends_file_map, target_name):
++def _discover_contents(rctx, depends_on, depends_file_map, target_name, repo_prefix = ""):
+     result = rctx.execute(["tar", "--exclude='./usr/share/**'", "--exclude='./**/'", "-tvf", "data.tar.xz"])
+     contents_raw = result.stdout.splitlines()
+ 
+@@ -307,7 +307,7 @@ def _discover_contents(rctx, depends_on, depends_file_map, target_name):
+     for dep in depends_on:
+         (suite, name, arch, version) = lockfile.parse_package_key(dep)
+         deps.append(
+-            "@%s//:%s_wodeps" % (util.sanitize(dep), name.removesuffix("-dev")),
++            "@%s//:%s_wodeps" % (repo_prefix + util.sanitize(dep), name.removesuffix("-dev")),
+         )
+ 
+     pkgconfigs = []
+@@ -465,6 +465,7 @@ def _deb_import_impl(rctx):
+         rctx.attr.depends_on,
+         provided_by,
+         rctx.attr.package_name.removesuffix("-dev"),
++        repo_prefix = rctx.attr.repo_prefix,
+     )
+ 
+     foreign_symlinks = {}
+@@ -480,7 +481,7 @@ def _deb_import_impl(rctx):
+ 
+     rctx.file("BUILD.bazel", _DEB_IMPORT_BUILD_TMPL.format(
+         mergedusr = rctx.attr.mergedusr,
+-        depends_on = ["@" + util.sanitize(dep_key) + "//:data" for dep_key in rctx.attr.depends_on],
++        depends_on = ["@" + rctx.attr.repo_prefix + util.sanitize(dep_key) + "//:data" for dep_key in rctx.attr.depends_on],
+         target_name = rctx.attr.target_name,
+         cc_import_targets = cc_import_targets,
+         outs = outs,
+@@ -498,5 +499,6 @@ deb_import = repository_rule(
+         "mergedusr": attr.bool(),
+         "target_name": attr.string(),
+         "package_name": attr.string(),
++        "repo_prefix": attr.string(doc = "Internal namespace for independent checked locks."),
+     },
+ )
+diff --git a/apt/private/from_lock.bzl b/apt/private/from_lock.bzl
+new file mode 100644
+index 0000000..cb33129
+--- /dev/null
++++ b/apt/private/from_lock.bzl
+@@ -0,0 +1,62 @@
++"""Import reviewed package selections using the existing Debian importer."""
++
++load(":deb_filemap.bzl", "deb_filemap")
++load(":deb_import.bzl", "deb_import")
++load(":lockfile.bzl", "lockfile")
++load(":package_set.bzl", "package_closure")
++load(":translate_dependency_set.bzl", "translate_dependency_set")
++load(":util.bzl", "util")
++
++def import_locked_set(mctx, tag):
++    """Declare package repositories directly from a canonical v2 lock."""
++    content = mctx.read(tag.lock)
++    locked = lockfile.from_json(mctx, content)
++    dependency_set = tag.dependency_set or tag.name
++    sets = locked.dependency_sets().get(dependency_set, {}).get("sets", {})
++    if not sets:
++        fail("APT lock has no dependency set " + dependency_set)
++    packages = {}
++    for architecture, roots in sets.items():
++        if not roots:
++            fail("APT lock dependency set is empty for " + architecture)
++        packages.update(package_closure(
++            locked.packages(),
++            [key + "=" + version for key, version in roots.items()],
++            architecture,
++        ))
++
++    # Isolate independently reviewed locks, including a resolver used to prepare
++    # their next update. Consumers never need these implementation repo names.
++    prefix = tag.name + "__"
++    repositories = {}
++    for key in packages:
++        repository = prefix + util.sanitize(key)
++        previous = repositories.setdefault(repository, key)
++        if previous != key:
++            fail("APT package repository name collision: " + previous + " and " + key)
++        deb_filemap(name = repository + "_filemap", files = "[]")
++    for key, package in packages.items():
++        urls = package.get("urls") or [
++            root.rstrip("/") + "/" + package["filename"]
++            for root in locked.sources().get(package["suite"], {}).get("uris", [])
++        ]
++        if not urls:
++            fail("APT lock has no download source for " + key)
++        repository = prefix + util.sanitize(key)
++        deb_import(
++            name = repository,
++            target_name = repository,
++            package_name = package["name"],
++            urls = urls,
++            sha256 = package["sha256"],
++            mergedusr = False,
++            depends_on = package["depends_on"],
++            dep_filemaps = ["@" + prefix + util.sanitize(dep) + "_filemap//:filemap.json" for dep in package["depends_on"]],
++            repo_prefix = prefix,
++        )
++    translate_dependency_set(
++        name = tag.name,
++        depset_name = dependency_set,
++        lock_content = content,
++        repo_prefix = prefix,
++    )
+diff --git a/apt/private/package_set.bzl b/apt/private/package_set.bzl
+new file mode 100644
+index 0000000..ba2ecc5
+--- /dev/null
++++ b/apt/private/package_set.bzl
+@@ -0,0 +1,116 @@
++"""Public package metadata and files for one configured APT dependency set."""
++
++load(":lockfile.bzl", "lockfile")
++
++AptPackageSetInfo = provider(
++    doc = "Resolved APT packages for one target architecture, ordered by package key.",
++    fields = {
++        "architecture": "Debian target architecture, for example amd64 or arm64.",
++        "dependency_set": "Dependency set name in the lock.",
++        "files": "Depset of the packages' data and control archive Files.",
++        "lock": "File containing the canonical v2 package lock.",
++        "packages": "List of structs with key, metadata (dict), data (File), and control (File).",
++    },
++)
++
++def _sha256(value):
++    return type(value) == "string" and len(value) == 64 and all([c in "0123456789abcdef" for c in value.elems()])
++
++def package_closure(packages, roots, architecture):
++    """Return a validated, sorted closure without resolving package versions.
++
++    Architecture-independent packages may have a key for each target architecture.
++    Their dependency edges must still stay within the requested architecture.
++    Optional extracted-content hashes are retained verbatim in package metadata.
++    """
++    pending = list(roots)
++    result = {}
++    identities = {}
++    for _ in range(len(packages) + 1):
++        if not pending:
++            break
++        current = pending
++        pending = []
++        for key in current:
++            if key in result:
++                continue
++            if key not in packages:
++                fail("APT lock is missing dependency " + key)
++            package = packages[key]
++            (suite, name, arch, version) = lockfile.parse_package_key(key)
++            if arch not in [architecture, "all"] or package.get("architecture") not in [architecture, "all"] or (arch == "all" and package.get("architecture") != "all"):
++                fail("APT lock contains a foreign-architecture dependency: " + key)
++            if (suite, name, version) != (package.get("suite"), package.get("name"), package.get("version")):
++                fail("APT lock package key differs from its metadata: " + key)
++            if not name or not all([c in "abcdefghijklmnopqrstuvwxyz0123456789+-." for c in name.elems()]):
++                fail("APT lock has an invalid package name: " + key)
++            filename = package.get("filename", "")
++            if not filename or filename.startswith("/") or ".." in filename.split("/"):
++                fail("APT lock has an invalid archive filename: " + key)
++            if not _sha256(package.get("sha256")) or type(package.get("size")) != "int" or package["size"] <= 0:
++                fail("APT lock is missing source integrity: " + key)
++            dependencies = package.get("depends_on")
++            if type(dependencies) != "list" or not all([type(dep) == "string" for dep in dependencies]):
++                fail("APT lock has invalid dependencies: " + key)
++            for kind in ["payload", "control"]:
++                digest = kind + "_sha256"
++                size = kind + "_size"
++                if digest in package or size in package:
++                    if not _sha256(package.get(digest)) or type(package.get(size)) != "int" or package[size] <= 0:
++                        fail("APT lock has invalid extracted " + kind + " integrity: " + key)
++            identity = [package.get(field) for field in ["version", "architecture", "sha256", "size", "payload_sha256", "payload_size", "control_sha256", "control_size"]]
++            previous = identities.setdefault(name, identity)
++            if previous != identity:
++                fail("APT lock selects different versions or content for package " + name)
++            result[key] = package
++            pending.extend(dependencies)
++    if pending:
++        fail("APT lock dependency traversal did not converge")
++    return {key: result[key] for key in sorted(result)}
++
++def _single_files(targets):
++    result = {}
++    for target, key in targets.items():
++        files = target[DefaultInfo].files.to_list()
++        if len(files) != 1 or key in result:
++            fail("APT package archive must have one file and a unique key: " + str(target.label))
++        result[key] = files[0]
++    return result
++
++def _apt_package_set_impl(ctx):
++    data = _single_files(ctx.attr.data)
++    control = _single_files(ctx.attr.control)
++    if sorted(data) != sorted(control) or sorted(data) != sorted(ctx.attr.package_records):
++        fail("APT package data, control, and metadata sets differ")
++    packages = [
++        struct(
++            key = key,
++            metadata = json.decode(ctx.attr.package_records[key]),
++            data = data[key],
++            control = control[key],
++        )
++        for key in sorted(data)
++    ]
++    return [
++        DefaultInfo(files = depset(data.values())),
++        AptPackageSetInfo(
++            architecture = ctx.attr.architecture,
++            dependency_set = ctx.attr.dependency_set,
++            packages = packages,
++            files = depset(data.values() + control.values()),
++            lock = ctx.file.lock,
++        ),
++    ]
++
++apt_package_set = rule(
++    doc = "Expose a configured dependency set; normally generated by the apt extension.",
++    implementation = _apt_package_set_impl,
++    attrs = {
++        "architecture": attr.string(mandatory = True),
++        "control": attr.label_keyed_string_dict(allow_files = True),
++        "data": attr.label_keyed_string_dict(allow_files = True),
++        "dependency_set": attr.string(mandatory = True),
++        "lock": attr.label(allow_single_file = [".json"], mandatory = True),
++        "package_records": attr.string_dict(),
++    },
++)
+diff --git a/apt/private/translate_dependency_set.bzl b/apt/private/translate_dependency_set.bzl
+index 683cc77..ccf2f7a 100644
+--- a/apt/private/translate_dependency_set.bzl
++++ b/apt/private/translate_dependency_set.bzl
+@@ -1,6 +1,7 @@
+ "repository rule for generating a dependency graph from a lockfile."
+ 
+ load(":lockfile.bzl", "lockfile")
++load(":package_set.bzl", "package_closure")
+ load(":starlark_codegen_utils.bzl", "starlark_codegen_utils")
+ load(":util.bzl", "util")
+ load(":version.bzl", version_lib = "version")
+@@ -8,10 +9,10 @@ load(":version.bzl", version_lib = "version")
+ _ROOT_BUILD_TMPL = """\
+ "Generated by rules_distroless. DO NOT EDIT."
+ 
+-load("@rules_distroless//apt:defs.bzl", "dpkg_status")
++load("@rules_distroless//apt:defs.bzl", "apt_package_set", "dpkg_status")
+ load("@rules_distroless//distroless:defs.bzl", "flatten")
+ 
+-exports_files(['packages.bzl'])
++exports_files(["lock.json"])
+ 
+ # Map Debian architectures to platform CPUs.
+ #
+@@ -52,6 +53,17 @@ _ARCHITECTURES = {architectures}
+ # List of installed packages. For now it's private.
+ _PACKAGES = {packages}
+ 
++apt_package_set(
++    name = "package_set",
++    architecture = select({package_set_architectures}),
++    dependency_set = {dependency_set},
++    lock = ":lock.json",
++    package_records = select({package_set_metadata}),
++    data = select({package_set_data}),
++    control = select({package_set_control}),
++    visibility = ["//visibility:public"],
++)
++
+ # Creates /var/lib/dpkg/status with installed package information.
+ dpkg_status(
+     name = "dpkg_status",
+@@ -141,9 +153,9 @@ alias(
+ # this scoping, a package's `depends_on` (which spans every architecture the
+ # lockfile knows about) would leak foreign-architecture deps into a single
+ # architecture's target, causing file duplication that confuses `flatten`.
+-def package_deps_for_architecture(packages, package, architecture):
++def package_deps_for_architecture(packages, package, architecture, repo_prefix = ""):
+     return [
+-        "@" + util.sanitize(dep_key) + "//:data"
++        "@" + repo_prefix + util.sanitize(dep_key) + "//:data"
+         for dep_key in package["depends_on"]
+         if packages[dep_key]["architecture"] in [architecture, "all"]
+     ]
+@@ -169,12 +181,33 @@ def _translate_dependency_set_impl(rctx):
+     # In those cases, we want to hard-error.
+     package_coords_to_versions = {}
+ 
++    package_set_architectures = {}
++    package_set_metadata = {}
++    package_set_data = {}
++    package_set_control = {}
++
+     for architecture in dependency_set["sets"].keys():
++        condition = "//:linux_" + architecture
++        closure = package_closure(
++            packages,
++            [key + "=" + version for key, version in dependency_set["sets"][architecture].items()],
++            architecture,
++        )
++        package_set_architectures[condition] = architecture
++        package_set_metadata[condition] = {key: json.encode(package) for key, package in closure.items()}
++        package_set_data[condition] = {
++            "@" + rctx.attr.repo_prefix + util.sanitize(key) + "//:data": key
++            for key in closure
++        }
++        package_set_control[condition] = {
++            "@" + rctx.attr.repo_prefix + util.sanitize(key) + "//:control": key
++            for key in closure
++        }
+         architectures_to_package_names[architecture] = []
+ 
+         for (short_key, version) in dependency_set["sets"][architecture].items():
+             package_key = short_key + "=" + version
+-            repo_name = util.sanitize(package_key)
++            repo_name = rctx.attr.repo_prefix + util.sanitize(package_key)
+             package = packages[package_key]
+             package_name = package["name"]
+ 
+@@ -208,7 +241,7 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+                     data_targets = '"@%s//:data"' % repo_name,
+                     control_targets = '"@%s//:control"' % repo_name,
+                     src = '"@%s//:data"' % repo_name,
+-                    deps = package_deps_for_architecture(packages, package, architecture),
++                    deps = package_deps_for_architecture(packages, package, architecture, repo_prefix = rctx.attr.repo_prefix),
+                     urls = [
+                         uri + "/" + package["filename"]
+                         for uri in sources[package["suite"]]["uris"]
+@@ -231,7 +264,7 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+             extra = _DEB_CC_IMPORT.format(
+                 target_name = target_name,
+                 selects = starlark_codegen_utils.to_dict_attr({
+-                    "//:linux_%s" % architecture: "@%s//:%s" % (util.sanitize(package_key), target_name)
++                    "//:linux_%s" % architecture: "@%s//:%s" % (rctx.attr.repo_prefix + util.sanitize(package_key), target_name)
+                     for (architecture, package_key) in info.architectures.items()
+                 }),
+             )
+@@ -260,16 +293,23 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+             ),
+         )
+ 
++    rctx.file("lock.json", rctx.attr.lock_content)
+     rctx.file("BUILD.bazel", _ROOT_BUILD_TMPL.format(
+         target_name = util.get_repo_name(rctx.attr.name),
+         packages = starlark_codegen_utils.to_dict_list_attr(architectures_to_package_names),
+         architectures = starlark_codegen_utils.to_list_attr(dependency_set["sets"].keys()),
++        dependency_set = repr(rctx.attr.depset_name),
++        package_set_architectures = repr(package_set_architectures),
++        package_set_metadata = repr(package_set_metadata),
++        package_set_data = repr(package_set_data),
++        package_set_control = repr(package_set_control),
+     ))
+ 
+ translate_dependency_set = repository_rule(
+     implementation = _translate_dependency_set_impl,
+     attrs = {
+         "depset_name": attr.string(doc = "INTERNAL: DO NOT USE"),
++        "repo_prefix": attr.string(doc = "INTERNAL: Namespace for independent checked locks."),
+         "lock_content": attr.string(doc = "INTERNAL: DO NOT USE"),
+         "package_template": attr.label(default = "//apt/private:package.BUILD.tmpl"),
+     },
+diff --git a/apt/tests/BUILD.bazel b/apt/tests/BUILD.bazel
+index bae631e..0e9e911 100644
+--- a/apt/tests/BUILD.bazel
++++ b/apt/tests/BUILD.bazel
+@@ -1,3 +1,4 @@
++load(":locked_package_set_test.bzl", "locked_import_test", "locked_package_set_tests")
+ load(":deb_postfix_test.bzl", "deb_postfix_tests")
+ load(":dpkg_status_test.bzl", "dpkg_status_tests")
+ load(":dpkg_statusd_test.bzl", "dpkg_statusd_tests")
+@@ -25,3 +26,9 @@ linker_script_tests()
+ lockfile_tests()
+ 
+ translate_dependency_set_tests()
++
++exports_files(["locked_test.json"])
++
++locked_package_set_tests()
++
++locked_import_test(name = "locked_import_test", package_set = "@apt_locked_test//:package_set", checked_lock = "locked_test.json")
+diff --git a/apt/tests/locked_package_set_test.bzl b/apt/tests/locked_package_set_test.bzl
+new file mode 100644
+index 0000000..6e524e3
+--- /dev/null
++++ b/apt/tests/locked_package_set_test.bzl
+@@ -0,0 +1,133 @@
++"""Checked closure and real existing-package import tests; no package production."""
++
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts", "unittest")
++load("//apt:defs.bzl", "AptPackageSetInfo")
++load("//apt/private:package_set.bzl", "package_closure")
++
++def _package(name, architecture = "amd64", version = "1", dependencies = []):
++    return {
++        "name": name,
++        "version": version,
++        "architecture": architecture,
++        "suite": "test",
++        "filename": "pool/" + name + ".deb",
++        "sha256": "a" * 64,
++        "size": 1,
++        "depends_on": dependencies,
++        "payload_sha256": "b" * 64,
++        "payload_size": 2,
++        "control_sha256": "c" * 64,
++        "control_size": 3,
++    }
++
++def _closure_test_impl(ctx):
++    env = unittest.begin(ctx)
++    for architecture in ["amd64", "arm64"]:
++        root = "/test/root:" + architecture + "=1"
++        dependency = "/test/dependency:" + architecture + "=1"
++        packages = {
++            root: _package("root", "all", dependencies = [dependency]),
++            dependency: _package("dependency", architecture, dependencies = [root]),
++        }
++        result = package_closure(packages, [root], architecture)
++        asserts.equals(env, sorted([root, dependency]), result.keys())
++        asserts.equals(env, packages, result)
++        asserts.equals(env, "b" * 64, result[root]["payload_sha256"])
++    return unittest.end(env)
++
++_closure_test = unittest.make(_closure_test_impl)
++
++def _invalid_closure_impl(ctx):
++    root = "/test/root:amd64=1"
++    packages = {root: _package("root")}
++    if ctx.attr.case == "foreign_dependency":
++        dependency = "/test/dependency:arm64=1"
++        packages[root]["depends_on"] = [dependency]
++        packages[dependency] = _package("dependency", "arm64")
++    elif ctx.attr.case == "foreign_all_key":
++        root = "/test/root:arm64=1"
++        packages = {root: _package("root", "all")}
++    elif ctx.attr.case == "native_package_all_key":
++        root = "/test/root:all=1"
++        packages = {root: _package("root", "amd64")}
++    elif ctx.attr.case == "missing_dependency":
++        packages[root]["depends_on"] = ["/test/missing:amd64=1"]
++    elif ctx.attr.case == "conflicting_version":
++        dependency = "/test/root:amd64=2"
++        packages[root]["depends_on"] = [dependency]
++        packages[dependency] = _package("root", version = "2")
++    elif ctx.attr.case == "missing_source_hash":
++        packages[root].pop("sha256")
++    elif ctx.attr.case == "partial_content_hash":
++        packages[root].pop("control_size")
++    elif ctx.attr.case == "metadata_mismatch":
++        packages[root]["version"] = "2"
++    package_closure(packages, [root], "amd64")
++    return []
++
++_invalid_closure = rule(implementation = _invalid_closure_impl, attrs = {"case": attr.string()})
++
++def _failure_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    asserts.expect_failure(env, ctx.attr.message)
++    return analysistest.end(env)
++
++_failure_test = analysistest.make(_failure_test_impl, expect_failure = True, attrs = {"message": attr.string()})
++
++def _locked_import_test_impl(ctx):
++    info = ctx.attr.package_set[AptPackageSetInfo]
++    expected_key = "/trixie/media-types:" + info.architecture + "=13.0.0"
++    if info.architecture not in ["amd64", "arm64"] or [package.key for package in info.packages] != [expected_key]:
++        fail("Imported package set differs from the native checked lock")
++    if info.dependency_set != "locked_test" or len(info.files.to_list()) != 2:
++        fail("Imported package-set metadata or archive files differ")
++    coreutils = ctx.toolchains["@bazel_lib//lib:coreutils_toolchain_type"]
++    script = ctx.actions.declare_file(ctx.label.name + ".sh")
++    commands = [
++        "#!/usr/bin/env bash",
++        "set -euo pipefail",
++        "cd \"${TEST_SRCDIR}/${TEST_WORKSPACE}\"",
++        "coreutils=" + repr(coreutils.coreutils_info.bin.short_path),
++        "hash() { local value; value=$(\"$coreutils\" sha256sum \"$1\"); printf '%s' \"${value%% *}\"; }",
++        "test \"$(hash " + repr(info.lock.short_path) + ")\" = \"$(hash " + repr(ctx.file.checked_lock.short_path) + ")\"",
++    ]
++    for package in info.packages:
++        if package.metadata["architecture"] != "all":
++            fail("Architecture-independent package metadata was changed")
++        for kind, file in [("payload", package.data), ("control", package.control)]:
++            commands.append("test \"$(hash " + repr(file.short_path) + ")\" = " + repr(package.metadata[kind + "_sha256"]))
++            commands.append("test \"$(\"$coreutils\" wc -c < " + repr(file.short_path) + ")\" = " + str(package.metadata[kind + "_size"]))
++    ctx.actions.write(script, "\n".join(commands) + "\n", is_executable = True)
++    runfiles = ctx.runfiles(files = [info.lock, ctx.file.checked_lock], transitive_files = info.files)
++    runfiles = runfiles.merge(coreutils.default.default_runfiles)
++    runfiles = runfiles.merge(ctx.runfiles(transitive_files = coreutils.default.files))
++    return [DefaultInfo(executable = script, runfiles = runfiles)]
++
++locked_import_test = rule(
++    implementation = _locked_import_test_impl,
++    test = True,
++    attrs = {
++        "package_set": attr.label(providers = [AptPackageSetInfo], mandatory = True),
++        "checked_lock": attr.label(allow_single_file = True, mandatory = True),
++    },
++    toolchains = ["@bazel_lib//lib:coreutils_toolchain_type"],
++)
++
++def locked_package_set_tests():
++    _closure_test(name = "locked_closure_test")
++    tests = [":locked_closure_test"]
++    cases = {
++        "foreign_dependency": "foreign-architecture dependency",
++        "foreign_all_key": "foreign-architecture dependency",
++        "native_package_all_key": "foreign-architecture dependency",
++        "missing_dependency": "missing dependency",
++        "conflicting_version": "different versions or content",
++        "missing_source_hash": "missing source integrity",
++        "partial_content_hash": "invalid extracted control integrity",
++        "metadata_mismatch": "key differs from its metadata",
++    }
++    for case, message in cases.items():
++        _invalid_closure(name = "invalid_" + case, case = case, tags = ["manual"])
++        _failure_test(name = case + "_test", target_under_test = ":invalid_" + case, message = message)
++        tests.append(":" + case + "_test")
++    native.test_suite(name = "locked_package_set_tests", tests = tests)
+diff --git a/apt/tests/locked_test.json b/apt/tests/locked_test.json
+new file mode 100644
+index 0000000..86b9eb6
+--- /dev/null
++++ b/apt/tests/locked_test.json
+@@ -0,0 +1,61 @@
++{
++  "dependency_sets": {
++    "locked_test": {
++      "sets": {
++        "amd64": {
++          "/trixie/media-types:amd64": "13.0.0"
++        },
++        "arm64": {
++          "/trixie/media-types:arm64": "13.0.0"
++        }
++      }
++    }
++  },
++  "facts": {},
++  "packages": {
++    "/trixie/media-types:amd64=13.0.0": {
++      "architecture": "all",
++      "control_sha256": "5e4ba849702e46fe9682d3eb1941d531a1795d8506cb25eea84d8673884f852a",
++      "control_size": 904,
++      "depends_on": [],
++      "filename": "pool/main/m/media-types/media-types_13.0.0_all.deb",
++      "name": "media-types",
++      "payload_sha256": "364e9352a7f11c244bc916266790a198b82cb3af88af513c2912a43f70ca8a3c",
++      "payload_size": 31315,
++      "sha256": "0788e4b0b72db1bcf74a19cb24c3511e7770ad0b341f0f30e361701c3072f53e",
++      "size": 29336,
++      "suite": "trixie",
++      "version": "13.0.0"
++    },
++    "/trixie/media-types:arm64=13.0.0": {
++      "architecture": "all",
++      "control_sha256": "5e4ba849702e46fe9682d3eb1941d531a1795d8506cb25eea84d8673884f852a",
++      "control_size": 904,
++      "depends_on": [],
++      "filename": "pool/main/m/media-types/media-types_13.0.0_all.deb",
++      "name": "media-types",
++      "payload_sha256": "364e9352a7f11c244bc916266790a198b82cb3af88af513c2912a43f70ca8a3c",
++      "payload_size": 31315,
++      "sha256": "0788e4b0b72db1bcf74a19cb24c3511e7770ad0b341f0f30e361701c3072f53e",
++      "size": 29336,
++      "suite": "trixie",
++      "version": "13.0.0"
++    }
++  },
++  "sources": {
++    "trixie": {
++      "architectures": [
++        "amd64",
++        "arm64"
++      ],
++      "components": [
++        "main"
++      ],
++      "types": [],
++      "uris": [
++        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
++      ]
++    }
++  },
++  "version": 2
++}
+diff --git a/distroless/private/flatten.bzl b/distroless/private/flatten.bzl
+index cfc2287..a6254c2 100644
+--- a/distroless/private/flatten.bzl
++++ b/distroless/private/flatten.bzl
+@@ -16,6 +16,7 @@ def _flatten_impl(ctx):
+     args.add(str(ctx.attr.deduplicate))
+     args.add(ctx.executable._gawk.path)
+     args.add(coreutils.coreutils_info.bin)
++    args.add(ctx.file.tar_manifest.path if ctx.file.tar_manifest else "")
+     args.add_all(tar_lib.DEFAULT_ARGS)
+     args.add("--create")
+     tar_lib.common.add_compression_args(ctx.attr.compress, args)
+@@ -24,7 +25,7 @@ def _flatten_impl(ctx):
+ 
+     ctx.actions.run(
+         executable = ctx.executable._flatten_sh,
+-        inputs = ctx.files.tars,
++        inputs = ctx.files.tars + ([ctx.file.tar_manifest] if ctx.file.tar_manifest else []),
+         outputs = [output],
+         tools = [
+             bsdtar.default.files,
+@@ -49,6 +50,17 @@ flatten = rule(
+             allow_empty = False,
+             doc = "List of tars to flatten",
+         ),
++        "tar_manifest": attr.label(
++            allow_single_file = True,
++            doc = """Optional ordered subset of tars selected at execution time.
++
++Each line must be the exact execution-root-relative path of a declared tar.
++Unknown paths, duplicate paths and blank lines are rejected. An empty file
++selects no archives and produces an empty tar. All candidate tars remain
++declared action inputs. Without this attribute, all tars are flattened in
++their declared order.
++            """,
++        ),
+         "deduplicate": attr.bool(doc = """\
+ EXPERIMENTAL: We may change or remove it without a notice.
+ 
+diff --git a/distroless/private/flatten.sh b/distroless/private/flatten.sh
+old mode 100644
+new mode 100755
+index e2962d7..9ce05a5
+--- a/distroless/private/flatten.sh
++++ b/distroless/private/flatten.sh
+@@ -5,7 +5,47 @@ bsdtar="$1";
+ deduplicate="$2";
+ readonly awk="$3"
+ readonly coreutils="$4"
+-shift 4;
++readonly tar_manifest="$5"
++shift 5;
++
++if [[ -n "$tar_manifest" ]]; then
++    declared=()
++    arguments=()
++    for arg in "$@"; do
++        if [[ "$arg" == "@"* ]]; then
++            declared+=("${arg:1}")
++        else
++            arguments+=("$arg")
++        fi
++    done
++    selected=()
++    while IFS= read -r path || [[ -n "$path" ]]; do
++        known=false
++        for candidate in "${declared[@]}"; do
++            if [[ "$path" == "$candidate" ]]; then
++                known=true
++                break
++            fi
++        done
++        if [[ "$known" != true ]]; then
++            echo "flatten: tar_manifest contains an undeclared tar: $path" >&2
++            exit 1
++        fi
++        for candidate in "${selected[@]}"; do
++            if [[ "$path" == "$candidate" ]]; then
++                echo "flatten: tar_manifest contains a duplicate tar: $path" >&2
++                exit 1
++            fi
++        done
++        selected+=("$path")
++        arguments+=("@$path")
++    done < "$tar_manifest"
++    # bsdtar requires an explicit empty file list when no archives are selected.
++    if [[ ${#selected[@]} -eq 0 ]]; then
++        arguments+=(--files-from /dev/null)
++    fi
++    set -- "${arguments[@]}"
++fi
+ 
+ # Deduplication requested, use this complex pipeline to deduplicate.
+ if [[ "$deduplicate" == "True" ]]; then
+diff --git a/distroless/tests/BUILD.bazel b/distroless/tests/BUILD.bazel
+index 4404bc8..5264280 100644
+--- a/distroless/tests/BUILD.bazel
++++ b/distroless/tests/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load("@bazel_lib//:bzl_library.bzl", "bzl_library")
+ load(":flatten_test.bzl", "flatten_tests")
++load(":flatten_manifest_test.bzl", "flatten_manifest_tests")
+ load(":locale_test.bzl", "locale_tests")
+ 
+ bzl_library(
+@@ -14,4 +15,6 @@ bzl_library(
+ 
+ flatten_tests()
+ 
++flatten_manifest_tests()
++
+ locale_tests()
+diff --git a/distroless/tests/flatten_manifest_test.bzl b/distroless/tests/flatten_manifest_test.bzl
+new file mode 100644
+index 0000000..ac6db6b
+--- /dev/null
++++ b/distroless/tests/flatten_manifest_test.bzl
+@@ -0,0 +1,94 @@
++"""Action tests for execution-time archive selection."""
++
++load("@rules_shell//shell:sh_test.bzl", "sh_test")
++load("//distroless:defs.bzl", "flatten")
++
++def flatten_manifest_tests():
++    """Exercise real flatten actions with metadata-rich tar fixtures."""
++    for name in ["first", "second"]:
++        native.genrule(
++            name = "flatten_manifest_" + name,
++            outs = ["manifest_" + name + ".tar"],
++            cmd = """set -euo pipefail
++tmpdir=$$(mktemp -d)
++trap 'rm -rf "$$tmpdir"' EXIT
++mkdir -p "$$tmpdir/payload"
++printf '%s' '%s' > "$$tmpdir/payload/shared"
++chmod 0750 "$$tmpdir/payload"
++chmod 0640 "$$tmpdir/payload/shared"
++ln "$$tmpdir/payload/shared" "$$tmpdir/payload/hard"
++ln -s shared "$$tmpdir/payload/link"
++"$(BSDTAR_BIN)" --create --format gnutar --file "$@" \
++  --uid 123 --gid 456 --uname fixture-user --gname fixture-group \
++  --no-recursion -C "$$tmpdir" payload payload/shared payload/hard payload/link
++""" % ("%s", name),
++            toolchains = ["@bsd_tar_toolchains//:resolved_toolchain"],
++            testonly = True,
++        )
++
++    candidates = [":flatten_manifest_first", ":flatten_manifest_second"]
++    selections = {
++        "full": candidates,
++        "ordered": list(reversed(candidates)),
++        "subset": candidates[1:],
++        "empty": [],
++        "deduplicated": candidates,
++        "compressed": candidates[1:],
++        "empty_deduplicated": [],
++    }
++    for name, selected in selections.items():
++        manifest = "flatten_manifest_" + name + "_inputs"
++        native.genrule(
++            name = manifest,
++            srcs = candidates,
++            outs = [manifest + ".txt"],
++            cmd = ("printf '%s\\n' " + " ".join(["'$(execpath %s)'" % label for label in selected]) + " > $@") if selected else ": > $@",
++            testonly = True,
++        )
++        flatten(
++            name = "flatten_manifest_" + name + "_output",
++            tars = candidates,
++            tar_manifest = ":" + manifest,
++            deduplicate = name in ["deduplicated", "empty_deduplicated"],
++            testonly = True,
++            **({"compress": "gzip"} if name == "compressed" else {})
++        )
++
++    flatten(
++        name = "flatten_manifest_default_output",
++        tars = candidates,
++        testonly = True,
++    )
++
++    # These intentional action failures are invoked explicitly by native CI.
++    # Keep them out of wildcard builds and ordinary positive test dependencies.
++    for name, contents in {
++        "unknown": "undeclared.tar",
++        "duplicate": "$(execpath :flatten_manifest_first)\\n$(execpath :flatten_manifest_first)",
++        "blank": "\\n",
++    }.items():
++        native.genrule(
++            name = "flatten_manifest_" + name + "_inputs",
++            srcs = candidates,
++            outs = ["manifest_" + name + ".txt"],
++            cmd = "printf '%b' '" + contents + "' > $@",
++            testonly = True,
++        )
++        flatten(
++            name = "flatten_manifest_" + name,
++            tars = candidates,
++            tar_manifest = ":flatten_manifest_" + name + "_inputs",
++            tags = ["manual"],
++            testonly = True,
++        )
++
++    outputs = [":flatten_manifest_" + name + "_output" for name in ["default"] + list(selections)]
++    sh_test(
++        name = "flatten_manifest_test",
++        srcs = ["flatten_manifest_test.sh"],
++        args = ["$(rootpath :flatten_manifest_test.py)"] + [
++            "$(rootpath %s)" % label
++            for label in candidates + outputs
++        ],
++        data = candidates + outputs + ["flatten_manifest_test.py"],
++    )
+diff --git a/distroless/tests/flatten_manifest_test.py b/distroless/tests/flatten_manifest_test.py
+new file mode 100644
+index 0000000..33c6d72
+--- /dev/null
++++ b/distroless/tests/flatten_manifest_test.py
+@@ -0,0 +1,37 @@
++"""Compare actual flatten outputs with their original archive members."""
++
++import sys
++import tarfile
++
++
++def members(path):
++    result = []
++    with tarfile.open(path, "r:*") as archive:
++        for member in archive:
++            # Deduplication normalizes the harmless leading ./ component.
++            name = member.name.removeprefix("./")
++            data = archive.extractfile(member).read() if member.isfile() else None
++            result.append((name, member.type, member.mode, member.uid, member.gid,
++                           member.uname, member.gname, member.mtime,
++                           member.linkname.removeprefix("./"), data))
++    return result
++
++
++def main():
++    first, second, default, full, ordered, subset, empty, dedup, compressed, empty_dedup = sys.argv[1:]
++    a, b = members(first), members(second)
++    assert {entry[1] for entry in a} == {tarfile.DIRTYPE, tarfile.REGTYPE, tarfile.LNKTYPE, tarfile.SYMTYPE}
++    assert all(entry[3:7] == (123, 456, "fixture-user", "fixture-group") for entry in a + b)
++    assert members(default) == a + b, "default flatten behavior changed"
++    assert members(full) == a + b, "full manifest changed archive metadata or order"
++    assert members(ordered) == b + a, "manifest order was ignored"
++    assert members(subset) == b, "unselected archive content leaked"
++    assert members(empty) == [], "empty manifest did not produce an empty tar"
++    assert members(dedup) == b, "deduplication did not retain final archive entries"
++    assert members(compressed) == b, "compressed selected output differs"
++    assert members(empty_dedup) == [], "empty deduplicated selection failed"
++    print("flatten action selection, ordering, empty output and archive metadata verified")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/distroless/tests/flatten_manifest_test.sh b/distroless/tests/flatten_manifest_test.sh
+new file mode 100755
+index 0000000..3cbbcc7
+--- /dev/null
++++ b/distroless/tests/flatten_manifest_test.sh
+@@ -0,0 +1,3 @@
++#!/usr/bin/env bash
++set -euo pipefail
++exec python3 "$@"

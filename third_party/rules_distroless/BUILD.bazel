@@ -1,0 +1,6 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "patches/0001-include-fragments.patch",
+    "patches/0002-locked-apt-layers.patch",
+])

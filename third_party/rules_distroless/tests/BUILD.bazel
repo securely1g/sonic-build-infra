@@ -1,0 +1,15 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load(":headers_only.bzl", "headers_only")
+
+# Preserve the header-fragment regression when applying the upstream patch from
+# this repository. This is an existing pinned package, not a test-built DEB.
+headers_only(
+    name = "protobuf_headers",
+    dep = "@build_tools//libprotobuf-dev:libprotobuf",
+)
+
+cc_test(
+    name = "protobuf_headers_test",
+    srcs = ["protobuf_headers_test.cc"],
+    deps = [":protobuf_headers"],
+)

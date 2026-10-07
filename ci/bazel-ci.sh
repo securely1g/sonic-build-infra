@@ -19,15 +19,33 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-# The repository intentionally excludes its large generated module lock. Retain
-# the resolved lock with each run. Registry main contains the landed tar patch.
+# Retain generated module resolution as evidence. The Distroless patches are
+# checked into this repository; dependency registration comes from main.
 registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
-flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
+# Upstream 0.9.4 has optional archive globs in its shared test BUILD file.
+flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
+  --noincompatible_disallow_empty_glob)
 bazel_cmd=(bazel --ignore_all_rc_files)
 tests=(
+  //apt:selection_test
+  //third_party/rules_distroless/tests:protobuf_headers_test
+  @rules_distroless//apt/tests:locked_closure_test
+  @rules_distroless//apt/tests:foreign_dependency_test
+  @rules_distroless//apt/tests:foreign_all_key_test
+  @rules_distroless//apt/tests:native_package_all_key_test
+  @rules_distroless//apt/tests:missing_dependency_test
+  @rules_distroless//apt/tests:conflicting_version_test
+  @rules_distroless//apt/tests:missing_source_hash_test
+  @rules_distroless//apt/tests:partial_content_hash_test
+  @rules_distroless//apt/tests:metadata_mismatch_test
+  @rules_distroless//apt/tests:locked_import_test
+  @rules_distroless//distroless/tests:flatten/merge_simple
+  @rules_distroless//distroless/tests:flatten/deduplicate
+  @rules_distroless//distroless/tests:flatten/gzip_compression
+  @rules_distroless//distroless/tests:flatten_manifest_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
@@ -52,16 +70,60 @@ fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
   tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
-"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
-  --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
-for target in "${tests[@]}"; do
-  testdir="${target#//}"
-  testdir="${testdir/:/\/}"
-  mkdir -p "$artifacts/tests/$testdir"
-  cp "bazel-testlogs/$testdir/test.xml" "bazel-testlogs/$testdir/test.log" "$artifacts/tests/$testdir/"
-done
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+negative=(
+  @rules_distroless//distroless/tests:flatten_manifest_unknown
+  @rules_distroless//distroless/tests:flatten_manifest_duplicate
+  @rules_distroless//distroless/tests:flatten_manifest_blank
+)
+# Audit the actual configured graph, including imported tests, before executing
+# any action. Importing Debian archives is expected; producing DEBs is not.
+printf '%s\n' "${tests[@]}" "${outputs[@]}" "${negative[@]}" > "$artifacts/targets.txt"
+"${bazel_cmd[@]}" aquery "${flags[@]}" --output=jsonproto \
+  "deps(set(${tests[*]} ${outputs[*]} ${negative[*]}))" > "$artifacts/actions.json"
+python3 - "$artifacts" <<'PYTHON'
+import collections, json, re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+graph = json.loads((root / 'actions.json').read_text())
+fragments = {item['id']: item for item in graph['pathFragments']}
+def path(identifier):
+    node = fragments[identifier]
+    return (path(node['parentId']) + '/' if node.get('parentId') else '') + node['label']
+artifacts = {item['id']: path(item['pathFragmentId']) for item in graph['artifacts']}
+actions = graph['actions']
+assert actions, 'empty action graph'
+outputs = [artifacts[i] for action in actions for i in action.get('outputIds', [])]
+forbidden = []
+for action in actions:
+    command = ' '.join(action.get('arguments', []))
+    if (re.search(r'(?:^|[/\s])(?:make|gmake|dpkg-buildpackage)(?:\s|$)', command) or
+        ('dpkg-deb' in command and re.search(r'(?:--build|(?:^|\s)-b(?:\s|$))', command))):
+        forbidden.append(action.get('mnemonic'))
+receipt = dict(action_count=len(actions),
+               mnemonics=dict(collections.Counter(item['mnemonic'] for item in actions)),
+               deb_outputs=[name for name in outputs if name.endswith('.deb')],
+               packaging_wrappers=forbidden)
+(root / 'action-audit.json').write_text(json.dumps(receipt, indent=2) + '\n')
+assert not receipt['deb_outputs'] and not forbidden, receipt
+PYTHON
+"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
+  --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
+# Include external test labels and their canonical repository paths in artifacts.
+cp -aL bazel-testlogs "$artifacts/testlogs"
+for target in "${negative[@]}"; do
+  name=${target##*:}
+  if "${bazel_cmd[@]}" build "${flags[@]}" "$target" > "$artifacts/$name.log" 2>&1; then
+    echo "Expected manifest rejection: $target" >&2
+    exit 1
+  fi
+  if [[ "$name" == *duplicate ]]; then
+    grep -F 'tar_manifest contains a duplicate tar:' "$artifacts/$name.log"
+  else
+    grep -F 'tar_manifest contains an undeclared tar:' "$artifacts/$name.log"
+  fi
+done
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
