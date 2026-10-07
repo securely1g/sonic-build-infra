@@ -7,9 +7,20 @@ revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
-Local builds and the Bazel and declared-tool workflows resolve dependencies
-through `sonic-bazel-registry/main` and the Bazel Central Registry. CI selects
-these URLs explicitly so user-specific Bazel settings cannot change its registries.
+Local builds default to `sonic-bazel-registry/main` and the Bazel Central
+Registry. While `rules_distroless` 0.9.4.sonic.1 is unmerged, this Draft's Bazel
+and declared-tool workflows select the registry branch
+`codex/distroless-dotted-version` through `SONIC_BAZEL_REGISTRY`. This replaces
+the SONiC endpoint; it does not add a second fallback to the same registry.
+Remove the workflow override after that entry lands. On a native Trixie host,
+use the same temporary endpoint with:
+
+```sh
+SONIC_BAZEL_REGISTRY=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/codex/distroless-dotted-version bash ci/bazel-ci.sh
+```
+
+CI selects its URLs explicitly so user-specific Bazel settings cannot change
+its registries.
 The main branch contains the landed tar.bzl patch. The separate shared-Rust
 workspace uses its unchanged BCR dependencies. The source
 script selects matching execution/target platforms. Module versions, source

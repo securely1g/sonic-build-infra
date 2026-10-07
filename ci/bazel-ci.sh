@@ -19,15 +19,23 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-# The repository intentionally excludes its large generated module lock. Retain
-# the resolved lock with each run. Registry main contains the landed tar patch.
-registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+# Draft CI may select the branch containing an unmerged registry entry.
+# Ordinary builds use main; record the effective endpoint with the module lock.
+registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
 bazel_cmd=(bazel --ignore_all_rc_files)
+# Exercise cold repository setup and lock-change invalidation with queries only.
+# The workflow runs this on both native AMD64 and ARM64 hosts.
+python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
 tests=(
+  //apt:selection_test
+  //apt:inputs_test
+  //apt:dependencies_test
+  //apt/tests/integration:adapter_test
+  //third_party/rules_distroless/tests:protobuf_headers_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
@@ -52,16 +60,52 @@ fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
   tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
-"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
-  --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
-for target in "${tests[@]}"; do
-  testdir="${target#//}"
-  testdir="${testdir/:/\/}"
-  mkdir -p "$artifacts/tests/$testdir"
-  cp "bazel-testlogs/$testdir/test.xml" "bazel-testlogs/$testdir/test.log" "$artifacts/tests/$testdir/"
-done
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+# Audit the actual configured graph, including imported tests, before executing
+# any action. Importing Debian archives is expected; producing DEBs is not.
+printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
+"${bazel_cmd[@]}" aquery "${flags[@]}" --output=jsonproto \
+  "deps(set(${tests[*]} ${outputs[*]}))" > "$artifacts/actions.json"
+apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test)
+apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
+"${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
+  "deps(set(${apt_python_tests[*]}))" > "$artifacts/apt-python313-actions.json"
+python3 - "$artifacts" <<'PYTHON'
+import collections, json, re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+for filename in ('actions.json', 'apt-python313-actions.json'):
+    graph = json.loads((root / filename).read_text())
+    fragments = {item['id']: item for item in graph['pathFragments']}
+    def path(identifier):
+        node = fragments[identifier]
+        return (path(node['parentId']) + '/' if node.get('parentId') else '') + node['label']
+    artifacts = {item['id']: path(item['pathFragmentId']) for item in graph['artifacts']}
+    actions = graph['actions']
+    assert actions, 'empty action graph'
+    outputs = [artifacts[i] for action in actions for i in action.get('outputIds', [])]
+    forbidden = []
+    for action in actions:
+        command = ' '.join(action.get('arguments', []))
+        if (re.search(r'(?:^|[/\s])(?:make|gmake|dpkg-buildpackage)(?:\s|$)', command) or
+            ('dpkg-deb' in command and re.search(r'(?:--build|(?:^|\s)-b(?:\s|$))', command))):
+            forbidden.append(action.get('mnemonic'))
+    receipt = dict(action_count=len(actions),
+                   mnemonics=dict(collections.Counter(item['mnemonic'] for item in actions)),
+                   deb_outputs=[name for name in outputs if name.endswith('.deb')],
+                   packaging_wrappers=forbidden)
+    (root / filename.replace('actions.json', 'action-audit.json')).write_text(json.dumps(receipt, indent=2) + '\n')
+    assert not receipt['deb_outputs'] and not forbidden, receipt
+PYTHON
+"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
+  --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
+# Include external test labels and their canonical repository paths in artifacts.
+cp -aL bazel-testlogs "$artifacts/testlogs"
+# The image consumer runs Python 3.13; retain its separate hub/runfiles proof.
+"${bazel_cmd[@]}" test "${apt_python_flags[@]}" --test_output=errors \
+  --build_event_json_file="$artifacts/apt-python313-tests.bep.json" "${apt_python_tests[@]}"
+cp -aL bazel-testlogs "$artifacts/apt-python313-testlogs"
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
@@ -79,7 +123,7 @@ python3 ci/verify_deploy_archives.py \
   --debug "${output_paths[//tests:hello_deploy_tar.debug_symbols]}" \
   --source-data tests/testdata/file.txt --architecture "$debian_arch" \
   > "$artifacts/deploy-archives.json"
-cp MODULE.bazel MODULE.bazel.lock "$artifacts/"
+cp MODULE.bazel MODULE.bazel.lock python/wheel_requirements_lock.txt "$artifacts/"
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (
     cd tests/shared_api_consumer

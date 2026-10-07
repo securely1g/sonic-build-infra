@@ -1,0 +1,43 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//apt:apt_layer.bzl", "apt_layer")
+load(":base.bzl", "fixture_base")
+
+package(default_visibility = ["//visibility:public"])
+
+config_setting(name = "arm64", constraint_values = ["@platforms//cpu:aarch64"])
+
+py_binary(name = "fixture", srcs = ["fixture.py"])
+genrule(
+    name = "fixture_lock",
+    srcs = ["@build_tools//aspell-en:data", "@build_tools//aspell-en:control"],
+    outs = ["fixture.lock.json"],
+    tools = [":fixture"],
+    cmd = "$(execpath :fixture) $(execpath @build_tools//aspell-en:data) $(execpath @build_tools//aspell-en:control) $@",
+)
+fixture_base(name = "base")
+py_binary(name = "selector", srcs = ["selector.py"], deps = ["//apt:lib"])
+
+[
+    apt_layer(
+        name = variant,
+        packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+        lock = ":fixture_lock",
+        dependency_set = "dictionary",
+        base = ":base",
+        retained_manifest = ":fixture_lock",
+        selector = ":selector",
+        architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+        variant = variant,
+    )
+    for variant in ("added", "retained")
+]
+[
+    filegroup(name = variant + "_receipt", srcs = [":" + variant], output_group = "selection")
+    for variant in ("added", "retained")
+]
+py_test(
+    name = "adapter_test",
+    srcs = ["adapter_test.py"],
+    args = ["$(rootpath " + label + ")" for label in ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt"]],
+    data = ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt"],
+)
