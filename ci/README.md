@@ -42,6 +42,12 @@ workflow retains a plain tar and a runtime/debug pair using omitted timestamps
 as well as the existing deployment samples. It also records the effective
 registry URL and generated module lock for dependency inspection.
 
+AMD64 additionally prepares the declared kernel build runtime and checks its
+archive boundaries, compiler, Python packaging modules and Debian shared-library
+dependency calculation. The runtime check uses `chroot` in the disposable CI
+container and requires its default root, `CAP_SYS_CHROOT` and `CAP_MKNOD` access.
+It compiles a small host program but creates no DEB packages or kernel image.
+
 Each run retains test XML/logs, build events, native host metadata, revision,
 resolved module locks, sample executables, and their runtime/debug deployment
 tars. Successful runs include checksums in `provenance.json`. Download the

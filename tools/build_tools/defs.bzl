@@ -43,6 +43,49 @@ build_tools_runtime = rule(
     },
 )
 
+def _rootfs_impl(ctx):
+    python = ctx.attr._python[PythonRuntimeInfo]
+    output = ctx.actions.declare_directory(ctx.label.name)
+    args = ctx.actions.args()
+    args.add(ctx.file._prepare)
+    args.add("--out", output.path)
+    args.add("--architecture", ctx.attr.architecture)
+    args.add_all(ctx.files.packages, before_each = "--tar")
+    if len(ctx.attr.metadata_data) != len(ctx.attr.metadata_controls):
+        fail("metadata_data and metadata_controls must contain matching package pairs")
+    for data, control in zip(ctx.attr.metadata_data, ctx.attr.metadata_controls):
+        data_files = data[DefaultInfo].files.to_list()
+        control_files = control[DefaultInfo].files.to_list()
+        if len(data_files) != 1 or len(control_files) != 1:
+            fail("Each package metadata entry requires exactly one data and control tar")
+        args.add("--metadata")
+        args.add(data_files[0].path)
+        args.add(control_files[0].path)
+    ctx.actions.run(
+        executable = python.interpreter,
+        arguments = [args],
+        inputs = ctx.files.packages + ctx.files.metadata_data + ctx.files.metadata_controls,
+        tools = depset([python.interpreter, ctx.file._prepare, ctx.file._extract], transitive = [python.files]),
+        outputs = [output],
+        env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
+        mnemonic = "PrepareBuildToolsRootfs",
+        progress_message = "Preparing declared Debian kernel build tools",
+    )
+    return [DefaultInfo(files = depset([output]))]
+
+build_tools_rootfs = rule(
+    implementation = _rootfs_impl,
+    attrs = {
+        "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
+        "packages": attr.label_list(allow_files = True, mandatory = True),
+        "metadata_data": attr.label_list(allow_files = True),
+        "metadata_controls": attr.label_list(allow_files = True),
+        "_prepare": attr.label(default = Label(":prepare_rootfs.py"), allow_single_file = True, cfg = "exec"),
+        "_extract": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
+        "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
+    },
+)
+
 def _runfile(ctx, file):
     if file.short_path.startswith("../"):
         return file.short_path[3:]
