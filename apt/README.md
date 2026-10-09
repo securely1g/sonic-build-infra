@@ -156,6 +156,24 @@ must receive the runtime APT layer's receipt so its additions and requirements
 remain visible. The metadata is a declared build input, not a file installed
 inside the container.
 
+When a child intentionally replaces a package from an inherited tar layer,
+the consumer may pass `retained_replacements={name: previous_control}` to
+`select`. Each entry must match all dependency control fields serialized in the
+inherited receipt (`Package`, `Version`, `Architecture`, `Depends`, `Pre-Depends`,
+`Provides` and `Multi-Arch`),
+must name a declared retained package and must change that record. This cannot
+replace any package in the base's installed dpkg inventory. Other metadata
+conflicts remain errors, and the final dependency and architecture checks still
+apply. The receipt records the old/new controls and retained source hash in
+`replaced_inherited`; the original inherited receipt stays unchanged.
+
+The syncd debug image uses this transition for its Make-built FIPS OpenSSH
+package after verifying the exact source, payload and control hashes, AMD64
+architecture, `+fips` version and unchanged dependency fields. The image owns
+that replacement policy and its payload checks; this helper only performs the
+explicit inventory transition. The option is not permission to replace arbitrary
+files or installed packages, and does not modify dpkg status.
+
 Group names, OCI platform checks, Make manifests and file-safety policies remain
 with the image. The shared helper keeps base/Make package names, avoids duplicate
 names and rejects unintended inherited ELF changes. Importing archive files

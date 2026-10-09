@@ -68,14 +68,15 @@ class SelectionTest(unittest.TestCase):
         self.inventories[payload] = inventory
         return key
 
-    def select(self, base_package_metadata=None):
+    def select(self, base_package_metadata=None, *, retained_replacements=None):
         lock_path, mapping_path = self.root / "lock.json", self.root / "mapping.json"
         lock_path.write_text(json.dumps(self.content))
         mapping_path.write_text(json.dumps(self.mapping))
         return subject.select(lock_path, mapping_path, group="routing", architecture="arm64",
                               installed=self.installed, base_files=self.base,
                               retained_packages=self.retained, inspect_payload=self.inspect,
-                              check_overlay=self.overlay, base_package_metadata=base_package_metadata)
+                              check_overlay=self.overlay, base_package_metadata=base_package_metadata,
+                              retained_replacements=retained_replacements)
 
     def test_base_and_explicitly_retained_packages_keep_their_existing_content(self):
         paths, receipt = self.select()
@@ -218,6 +219,80 @@ class SelectionTest(unittest.TestCase):
             "Package": "libssl", "Version": "99.0", "Architecture": "arm64"}}
         with self.assertRaisesRegex(ValueError, "conflicts with inherited package: libssl"):
             self.select()
+
+    def prepare_inherited_replacement(self):
+        _, receipt = self.select()
+        metadata = self.root / "runtime.selection.json"
+        metadata.write_text(json.dumps(receipt))
+        expected = receipt["dependency_check"]["packages"]["router"]
+        self.retained["router"] = {"source_sha256": "b" * 64,
+                                   "control": {**expected, "Version": "1.0+fips"}}
+        return metadata, expected
+
+    def test_explicit_replacement_updates_only_the_inherited_inventory(self):
+        metadata, expected = self.prepare_inherited_replacement()
+        original = metadata.read_bytes()
+        self.add_package("debug-tool", {"usr/bin/debug-tool": self.elf})
+        self.update_control("debug-tool", "Package: debug-tool\nVersion: 1.0\nArchitecture: arm64\n"
+                            "Depends: router (>= 1.0+fips)\n")
+        paths, receipt = self.select(metadata, retained_replacements={"router": expected})
+        self.assertEqual(paths, [self.paths["debug-tool"]])
+        self.assertEqual(metadata.read_bytes(), original)
+        self.assertEqual(receipt["dependency_check"]["packages"]["router"]["Version"], "1.0+fips")
+        self.assertEqual(receipt["dependency_check"]["packages"]["libssl"]["Version"], "3.5.7+fips")
+        self.assertEqual(receipt["replaced_inherited"], [{
+            "package": "router", "before": expected,
+            "after": {**expected, "Version": "1.0+fips"}, "source_sha256": "b" * 64}])
+
+    def test_inherited_replacement_is_not_implicit(self):
+        metadata, _ = self.prepare_inherited_replacement()
+        with self.assertRaisesRegex(ValueError, "conflicts with inherited package: router"):
+            self.select(metadata)
+
+    def test_replacement_cannot_change_installed_dpkg_metadata(self):
+        metadata, _ = self.prepare_inherited_replacement()
+        expected = dependencies.control_fields(self.installed["libssl"])
+        self.retained["libssl"] = {"source_sha256": "c" * 64,
+                                   "control": {**expected, "Version": "99.0"}}
+        with self.assertRaisesRegex(ValueError, "cannot change an installed package: libssl"):
+            self.select(metadata, retained_replacements={"libssl": expected})
+
+    def test_replacement_requires_exact_inherited_control_fields(self):
+        metadata, expected = self.prepare_inherited_replacement()
+        for invalid in ({**expected, "Version": "0.9"}, {**expected, "Depends": "libssl"}, [], None):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "does not match inherited control metadata"):
+                    self.select(metadata, retained_replacements={"router": invalid})
+
+    def test_replacement_requires_both_inherited_and_retained_package(self):
+        metadata, expected = self.prepare_inherited_replacement()
+        with self.assertRaisesRegex(ValueError, "lacks an inherited package: router"):
+            self.select(retained_replacements={"router": expected})
+        del self.retained["router"]
+        with self.assertRaisesRegex(ValueError, "not a retained package: router"):
+            self.select(metadata, retained_replacements={"router": expected})
+        self.retained["new-package"] = {"source_sha256": "c" * 64,
+                                       "control": {**expected, "Package": "new-package"}}
+        with self.assertRaisesRegex(ValueError, "lacks an inherited package: new-package"):
+            self.select(metadata, retained_replacements={"new-package": expected})
+
+    def test_replacement_rejects_redundant_or_malformed_requests(self):
+        metadata, expected = self.prepare_inherited_replacement()
+        self.retained["router"]["control"] = expected
+        with self.assertRaisesRegex(ValueError, "does not change inherited metadata"):
+            self.select(metadata, retained_replacements={"router": expected})
+        for invalid in ([], "router"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "must be a control mapping"):
+                    self.select(metadata, retained_replacements=invalid)
+
+    def test_replacement_still_validates_dependencies_and_architecture(self):
+        metadata, expected = self.prepare_inherited_replacement()
+        for field, value in (("Depends", "missing-runtime"), ("Architecture", "amd64")):
+            with self.subTest(field=field):
+                self.retained["router"]["control"] = {**expected, "Version": "1.0+fips", field: value}
+                with self.assertRaises(ValueError):
+                    self.select(metadata, retained_replacements={"router": expected})
 
     def test_identical_sources_are_deduplicated_before_inspection(self):
         kept = self.paths["router"]

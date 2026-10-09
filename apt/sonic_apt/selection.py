@@ -73,7 +73,8 @@ def package_control(path, *, identity):
 
 
 def select(lock_path, mapping_path, *, group, architecture, installed, base_files,
-           retained_packages, inspect_payload, check_overlay, base_package_metadata=None):
+           retained_packages, inspect_payload, check_overlay, base_package_metadata=None,
+           retained_replacements=None):
     """Select verified payloads using the consumer's existing file inventory reader.
 
     Inventories map relative paths to kind/mode/uid/gid/hash/link/ELF metadata.
@@ -84,6 +85,10 @@ def select(lock_path, mapping_path, *, group, architecture, installed, base_file
     under "control"; names and hashes alone cannot establish compatibility.
     base_package_metadata optionally carries the validated package inventory of
     an inherited APT layer whose additions are absent from the dpkg database.
+    retained_replacements maps explicitly replaced inherited package names to
+    their exact previous control fields. The consumer must verify the replacement
+    payload and its policy before requesting this inventory transition. Installed
+    dpkg packages cannot be replaced through this option.
     """
     lock = json.loads(lock_path.read_bytes())
     mapping = json.loads(mapping_path.read_bytes())
@@ -137,14 +142,30 @@ def select(lock_path, mapping_path, *, group, architecture, installed, base_file
         require(all(dependencies.control_fields(final_packages[name]) == control
                     for name, control in installed_fields.items()),
                 "base package metadata changes an installed package control record")
+    replacements = {} if retained_replacements is None else retained_replacements
+    require(isinstance(replacements, dict), "retained replacements must be a control mapping")
+    for name, expected_control in replacements.items():
+        require(name in retained_packages, "replacement is not a retained package: " + str(name))
+        require(name not in installed, "replacement cannot change an installed package: " + name)
+        require(base_package_metadata is not None and name in final_packages,
+                "replacement lacks an inherited package: " + name)
+        require(isinstance(expected_control, dict) and
+                expected_control == dependencies.control_fields(final_packages[name]),
+                "replacement does not match inherited control metadata: " + name)
+    replaced_inherited = []
     for name, retained in retained_packages.items():
         require(isinstance(retained, dict) and isinstance(retained.get("control"), dict),
                 "retained package lacks Debian control metadata: " + name)
         record = dependencies.package_from_fields(retained["control"], origin="Make retained " + name)
         require(record.name == name, "retained package name differs from control metadata: " + name)
-        require(name not in final_packages or dependencies.control_fields(record) ==
-                dependencies.control_fields(final_packages[name]),
-                "retained package metadata conflicts with inherited package: " + name)
+        control = dependencies.control_fields(record)
+        if name in replacements:
+            require(control != replacements[name], "replacement does not change inherited metadata: " + name)
+            replaced_inherited.append({"package": name, "before": replacements[name],
+                                       "after": control, "source_sha256": retained["source_sha256"]})
+        else:
+            require(name not in final_packages or control == dependencies.control_fields(final_packages[name]),
+                    "retained package metadata conflicts with inherited package: " + name)
         final_packages[name] = record
     base_package_count = len(final_packages)
     base_elfs = {name: item for name, item in base_files.items() if "elf_machine" in item}
@@ -197,6 +218,7 @@ def select(lock_path, mapping_path, *, group, architecture, installed, base_file
         "selected": [{key: value for key, value in item.items() if key != "path"} for item in selected],
         "skipped_base": skipped_base, "skipped_retained": skipped_retained,
         "duplicate_sources": duplicates,
+        "replaced_inherited": sorted(replaced_inherited, key=lambda item: item["package"]),
         "changed_non_elf_base_paths": sorted(overlaps, key=lambda item: (item["path"], item["package"])),
     }
     return [item["path"] for item in selected], receipt
