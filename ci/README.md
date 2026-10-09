@@ -7,9 +7,17 @@ revision, so the checks exercise the current PR with its target branch.
 
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
-Local builds and the Bazel and declared-tool workflows resolve dependencies
-through `sonic-bazel-registry/main` and the Bazel Central Registry. CI selects
-these URLs explicitly so user-specific Bazel settings cannot change its registries.
+Local builds default to `sonic-bazel-registry/main` and the Bazel Central
+Registry. The Bazel and declared-tool workflows use that same maintained
+endpoint, which contains `rules_distroless` 0.9.4.sonic.1. On a native Trixie
+host, reproduce the source checks with:
+
+```sh
+bash ci/bazel-ci.sh
+```
+
+CI selects its URLs explicitly so user-specific Bazel settings cannot change
+its registries.
 The main branch contains the landed tar.bzl patch. The separate shared-Rust
 workspace uses its unchanged BCR dependencies. The source
 script selects matching execution/target platforms. Module versions, source

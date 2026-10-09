@@ -1,0 +1,15 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load(":headers_only.bzl", "headers_only")
+
+# Verify the existing registry Protobuf include-fragment fix.
+# This imports an existing pinned package without producing a DEB.
+headers_only(
+    name = "protobuf_headers",
+    dep = "@build_tools//libprotobuf-dev:libprotobuf",
+)
+
+cc_test(
+    name = "protobuf_headers_test",
+    srcs = ["protobuf_headers_test.cc"],
+    deps = [":protobuf_headers"],
+)
