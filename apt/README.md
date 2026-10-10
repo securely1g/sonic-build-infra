@@ -138,6 +138,15 @@ already inherited package of the same name.
 The command receives `--base`, `--lock`, `--retained-manifest`, `--mapping`,
 `--variant`, `--out-dir` and `--receipt`.
 
+An image can use one shared selector executable and supply its declarative
+configuration with `policy = ":apt_policy.json"`. The rule declares that JSON
+file as an action input and passes it with `--policy`; the selector owns its
+schema and validation. `retained_manifest` may be omitted for policies that
+retain no Make-produced packages. When both are supplied, the action passes
+both files separately, allowing static policy to validate a generated Make
+manifest. At least one of `policy` or `retained_manifest` is required. Existing
+manifest-only callers keep the same selector arguments and archive outputs.
+
 The adapter copies selected archives intact into one declared output directory.
 Numeric filenames preserve their order; a valid empty archive handles an empty
 selection. Bazel expands this directory for ordinary `flatten(tars=[...])`,
