@@ -1,2 +1,90 @@
 # Rules for assembling OCI images, specifically for SONiC.
 # For instance, we have special utilities to assemble debug images easily.
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load(":imported_debug_symbols_layer.bzl", "imported_debug_symbols_layer")
+load(":tests/layout_fixture.bzl", "layout_fixture")
+
+py_library(
+    name = "lib",
+    srcs = glob(["sonic_oci/*.py"]),
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "imported_symbols",
+    srcs = ["sonic_oci/imported_symbols.py"],
+    main = "sonic_oci/imported_symbols.py",
+    deps = [":lib"],
+)
+
+py_test(
+    name = "imported_symbols_test",
+    srcs = ["tests/imported_symbols_test.py"],
+    deps = [":lib"],
+)
+
+py_binary(
+    name = "layout_fixture",
+    testonly = True,
+    srcs = ["tests/layout_fixture.py", "tests/imported_symbols_test.py"],
+    main = "tests/layout_fixture.py",
+    imports = ["tests"],
+    deps = [":lib"],
+)
+
+layout_fixture(
+    name = "native_runtime",
+    testonly = True,
+    tar = "//tests:timestamp_deploy_tar",
+    architecture = select({
+        "@platforms//cpu:aarch64": "arm64",
+        "//conditions:default": "amd64",
+    }),
+)
+
+imported_debug_symbols_layer(
+    name = "native_matched_symbols",
+    testonly = True,
+    runtime = ":native_runtime",
+    tars = ["//tests:timestamp_deploy_tar.debug_symbols"],
+    expected_platform = select({
+        "@platforms//cpu:aarch64": "linux/arm64",
+        "//conditions:default": "linux/amd64",
+    }),
+    required_paths = ["usr/bin/hello"],
+)
+
+filegroup(
+    name = "native_matched_receipt",
+    testonly = True,
+    srcs = [":native_matched_symbols"],
+    output_group = "receipt",
+)
+
+py_test(
+    name = "native_symbols_test",
+    srcs = [
+        "tests/imported_symbols_test.py",
+        "tests/native_symbols_test.py",
+    ],
+    main = "tests/native_symbols_test.py",
+    imports = ["tests"],
+    args = [
+        "$(location //tests:timestamp_deploy_tar)",
+        "$(location //tests:timestamp_deploy_tar.debug_symbols)",
+        "$(location :native_matched_symbols)",
+        "$(location :native_matched_receipt)",
+    ] + select({
+        "@platforms//cpu:aarch64": ["arm64"],
+        "//conditions:default": ["amd64"],
+    }),
+    data = [
+        ":native_matched_symbols",
+        ":native_matched_receipt",
+        "//tests:timestamp_deploy_tar",
+        "//tests:timestamp_deploy_tar.debug_symbols",
+    ],
+    deps = [":lib"],
+)
