@@ -17,27 +17,64 @@ genrule(
 fixture_base(name = "base")
 py_binary(name = "selector", srcs = ["selector.py"], deps = ["//apt:lib"])
 
-[
-    apt_layer(
-        name = variant,
-        packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
-        lock = ":fixture_lock",
-        dependency_set = "dictionary",
-        base = ":base",
-        retained_manifest = ":fixture_lock",
-        selector = ":selector",
-        architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
-        variant = variant,
-    )
-    for variant in ("added", "retained")
-]
+# Exercise the original positional signature as well as keyword callers.
+apt_layer(
+    "added",
+    {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+    ":fixture_lock",
+    "dictionary",
+    ":base",
+    ":fixture_lock",
+    ":selector",
+    "added",
+    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+)
+
+apt_layer(
+    name = "retained",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+    lock = ":fixture_lock",
+    dependency_set = "dictionary",
+    base = ":base",
+    retained_manifest = ":fixture_lock",
+    selector = ":selector",
+    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+    variant = "retained",
+)
+
+# Policy-only selectors need no generated Make manifest. Selectors that retain
+# Make packages receive both independent JSON inputs in the sandbox.
+apt_layer(
+    name = "policy_only",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+    lock = ":fixture_lock",
+    dependency_set = "dictionary",
+    base = ":base",
+    selector = ":selector",
+    policy = "policy_only.json",
+    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+    variant = "added",
+)
+
+apt_layer(
+    name = "policy_and_manifest",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+    lock = ":fixture_lock",
+    dependency_set = "dictionary",
+    base = ":base",
+    retained_manifest = ":fixture_lock",
+    selector = ":selector",
+    policy = "policy_and_manifest.json",
+    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+    variant = "retained",
+)
 [
     filegroup(name = variant + "_receipt", srcs = [":" + variant], output_group = "selection")
-    for variant in ("added", "retained")
+    for variant in ("added", "retained", "policy_only", "policy_and_manifest")
 ]
 py_test(
     name = "adapter_test",
     srcs = ["adapter_test.py"],
-    args = ["$(rootpath " + label + ")" for label in ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt"]],
-    data = ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt"],
+    args = ["$(rootpath " + label + ")" for label in ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt", ":policy_only", ":policy_only_receipt", ":policy_and_manifest", ":policy_and_manifest_receipt"]],
+    data = ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt", ":policy_only", ":policy_only_receipt", ":policy_and_manifest", ":policy_and_manifest_receipt"],
 )
