@@ -1,0 +1,28 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("//deb:deb_import.bzl", "deb_import")
+
+exports_files(glob(["fixtures/*.deb", "fixtures/sha256.json"]))
+
+py_test(
+    name = "import_debs_test",
+    srcs = ["import_debs_test.py"],
+    data = glob(["fixtures/*.deb", "fixtures/sha256.json"]),
+    deps = ["//deb:import_debs_lib"],
+)
+
+deb_import(
+    name = "example_import",
+    srcs = ["fixtures/example-gz_1.0-1_all.deb"],
+    architecture = "amd64",
+    metadata = {"image": "example-image"},
+)
+
+filegroup(name = "manifest", srcs = [":example_import"], output_group = "manifest")
+filegroup(name = "controls", srcs = [":example_import"], output_group = "controls")
+
+py_test(
+    name = "import_rule_test",
+    srcs = ["import_rule_test.py"],
+    args = ["$(rootpath " + label + ")" for label in [":example_import", ":manifest", ":controls"]],
+    data = [":example_import", ":manifest", ":controls"],
+)
