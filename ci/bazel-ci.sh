@@ -36,6 +36,8 @@ tests=(
   //apt/tests/integration:adapter_test
   //deb/tests:import_debs_test
   //deb/tests:import_rule_test
+  //oci:imported_symbols_test
+  //oci:native_symbols_test
   //third_party/rules_distroless/tests:protobuf_headers_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
