@@ -1,0 +1,93 @@
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_python//python:defs.bzl", "py_test")
+load("@sonic-build-infra//deb:deb_import.bzl", "deb_import")
+
+ARCHITECTURE = select({
+    "@platforms//cpu:x86_64": "amd64",
+    "@platforms//cpu:aarch64": "arm64",
+})
+
+# These are checked-in sample DEBs, never outputs of package-producing actions.
+# Every package overlays the same filenames with distinct content.
+BASE_DEBS = ["@sonic-build-infra//deb/tests:fixtures/example-gz_1.0-1_all.deb"]
+OVERLAY_DEBS = [
+    # do not sort: the last package's file must be visible in the final image.
+    "@sonic-build-infra//deb/tests:fixtures/example-xz_1.0-1_all.deb",
+    "@sonic-build-infra//deb/tests:fixtures/example-bz2_1.0-1_all.deb",
+    "@sonic-build-infra//deb/tests:fixtures/example-raw_1.0-1_all.deb",
+]
+
+deb_import(
+    name = "base_packages",
+    srcs = BASE_DEBS,
+    architecture = ARCHITECTURE,
+)
+
+deb_import(
+    name = "overlay_packages",
+    srcs = OVERLAY_DEBS,
+    architecture = ARCHITECTURE,
+)
+
+# Independent importer actions must emit the same bytes for the same inputs.
+deb_import(
+    name = "base_packages_repeat",
+    srcs = BASE_DEBS,
+    architecture = ARCHITECTURE,
+)
+
+deb_import(
+    name = "overlay_packages_repeat",
+    srcs = OVERLAY_DEBS,
+    architecture = ARCHITECTURE,
+)
+
+filegroup(
+    name = "base_manifest",
+    srcs = [":base_packages"],
+    output_group = "manifest",
+)
+
+filegroup(
+    name = "overlay_manifest",
+    srcs = [":overlay_packages"],
+    output_group = "manifest",
+)
+
+oci_image(
+    name = "image",
+    architecture = ARCHITECTURE,
+    os = "linux",
+    tars = [":base_packages", ":overlay_packages"],
+)
+
+# rules_oci records layer-owner labels in history. Keep those inputs identical
+# while checking that a second image action emits the identical OCI layout.
+oci_image(
+    name = "image_repeat",
+    architecture = ARCHITECTURE,
+    os = "linux",
+    tars = [":base_packages", ":overlay_packages"],
+)
+
+TEST_INPUTS = [
+    ":image",
+    ":image_repeat",
+    ":base_packages",
+    ":base_packages_repeat",
+    ":overlay_packages",
+    ":overlay_packages_repeat",
+    ":base_manifest",
+    ":overlay_manifest",
+    "@sonic-build-infra//deb/tests:fixtures/sha256.json",
+]
+
+py_test(
+    name = "oci_consumer_test",
+    srcs = ["oci_consumer_test.py"],
+    args = ["$(rootpath " + target + ")" for target in TEST_INPUTS] + select({
+        "@platforms//cpu:x86_64": ["amd64"],
+        "@platforms//cpu:aarch64": ["arm64"],
+    }),
+    data = TEST_INPUTS,
+)

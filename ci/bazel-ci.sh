@@ -34,6 +34,8 @@ tests=(
   //apt:inputs_test
   //apt:dependencies_test
   //apt/tests/integration:adapter_test
+  //deb/tests:import_debs_test
+  //deb/tests:import_rule_test
   //third_party/rules_distroless/tests:protobuf_headers_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
@@ -70,11 +72,18 @@ apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test
 apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
 "${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
   "deps(set(${apt_python_tests[*]}))" > "$artifacts/apt-python313-actions.json"
+(
+  cd tests/deb_oci_consumer
+  "${bazel_cmd[@]}" aquery "${resolution[@]}" --jobs=4 \
+    --platforms="@sonic-build-infra//platforms:${cpu}_trixie" \
+    --host_platform="@sonic-build-infra//platforms:${cpu}_trixie" \
+    --output=jsonproto 'deps(//:oci_consumer_test)' > "$artifacts/deb-oci-actions.json"
+)
 python3 - "$artifacts" <<'PYTHON'
 import collections, json, re, sys
 from pathlib import Path
 root = Path(sys.argv[1])
-for filename in ('actions.json', 'apt-python313-actions.json'):
+for filename in ('actions.json', 'apt-python313-actions.json', 'deb-oci-actions.json'):
     graph = json.loads((root / filename).read_text())
     fragments = {item['id']: item for item in graph['pathFragments']}
     def path(identifier):
@@ -123,6 +132,17 @@ python3 ci/verify_deploy_archives.py \
   --source-data tests/testdata/file.txt --architecture "$debian_arch" \
   > "$artifacts/deploy-archives.json"
 cp MODULE.bazel MODULE.bazel.lock python/wheel_requirements_lock.txt "$artifacts/"
+(
+  cd tests/deb_oci_consumer
+  "${bazel_cmd[@]}" test "${resolution[@]}" --jobs=4 --test_output=errors \
+    --platforms="@sonic-build-infra//platforms:${cpu}_trixie" \
+    --host_platform="@sonic-build-infra//platforms:${cpu}_trixie" \
+    --build_event_json_file="$artifacts/deb-oci-tests.bep.json" //:oci_consumer_test
+  cp MODULE.bazel.lock "$artifacts/deb-oci.MODULE.bazel.lock"
+  mkdir -p "$artifacts/tests/deb-oci"
+  cp bazel-testlogs/oci_consumer_test/test.xml bazel-testlogs/oci_consumer_test/test.log \
+    "$artifacts/tests/deb-oci/"
+)
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (
     cd tests/shared_api_consumer

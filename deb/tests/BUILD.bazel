@@ -1,0 +1,76 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("//deb:deb_import.bzl", "deb_import")
+load(":toolchain.bzl", "test_bsdtar")
+
+exports_files(glob(["fixtures/*.deb", "fixtures/*sha256.json"]))
+
+test_bsdtar(name = "test_bsdtar", testonly = True)
+
+py_test(
+    name = "import_debs_test",
+    srcs = ["import_debs_test.py"],
+    args = ["--bsdtar", "$(rootpath :test_bsdtar)"],
+    data = glob(["fixtures/*.deb", "fixtures/*sha256.json"]) + [":test_bsdtar"],
+    deps = ["//deb:import_debs_lib"],
+)
+
+deb_import(
+    name = "example_import",
+    srcs = ["fixtures/example-gz_1.0-1_all.deb"],
+    architecture = "amd64",
+    metadata = {"image": "example-image"},
+)
+
+filegroup(name = "manifest", srcs = [":example_import"], output_group = "manifest")
+filegroup(name = "controls", srcs = [":example_import"], output_group = "controls")
+
+py_test(
+    name = "import_rule_test",
+    srcs = ["import_rule_test.py"],
+    args = ["$(rootpath " + label + ")" for label in [
+        ":example_import", ":manifest", ":controls",
+        ":example_import_repeated", ":repeated_manifest", ":repeated_controls",
+        ":example_overlay", ":overlay_manifest", ":debug_manifest",
+    ]],
+    data = [
+        ":example_import", ":manifest", ":controls",
+        ":example_import_repeated", ":repeated_manifest", ":repeated_controls",
+        ":example_overlay", ":overlay_manifest", ":debug_manifest",
+    ],
+)
+
+# Independent actions must produce identical bytes from the same existing DEB.
+deb_import(
+    name = "example_import_repeated",
+    srcs = ["fixtures/example-gz_1.0-1_all.deb"],
+    architecture = "amd64",
+    metadata = {"image": "example-image"},
+)
+
+filegroup(name = "repeated_manifest", srcs = [":example_import_repeated"], output_group = "manifest")
+filegroup(name = "repeated_controls", srcs = [":example_import_repeated"], output_group = "controls")
+
+deb_import(
+    name = "example_overlay",
+    srcs = [
+        "fixtures/example-gz_1.0-1_all.deb",
+        "fixtures/example-xz_1.0-1_all.deb",
+    ],
+    architecture = "amd64",
+    metadata = {"image": "example-image"},
+)
+
+filegroup(name = "overlay_manifest", srcs = [":example_overlay"], output_group = "manifest")
+
+deb_import(
+    name = "example_debug",
+    srcs = [
+        "fixtures/example-gz_1.0-1_all.deb",
+        "fixtures/example-xz_1.0-1_all.deb",
+    ],
+    architecture = "amd64",
+    metadata = {"image": "example-image-debug"},
+    runtime_manifest = ":manifest",
+)
+
+filegroup(name = "debug_manifest", srcs = [":example_debug"], output_group = "manifest")

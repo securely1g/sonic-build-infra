@@ -1,0 +1,22 @@
+{
+  "example-bz2_1.0-1_all.deb": {
+    "control_sha256": "2f55cfc8e2c89bec3f98851b43594ad5bdc13d3e456e639613fb7a2e36d437a8",
+    "payload_sha256": "eb2ffaaec40b643b344888181200bb34bf415632be04cadd70f67bc6cfe1c7f4"
+  },
+  "example-foreign_1.0-1_arm64.deb": {
+    "control_sha256": "447154f1d609ffa338deec6f33ae63a745617c36f5adfef0e21ab068ad1948be",
+    "payload_sha256": "3a6238f01befad9c735f550da4917b53be3f3341575290d5e61f85c90bd12535"
+  },
+  "example-gz_1.0-1_all.deb": {
+    "control_sha256": "2ddb8dd20164c5c2b9af866916939dcd8a1f2efb3bad72752a51ef23bdc9b74c",
+    "payload_sha256": "379c4e965da0ae351e3ed5ed847a7097e44d4ab1a92bcdb88c4fb122f7c41482"
+  },
+  "example-raw_1.0-1_all.deb": {
+    "control_sha256": "ed97c396dfa0e58f3c734337893183c04c255ced7550d13a57bbb423409808f6",
+    "payload_sha256": "4178ee18d9a3531bd1c4b6b291dcbd8932ac35aaa295ed68867d71b7fdc4b693"
+  },
+  "example-xz_1.0-1_all.deb": {
+    "control_sha256": "8267883c8cb9fe3cdebf8e95fda2be7d90f428db64edd1499eb6bdee6e8192b2",
+    "payload_sha256": "d8e364ff3331f22819966b3be5ec70448d8628ddf5a514d171debc50b7d802e6"
+  }
+}

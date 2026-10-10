@@ -1,0 +1,17 @@
+module(name = "deb_oci_consumer_test", version = "0.0.0")
+
+# The fixture tests this checkout as an external consumer would use it.
+bazel_dep(name = "sonic-build-infra", version = "0.0.15")
+local_path_override(module_name = "sonic-build-infra", path = "../..")
+
+# Match the maintained sonic-buildimage consumer rather than a moving release.
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+
+# Root-module overrides do not propagate through local_path_override.
+single_version_override(module_name = "tar.bzl", version = "0.10.5-sonic.1")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.defaults(python_version = "3.11")
+python.toolchain(python_version = "3.11")
