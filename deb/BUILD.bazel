@@ -2,6 +2,20 @@
 # See sonic_deb.bzl for the public `sonic_deb` macro.
 
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+
+py_binary(
+    name = "import_debs",
+    srcs = ["import_debs.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "import_debs_lib",
+    srcs = ["import_debs.py"],
+    imports = ["."],
+    visibility = ["//deb/tests:__pkg__"],
+)
 
 py_binary(
     name = "md5sums_from_tar",
