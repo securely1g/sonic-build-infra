@@ -9,6 +9,8 @@ def _one_file(target):
     return files[0]
 
 def _apt_selection_impl(ctx):
+    if not ctx.file.retained_manifest and not ctx.file.policy:
+        fail("apt_layer requires retained_manifest or policy")
     if not ctx.file.base.is_directory:
         fail("apt_layer base must be one OCI directory")
     payloads = [_one_file(target) for target in ctx.attr.data]
@@ -31,7 +33,13 @@ def _apt_selection_impl(ctx):
     args = ctx.actions.args()
     args.add("--base", ctx.file.base.path)
     args.add("--lock", ctx.file.lock)
-    args.add("--retained-manifest", ctx.file.retained_manifest)
+    policy_inputs = []
+    if ctx.file.retained_manifest:
+        args.add("--retained-manifest", ctx.file.retained_manifest)
+        policy_inputs.append(ctx.file.retained_manifest)
+    if ctx.file.policy:
+        args.add("--policy", ctx.file.policy)
+        policy_inputs.append(ctx.file.policy)
     args.add("--mapping", mapping)
     args.add("--variant", ctx.attr.variant)
     args.add("--out-dir", selected.path)
@@ -43,7 +51,7 @@ def _apt_selection_impl(ctx):
     ctx.actions.run(
         executable = ctx.attr.selector[DefaultInfo].files_to_run,
         arguments = [args],
-        inputs = depset([ctx.file.base, ctx.file.lock, ctx.file.retained_manifest, mapping] + payloads + controls + inherited_metadata),
+        inputs = depset([ctx.file.base, ctx.file.lock, mapping] + policy_inputs + payloads + controls + inherited_metadata),
         outputs = [selected, receipt],
         mnemonic = "SelectAptPayloads",
         progress_message = "Selecting %s APT additions for the SONiC base image" % ctx.attr.variant,
@@ -61,7 +69,8 @@ _apt_selection = rule(
         "dependency_set": attr.string(mandatory = True),
         "lock": attr.label(allow_single_file = [".json"], mandatory = True),
         "package_keys": attr.string_list(),
-        "retained_manifest": attr.label(allow_single_file = [".json"], mandatory = True),
+        "policy": attr.label(allow_single_file = [".json"]),
+        "retained_manifest": attr.label(allow_single_file = [".json"]),
         "selector": attr.label(mandatory = True, executable = True, cfg = "exec"),
         "variant": attr.string(mandatory = True),
     },
@@ -78,7 +87,7 @@ _selected_layer = rule(
     attrs = {"layer": attr.label(), "selection": attr.label()},
 )
 
-def apt_layer(name, packages, lock, dependency_set, base, retained_manifest, selector, variant, architecture = "amd64", base_package_metadata = None, **kwargs):
+def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = None, selector = None, variant = None, architecture = "amd64", base_package_metadata = None, policy = None, **kwargs):
     """Select from all reviewed candidates and flatten their unchanged archives.
 
     packages maps lock keys to public package labels, e.g. @image_apt//tcpdump.
@@ -86,7 +95,13 @@ def apt_layer(name, packages, lock, dependency_set, base, retained_manifest, sel
     Selection remains automatic and happens against the actual base image.
     Pass the parent layer's selection receipt as base_package_metadata when its
     APT additions are inherited without being written to the dpkg database.
+    policy is optional selector-owned JSON, declared and passed as --policy.
+    Supply retained_manifest, policy, or both; only provided inputs are passed.
     """
+    if selector == None:
+        fail("apt_layer requires selector")
+    if variant == None:
+        fail("apt_layer requires variant")
     keys = sorted(packages)
     _apt_selection(
         name = name + "_selection",
@@ -98,6 +113,7 @@ def apt_layer(name, packages, lock, dependency_set, base, retained_manifest, sel
         dependency_set = dependency_set,
         lock = lock,
         package_keys = keys,
+        policy = policy,
         retained_manifest = retained_manifest,
         selector = selector,
         variant = variant,
