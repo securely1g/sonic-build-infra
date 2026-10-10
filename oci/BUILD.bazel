@@ -2,6 +2,8 @@
 # For instance, we have special utilities to assemble debug images easily.
 
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load(":normalize_layer.bzl", "normalize_layer")
+load(":tests/normalization_fixture.bzl", "normalization_fixture")
 load(":imported_debug_symbols_layer.bzl", "imported_debug_symbols_layer")
 load(":tests/layout_fixture.bzl", "layout_fixture")
 
@@ -87,4 +89,42 @@ py_test(
         "//tests:timestamp_deploy_tar.debug_symbols",
     ],
     deps = [":lib"],
+)
+
+py_binary(
+    name = "normalize_layer_tool",
+    srcs = ["sonic_oci/normalize_layer.py"],
+    main = "sonic_oci/normalize_layer.py",
+    deps = [":lib"],
+)
+
+py_test(
+    name = "normalize_layer_test",
+    srcs = ["tests/normalize_layer_test.py", "tests/imported_symbols_test.py"],
+    main = "tests/normalize_layer_test.py",
+    imports = ["tests"],
+    deps = [":lib"],
+)
+
+py_binary(
+    name = "normalization_fixture_tool",
+    srcs = ["tests/normalize_layer_test.py", "tests/imported_symbols_test.py"],
+    main = "tests/normalize_layer_test.py",
+    imports = ["tests"],
+    deps = [":lib"],
+)
+normalization_fixture(name = "normalization_base")
+filegroup(name = "normalization_payload", srcs = [":normalization_base"], output_group = "payload")
+normalize_layer(
+    name = "normalized_fixture",
+    src = ":normalization_payload",
+    base = ":normalization_base",
+    expected_platform = "linux/amd64",
+)
+filegroup(name = "normalization_receipt", srcs = [":normalized_fixture"], output_group = "normalization")
+py_test(
+    name = "normalize_layer_rule_test",
+    srcs = ["tests/normalize_layer_rule_test.py"],
+    args = ["$(rootpath :normalized_fixture)", "$(rootpath :normalization_receipt)"],
+    data = [":normalized_fixture", ":normalization_receipt"],
 )
