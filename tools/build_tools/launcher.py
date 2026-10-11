@@ -10,8 +10,12 @@ def main():
     tool, directory, *arguments = sys.argv[1:]
     root = Path(directory).resolve()
     manifest = json.loads((root / "toolchain.json").read_text())
-    if manifest.get("format_version") != 1 or tool not in ("aspell", "doxygen"):
+    if manifest.get("format_version") != 1 or tool not in manifest["tools"]:
         raise SystemExit("unsupported build-tool runtime")
+    if manifest.get("profile") == "configure":
+        executable = str(root / "bin" / tool)
+        environment = {key: value for key, value in os.environ.items() if not key.startswith("LD_")}
+        os.execve(executable, [executable] + arguments, environment)
     loader = str(root / manifest["loader"])
     libraries = os.pathsep.join(str(root / entry) for entry in manifest["library_directories"])
     command = [loader, "--library-path", libraries, str(root / manifest["tools"][tool])]

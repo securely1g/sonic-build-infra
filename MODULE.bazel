@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.15",
+    version = "0.0.16",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -10,6 +10,7 @@ module(
 
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
 bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
@@ -122,6 +123,13 @@ apt.install(
         "aspell",
         "aspell-en",
         "doxygen",
+        "autoconf",
+        "grep",
+        "bison",
+        "flex",
+        "m4",
+        "pkgconf",
+        "perl",
         "libprotobuf-dev",
         "protobuf-compiler",
     ],
@@ -299,3 +307,27 @@ use_repo(wheel_pip, "sonic_wheel_pip")
     for version in ["3.11", "3.13"]
 ]
 use_repo(wheel_pip, "sonic_apt_pip")
+
+# Declared execution tools for upstream configure/Make source builds.
+register_toolchains(
+    "//tools/build_tools:make_toolchain",
+    "//tools/build_tools:m4_toolchain",
+    "//tools/build_tools:pkgconfig_toolchain",
+    "//tools/build_tools:autoconf_toolchain",
+)
+
+# Like vim above, make must select its concrete package, not make-guile.
+
+http_archive(
+    name = "build_make_amd64",
+    build_file_content = _DEB_BUILD_FILE,
+    sha256 = "70a9709e665383b06068ccd423d62ea191b65355f318a25565dbf324b254cec6",
+    urls = [DEBIAN_SNAPSHOT + "/pool/main/m/make-dfsg/make_4.4.1-2_amd64.deb"],
+)
+
+http_archive(
+    name = "build_make_arm64",
+    build_file_content = _DEB_BUILD_FILE,
+    sha256 = "043219839669c431def9bb410c4a827f115ee5bf377469d55c4ed905f81f73be",
+    urls = [DEBIAN_SNAPSHOT + "/pool/main/m/make-dfsg/make_4.4.1-2_arm64.deb"],
+)
