@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
