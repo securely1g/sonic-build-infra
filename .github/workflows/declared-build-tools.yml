@@ -68,16 +68,47 @@ jobs:
           printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
-                 --lockfile_mode=update)
+                 --host_platform="//platforms:$PLATFORM" \
+                 --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
           bazel --ignore_all_rc_files build "${flags[@]}" \
             --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
             //tools/build_tools:aspell //tools/build_tools:doxygen \
+            //tools/build_tools:make //tools/build_tools:m4 \
+            //tools/build_tools:pkgconf //tools/build_tools:perl \
+            //tools/build_tools:bison //tools/build_tools:flex \
+            //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
-            //tools/build_tools:runtime_test 2>&1 | tee ci-artifacts/test.log
+            //tools/build_tools:runtime_test \
+            //tools/build_tools:configure_runtime_test \
+            //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
+          bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
+            'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
           test -s MODULE.bazel.lock
+          cp -aL bazel-testlogs ci-artifacts/initial-testlogs
+          bazel --ignore_all_rc_files --output_user_root="$RUNNER_TEMP/configure-tools-fresh" \
+            test "${flags[@]}" --nocache_test_results --test_output=errors \
+            --build_event_json_file="$PWD/ci-artifacts/cache-test-events.jsonl" \
+            --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
+            //tools/build_tools:configure_runtime_test 2>&1 | tee ci-artifacts/cache-test.log
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          data = Path("ci-artifacts/cache-spawns.json").read_text()
+          decoder = json.JSONDecoder()
+          offset, runtimes = 0, []
+          while offset < len(data):
+              record, offset = decoder.raw_decode(data, offset)
+              if record.get("mnemonic") == "PrepareBuildTools":
+                  runtimes.append({key: record.get(key) for key in ("mnemonic", "runner", "cacheHit")})
+              while offset < len(data) and data[offset].isspace():
+                  offset += 1
+          assert len(runtimes) == 1 and runtimes[0]["cacheHit"], runtimes
+          assert runtimes[0]["runner"] == "disk cache hit", runtimes
+          Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")
+          PYTHON
       - name: Collect resolution and test evidence
         if: always()
         run: |
