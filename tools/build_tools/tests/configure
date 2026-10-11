@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+prefix=
+for argument do
+    case "$argument" in --prefix=*) prefix=${argument#--prefix=};; esac
+done
+test -n "$prefix"
+# These must be the declared toolchain tools even if the host also has tools.
+case "$M4:$PKG_CONFIG:$PERL" in *configure_runtime_*) ;; *) exit 1;; esac
+"$M4" --version > m4.version
+"$PKG_CONFIG" --version > pkgconf.version
+"$PERL" -MConfig -MDigest::SHA -e 'print qq(#define VALUE 42\n)' > config.h
+cat > Makefile <<EOF
+CC=$CC
+CFLAGS=$CFLAGS ${CPPFLAGS:-}
+AR=$AR
+prefix=$prefix
+all: libprobe.a
+probe.o: probe.c config.h
+\t\$(CC) \$(CFLAGS) -c probe.c -o probe.o
+libprobe.a: probe.o
+\t\$(AR) rcs libprobe.a probe.o
+install: libprobe.a
+\tmkdir -p \$(DESTDIR)\$(prefix)/lib
+\tcp libprobe.a \$(DESTDIR)\$(prefix)/lib/libprobe.a
+EOF
+# POSIX printf writes the recipe tabs without depending on a host sed.
+"$PERL" -pi -e 's/^\\t/\t/' Makefile
