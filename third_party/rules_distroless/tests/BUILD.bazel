@@ -1,6 +1,7 @@
-load(":pkgconfig_test.bzl", "pkgconfig_test")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(":headers_only.bzl", "headers_only")
+load(":pkgconfig_test.bzl", "pkgconfig_test")
+load(":pkgconfig_whitespace_test.bzl", "pkgconfig_whitespace_test")
 
 # Verify the existing registry Protobuf include-fragment fix.
 # This imports an existing pinned package without producing a DEB.
@@ -16,3 +17,5 @@ cc_test(
 )
 
 pkgconfig_test(name = "pkgconfig_test")
+
+pkgconfig_whitespace_test(name = "pkgconfig_whitespace_test")
