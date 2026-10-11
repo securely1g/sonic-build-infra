@@ -251,3 +251,40 @@ alias(
     name = "which",
     actual = "@crates//:which",
 )
+
+# Supervisor listener requirements and test injection support.
+
+alias(
+    name = "injectorpp",
+    actual = "@crates//:injectorpp",
+)
+
+alias(
+    name = "mio",
+    actual = "@crates//:mio",
+)
+
+alias(
+    name = "nix",
+    actual = "@crates//:nix",
+)
+
+alias(
+    name = "scopeguard",
+    actual = "@crates//:scopeguard",
+)
+
+alias(
+    name = "syslog-tracing",
+    actual = "@crates//:syslog-tracing",
+)
+
+alias(
+    name = "thiserror",
+    actual = "@crates//:thiserror",
+)
+
+alias(
+    name = "tracing-log",
+    actual = "@crates//:tracing-log",
+)
