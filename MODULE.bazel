@@ -312,6 +312,7 @@ http_archive(
     patches = [
         "//third_party/rules_distroless:0001-pkgconfig-files.patch",
         "//third_party/rules_distroless:0002-pkgconfig-whitespace.patch",
+        "//third_party/rules_distroless:0003-multiarch-headers.patch",
     ],
     sha256 = "5d43f4f44f0f0fb614194a07a6dcf7b29338cfc8ab7f6129ad1e4403c1ad1c73",
     strip_prefix = "rules_distroless-0.9.4",

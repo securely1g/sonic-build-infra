@@ -47,3 +47,16 @@ handles spaces and tabs in `Libs`, `Libs.private` and `Cflags` while preserving
 the original parser attribution. `pkgconfig_whitespace_test` checks empty
 metadata and retained flags against the same patched archive as the metadata
 export regression.
+
+## Multiarch header directories
+
+`0003-multiarch-headers.patch` derives include roots from the package's declared
+headers instead of adding the AMD64 path on every CPU. This lets the ARM64
+eventd/rsyslog consumer find Lua's `lua5.1-deb-multiarch.h`, while retaining
+ordinary `/usr/include`. `multiarch_test` checks the original header layouts.
+
+Related public work is Song Qing's [commit 3b26479](https://github.com/bazel-contrib/rules_distroless/commit/3b26479ff8eca6ac8b69c1a79ff47bc5a9d8bbc0)
+in [upstream #220](https://github.com/bazel-contrib/rules_distroless/pull/220),
+which was closed without merging. It uses the same header-inventory approach
+in a different importer structure; this is a narrower 0.9.4 compatibility
+implementation, not a direct cherry-pick of that commit.
