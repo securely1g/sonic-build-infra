@@ -60,3 +60,19 @@ in [upstream #220](https://github.com/bazel-contrib/rules_distroless/pull/220),
 which was closed without merging. It uses the same header-inventory approach
 in a different importer structure; this is a narrower 0.9.4 compatibility
 implementation, not a direct cherry-pick of that commit.
+
+## Concrete packages before virtual providers
+
+`0004-concrete-packages.patch` prefers a matching package by its own name before
+considering `Provides` entries. For example, Syncd's debug image needs the real
+`vim` package and its control metadata, rather than an unintended `vim-nox`
+provider. Version, architecture and suite constraints still apply; virtual
+providers remain the fallback. `concrete_packages_test` exercises the original
+index parser and resolver with both architecture records and `Architecture: all`.
+
+Upstream [issue #212](https://github.com/bazel-contrib/rules_distroless/issues/212)
+by jseba includes a public patch for the same priority policy against an older
+API. [Issue #265](https://github.com/bazel-contrib/rules_distroless/issues/265) by
+wiest proposes a narrower provider guard. This patch reorders the existing 0.9.4
+resolver while retaining its full constraints and fallback behavior; these are
+related proposals, not imported upstream commits.
