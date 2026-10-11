@@ -1,0 +1,91 @@
+Prefer a matching concrete package before considering virtual providers.
+Source: bazel-contrib/rules_distroless v0.9.4, apt/private/apt_dep_resolver.bzl.
+Reason: an exact vim request currently selects vim-nox through Provides. Keep
+version/architecture/suite filtering and virtual-only fallback unchanged.
+
+--- a/apt/private/apt_dep_resolver.bzl
++++ b/apt/private/apt_dep_resolver.bzl
+@@ -4,7 +4,38 @@
+ load(":version_constraint.bzl", "version_constraint")
+ 
+ def _resolve_package(state, name, version, arch, suites = None):
+-    # First check if the constraint is satisfied by a virtual package.
++    warning = None
++
++    # Get available versions of the package
++    versions_by_arch = state.repository.package_versions(name = name, arch = arch, suites = suites)
++    versions_by_any_arch = state.repository.package_versions(name = name, arch = "all", suites = suites)
++
++    # Order packages by highest to lowest
++    versions = version_lib.sort(versions_by_arch + versions_by_any_arch, reverse = True)
++
++    selected_version = None
++
++    if version:
++        for av in versions:
++            if version_constraint.relop(av, version[1], version[0]):
++                selected_version = av
++
++                # Since versions are ordered by hight to low, the first satisfied version will be
++                # the highest version and rules_distroless ignores Priority field so it's safe.
++                # TODO: rethink this `break` with https://github.com/bazel-contrib/rules_distroless/issues/34
++                break
++    elif len(versions) > 0:
++        # First element in the versions list is the latest version.
++        selected_version = versions[0]
++
++    package = state.repository.package(name = name, version = selected_version, arch = arch, suites = suites)
++    if not package:
++        package = state.repository.package(name = name, version = selected_version, arch = "all", suites = suites)
++
++    if package:
++        return (package, warning)
++
++    # No matching concrete package exists; retain virtual-provider fallback.
+     # Check both the specific arch and "all" since Architecture: all packages
+     # can provide virtual packages too.
+     virtual_packages_for_arch = state.repository.virtual_packages(name = name, arch = arch, suites = suites)
+@@ -20,8 +51,6 @@
+             provided_version and version_constraint.is_satisfied_by(version, provided_version)
+         )
+     ]
+-
+-    warning = None
+ 
+     if len(candidates) == 1:
+         return (candidates[0], warning)
+@@ -55,33 +84,7 @@
+         #     ", ".join([package["Package"] + "" + package["Version"] for package in candidates]),
+         # )
+ 
+-    # Get available versions of the package
+-    versions_by_arch = state.repository.package_versions(name = name, arch = arch, suites = suites)
+-    versions_by_any_arch = state.repository.package_versions(name = name, arch = "all", suites = suites)
+-
+-    # Order packages by highest to lowest
+-    versions = version_lib.sort(versions_by_arch + versions_by_any_arch, reverse = True)
+-
+-    selected_version = None
+-
+-    if version:
+-        for av in versions:
+-            if version_constraint.relop(av, version[1], version[0]):
+-                selected_version = av
+-
+-                # Since versions are ordered by hight to low, the first satisfied version will be
+-                # the highest version and rules_distroless ignores Priority field so it's safe.
+-                # TODO: rethink this `break` with https://github.com/bazel-contrib/rules_distroless/issues/34
+-                break
+-    elif len(versions) > 0:
+-        # First element in the versions list is the latest version.
+-        selected_version = versions[0]
+-
+-    package = state.repository.package(name = name, version = selected_version, arch = arch, suites = suites)
+-    if not package:
+-        package = state.repository.package(name = name, version = selected_version, arch = "all", suites = suites)
+-
+-    return (package, warning)
++    return (None, warning)
+ 
+ _ITERATION_MAX_ = 2147483646
+ 

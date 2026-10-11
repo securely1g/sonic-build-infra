@@ -1,6 +1,9 @@
 load(":pkgconfig_test.bzl", "pkgconfig_test")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load(":concrete_packages_test.bzl", "concrete_packages_test")
 load(":headers_only.bzl", "headers_only")
+
+concrete_packages_test(name = "concrete_packages_test")
 
 # Verify the existing registry Protobuf include-fragment fix.
 # This imports an existing pinned package without producing a DEB.
