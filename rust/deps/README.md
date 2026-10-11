@@ -84,3 +84,42 @@ The native supervisor I/O test verifies readiness on an isolated pipe, signal
 zero against the test's own process, function replacement/restoration through
 the pinned injector, and lazy syslog writer initialization. CI runs it on
 AMD64 and ARM64 alongside the existing public Serde/tracing tests.
+
+## Exact native library names and release profiles
+
+Version 0.0.4 carries an ELF linking fix for the `rules_rust` version selected
+by `rules_rs` 0.1.0. CcInfo can supply a versioned shared library such as
+`libexample.so.7` or an artifact without the `lib` prefix. The adapter previously
+converted these filenames into unversioned `-l` names that may not exist. The
+patch passes the declared artifact path to the native linker after the Rust
+archives, preserving ELF SONAMEs and handling duplicate interface filenames.
+This also retains DSOs needed by transitive Rust code when `--as-needed` is active. Darwin and Windows retain their platform-specific
+handling. The patch header records the pinned upstream revision and reason.
+It is applied through `rules_rs`'s existing public `rules_rust.patch` extension.
+
+This permits the standard rustc link path to select the panic runtime and
+perform cross-crate LTO. A release executable can use:
+
+```starlark
+rust_binary(
+    # Other source and dependency attributes are unchanged.
+    experimental_use_cc_common_link = 0,
+    rustc_flags = ["-Cpanic=abort"],
+)
+```
+
+The consuming root exposes `rules_rust` through the existing `rules_rs`
+extension and explicitly selects `-c opt`,
+`--@rules_rust//rust/settings:lto=fat` and
+`--@rules_rust//rust/settings:codegen_units=1` when matching that Cargo profile.
+Tests that need unwinding omit the abort option. This module does not select a
+consumer's profile, change Cargo inputs, or add custom allocator providers.
+
+`//tests:panic_runtime_test` links Rust executables through a separate Rust
+library to two real C++ shared libraries: one versioned and one without a `lib`
+prefix, both with same-basename interface artifacts in separate directories. It verifies their actual function calls, `SIGABRT` without destructors,
+and normal unwinding with a destructor. CI repeats it in normal and optimized
+full-LTO profiles on native AMD64 and ARM64. The full-LTO build uses ordinary
+rustc linking and bitcode dependencies, rather than the C++ adapter's object-only
+compilation path. Installed component and container validation remain with the
+source and image owners.

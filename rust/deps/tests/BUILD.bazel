@@ -1,3 +1,8 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_rs//rs:rust_binary.bzl", "rust_binary")
+load("@rules_rs//rs:rust_library.bzl", "rust_library")
 load("@rules_rs//rs:rust_test.bzl", "rust_test")
 
 rust_test(
@@ -30,4 +35,86 @@ rust_test(
         "//:scopeguard",
         "//:syslog-tracing",
     ],
+)
+
+cc_binary(
+    name = "libpanic_cpp.so.7",
+    testonly = True,
+    srcs = ["panic_cpp.cc"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,libpanic_cpp.so.7"],
+)
+
+cc_binary(
+    name = "native_probe.so",
+    testonly = True,
+    srcs = ["native_probe.cc"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,native_probe.so"],
+)
+
+# Match source-owned DSO adapters whose interface artifacts share a basename.
+genrule(
+    name = "panic_cpp_interface",
+    srcs = [":libpanic_cpp.so.7"],
+    outs = ["cpp/rpath.ifso"],
+    cmd = "cp $(location :libpanic_cpp.so.7) $@",
+    testonly = True,
+)
+
+genrule(
+    name = "panic_odd_interface",
+    srcs = [":native_probe.so"],
+    outs = ["odd/rpath.ifso"],
+    cmd = "cp $(location :native_probe.so) $@",
+    testonly = True,
+)
+
+cc_import(
+    name = "panic_cpp",
+    testonly = True,
+    shared_library = ":libpanic_cpp.so.7",
+    interface_library = ":panic_cpp_interface",
+)
+
+cc_import(
+    name = "panic_odd",
+    testonly = True,
+    shared_library = ":native_probe.so",
+    interface_library = ":panic_odd_interface",
+)
+
+rust_library(
+    name = "panic_rust",
+    testonly = True,
+    srcs = ["panic_rust.rs"],
+    edition = "2021",
+    link_deps = [":panic_cpp", ":panic_odd"],
+)
+
+rust_binary(
+    name = "panic_abort_probe",
+    testonly = True,
+    srcs = ["panic_probe.rs"],
+    edition = "2021",
+    experimental_use_cc_common_link = 0,
+    rustc_flags = ["-Cpanic=abort"],
+    deps = [":panic_rust"],
+)
+
+rust_binary(
+    name = "panic_unwind_probe",
+    testonly = True,
+    srcs = ["panic_probe.rs"],
+    edition = "2021",
+    experimental_use_cc_common_link = 0,
+    deps = [":panic_rust"],
+)
+
+py_test(
+    name = "panic_runtime_test",
+    size = "small",
+    srcs = ["panic_runtime_test.py"],
+    args = ["$(rootpath :panic_abort_probe)", "$(rootpath :panic_unwind_probe)"],
+    data = [":panic_abort_probe", ":panic_unwind_probe"],
 )
