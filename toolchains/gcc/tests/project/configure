@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+prefix=
+for argument do
+    case "$argument" in --prefix=*) prefix=${argument#--prefix=};; esac
+done
+test -n "$prefix"
+mkdir -p nested/build
+cp probe.c nested/build/
+# Preserve compiler decisions before the Make subprocess changes directory.
+$CC $CFLAGS $LDFLAGS -print-prog-name=ld > linker.txt
+$CC $CFLAGS $LDFLAGS -print-prog-name=as > assembler.txt
+# Unlike -print-prog-name, this reports the backend collect2 really invokes.
+$CC $CFLAGS $LDFLAGS -nostdlib -Wl,--version probe.c > linker-execution.txt 2>&1
+# Autoconf-style compiler check: the driver must work away from the execroot.
+(cd nested/build && $CC $CFLAGS ${CPPFLAGS:-} probe.c $LDFLAGS -lgcc_s -Wl,-Map=probe.map -o probe)
+mkdir -p "$prefix/bin" "$prefix/share"
+cp nested/build/probe "$prefix/bin/"
+cp nested/build/probe.map assembler.txt linker.txt linker-execution.txt "$prefix/share/"
