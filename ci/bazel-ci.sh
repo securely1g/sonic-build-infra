@@ -50,6 +50,7 @@ tests=(
   //proto:protoc_version_test
   //python:py_native_library_test
   //tests:deploy_tar_timestamps_test
+  //toolchains/gcc/tests:foreign_link_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
