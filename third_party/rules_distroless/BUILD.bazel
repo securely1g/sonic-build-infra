@@ -2,4 +2,5 @@ exports_files([
     "0001-pkgconfig-files.patch",
     "0002-pkgconfig-whitespace.patch",
     "0003-multiarch-headers.patch",
+    "0004-concrete-packages.patch",
 ])
