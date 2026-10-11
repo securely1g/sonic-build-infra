@@ -53,6 +53,7 @@ def resolve_packages(sysroot, gcc_repo, args):
 
     # The one directory that comes from the GCC distribution rather than from apt.
     available["gcc-builtin"] = gcc_repo + "//:builtin_headers"
+    available["gcc-programs"] = gcc_repo + "//:compiler_programs"
 
     return {
         key: label
@@ -159,21 +160,23 @@ _LINK_ARGS = [
     "-Wl,--remap-inputs=/{dynamic_linker}={{libc6}}/usr/{dynamic_linker}",
     "-Wl,--remap-inputs=/usr/lib/{multiarch}/libc_nonshared.a={{libc6-dev}}/usr/lib/{multiarch}/libc_nonshared.a",
     "-B",
-    "{{libc6}}/lib/{multiarch}",
+    "{{libc6}}/usr/lib/{multiarch}",
     "-B",
     "{{libc6-dev}}/usr/lib/{multiarch}",
     "-L",
-    "{{libgcc-s1}}/lib/{multiarch}",
+    "{{libgcc-s1}}/usr/lib/{multiarch}",
+    "-L",
+    "{{libgcc-dev}}/usr/lib/gcc/{multiarch}/{gcc_major}",
     "-L",
     "{{libstdcxx-dev}}/usr/lib/gcc/{multiarch}/{gcc_major}",
 
     # For rules_foreign_cc and rules_rust to work after changing its workdir
     "-B",
-    "../../../../../../../{{libc6}}/lib/{multiarch}",
+    "../../../../../../../{{libc6}}/usr/lib/{multiarch}",
     "-B",
     "../../../../../../../{{libc6-dev}}/usr/lib/{multiarch}",
     "-L",
-    "../../../../../../../{{libgcc-s1}}/lib/{multiarch}",
+    "../../../../../../../{{libgcc-s1}}/usr/lib/{multiarch}",
     "-L",
     "../../../../../../../{{libgcc-dev}}/usr/lib/gcc/{multiarch}/{gcc_major}",
     "-L",
@@ -188,6 +191,18 @@ _LINK_ARGS = [
 ]
 
 PLATFORM_DEPENDENT_ARGS = [
+    struct(
+        suffix = "_programs",
+        actions = [
+            "@rules_cc//cc/toolchains/actions:c_compile",
+            "@rules_cc//cc/toolchains/actions:cpp_compile_actions",
+            "@rules_cc//cc/toolchains/actions:assembly_actions",
+            "@rules_cc//cc/toolchains/actions:link_actions",
+        ],
+        # GCC treats -B as a program prefix. Name the declared prefixed tools
+        # explicitly: the distribution's target/bin aliases are not inputs.
+        args = ["-B", "{{gcc-programs}}/bin/{gcc}-"],
+    ),
     struct(
         suffix = "_c_includes",
         actions = ["@rules_cc//cc/toolchains/actions:c_compile"],
