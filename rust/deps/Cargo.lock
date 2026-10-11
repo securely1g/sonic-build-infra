@@ -1077,6 +1077,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "injectorpp"
+version = "0.4.0"
+source = "git+https://github.com/microsoft/injectorppforrust.git?rev=c7317906a1d514ef99bf2fbd4c943908c265d280#c7317906a1d514ef99bf2fbd4c943908c265d280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1280,6 +1288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.48.0",
 ]
@@ -1362,6 +1371,17 @@ dependencies = [
  "libc",
  "log",
  "tokio",
+]
+
+[[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -2194,13 +2214,16 @@ dependencies = [
  "futures-timer",
  "genetlink",
  "getset",
+ "injectorpp",
  "lazy_static",
  "libc",
  "log",
+ "mio",
  "netlink-packet-core 0.7.0",
  "netlink-packet-generic 0.3.3",
  "netlink-packet-utils",
  "netlink-sys",
+ "nix",
  "once_cell",
  "opentelemetry 0.25.0",
  "opentelemetry-http",
@@ -2216,16 +2239,20 @@ dependencies = [
  "reqwest",
  "reqwest-middleware 0.3.3",
  "reqwest-tracing",
+ "scopeguard",
  "serde",
  "serde_json",
  "serde_yaml",
  "serial_test",
+ "syslog-tracing",
  "tempfile",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tonic",
  "tonic-health",
  "tracing",
+ "tracing-log",
  "tracing-opentelemetry 0.25.0",
  "tracing-subscriber",
  "wait-timeout",
@@ -2273,6 +2300,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "syslog-tracing"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d349bc2df408b4bf656709a29643641cef7f1795d708f88b105c626a8f64f6e4"
+dependencies = [
+ "libc",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]

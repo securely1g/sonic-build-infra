@@ -1,4 +1,4 @@
-# Union of third-party dependencies used by Common and SWSS.
+# Union of third-party dependencies used by Common, SWSS and supervisor.
 [package]
 name = "sonic-rust-deps"
 version = "0.0.1"
@@ -21,13 +21,16 @@ env_logger = { version = "0.11.6" }
 futures-timer = { version = "3.0.4" }
 genetlink = { version = "0.2" }
 getset = { version = "0.1" }
+injectorpp = { git = "https://github.com/microsoft/injectorppforrust.git", rev = "c7317906a1d514ef99bf2fbd4c943908c265d280" }
 lazy_static = { version = "1.4" }
 libc = { version = "0.2.158" }
 log = { version = "0.4.22" }
+mio = { version = "0.8", features = ["os-poll", "os-ext"] }
 netlink-packet-core = { version = "0.7" }
 netlink-packet-generic = { version = "0.3" }
 netlink-packet-utils = { version = "0.5" }
 netlink-sys = { version = "0.8" }
+nix = { version = "=0.27.1", features = ["signal", "process"] }
 once_cell = { version = "1.18.0" }
 opentelemetry = { version = "0.25", features = ["metrics", "trace"] }
 opentelemetry-http = { version = "0.25" }
@@ -43,16 +46,20 @@ rand = { version = "0.8.5" }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 reqwest-middleware = { version = "0.3" }
 reqwest-tracing = { version = "0.5", features = ["opentelemetry_0_25"] }
+scopeguard = { version = "1.2" }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_json = { version = "1.0" }
 serde_yaml = { version = "0.9" }
 serial_test = { version = "3.0" }
+syslog-tracing = { version = "=0.3.1" }
 tempfile = { version = "3.12" }
+thiserror = { version = "1" }
 tokio = { version = "1", features = ["full", "macros", "net", "rt", "rt-multi-thread", "test-util", "time"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { version = "0.12" }
 tonic-health = { version = "0.12" }
 tracing = { version = "0.1", features = ["max_level_debug", "release_max_level_info"] }
+tracing-log = { version = "0.2" }
 tracing-opentelemetry = { version = "0.25" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "serde"] }
 wait-timeout = { version = "0.2.1" }
