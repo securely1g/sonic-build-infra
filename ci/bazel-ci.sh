@@ -36,6 +36,7 @@ tests=(
   //apt/tests/integration:adapter_test
   //third_party/rules_distroless/tests:protobuf_headers_test
   //third_party/rules_distroless/tests:pkgconfig_test
+  //third_party/rules_distroless/tests:pkgconfig_whitespace_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test

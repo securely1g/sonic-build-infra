@@ -296,16 +296,24 @@ use_repo(wheel_pip, "sonic_wheel_pip")
         python_version = version,
         requirements_lock = "//apt:requirements_lock.txt",
     )
-    for version in ["3.11", "3.13"]
+    for version in [
+        "3.11",
+        "3.13",
+    ]
 ]
+
 use_repo(wheel_pip, "sonic_apt_pip")
 
-# Exercise the original pkg-config export patch against the pinned upstream code.
+# Run source-owned compatibility regressions against one pinned upstream archive.
+# Applying the patches together also checks their composition.
 http_archive(
-    name = "distroless_pkgconfig_regression",
-    urls = ["https://github.com/bazel-contrib/rules_distroless/releases/download/v0.9.4/rules_distroless-v0.9.4.tar.gz"],
+    name = "distroless_compatibility_regression",
+    patch_args = ["-p1"],
+    patches = [
+        "//third_party/rules_distroless:0001-pkgconfig-files.patch",
+        "//third_party/rules_distroless:0002-pkgconfig-whitespace.patch",
+    ],
     sha256 = "5d43f4f44f0f0fb614194a07a6dcf7b29338cfc8ab7f6129ad1e4403c1ad1c73",
     strip_prefix = "rules_distroless-0.9.4",
-    patches = ["//third_party/rules_distroless:0001-pkgconfig-files.patch"],
-    patch_args = ["-p1"],
+    urls = ["https://github.com/bazel-contrib/rules_distroless/releases/download/v0.9.4/rules_distroless-v0.9.4.tar.gz"],
 )

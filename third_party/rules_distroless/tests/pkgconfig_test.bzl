@@ -1,7 +1,7 @@
 """Prevent pkg-config metadata from mixing target architectures."""
 
 load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
-load("@distroless_pkgconfig_regression//apt/private:translate_dependency_set.bzl", "package_deps_for_architecture")
+load("@distroless_compatibility_regression//apt/private:translate_dependency_set.bzl", "package_deps_for_architecture")
 
 def _pkgconfig_test_impl(ctx):
     env = unittest.begin(ctx)
