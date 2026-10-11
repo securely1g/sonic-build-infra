@@ -1,3 +1,4 @@
+load(":multiarch_test.bzl", "multiarch_test")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(":headers_only.bzl", "headers_only")
 
@@ -13,3 +14,5 @@ cc_test(
     srcs = ["protobuf_headers_test.cc"],
     deps = [":protobuf_headers"],
 )
+
+multiarch_test(name = "multiarch_test")
