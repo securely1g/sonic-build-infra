@@ -83,6 +83,7 @@ jobs:
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
             //tools/build_tools:configure_runtime_test \
+            //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
