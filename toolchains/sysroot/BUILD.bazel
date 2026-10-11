@@ -1,0 +1,5 @@
+exports_files([
+    "extensions.bzl",
+    "merge.bzl",
+    "packages.bzl",
+])

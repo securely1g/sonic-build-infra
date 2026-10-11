@@ -3,19 +3,25 @@ load("@rules_python//python:defs.bzl", "py_test")
 
 filegroup(
     name = "sources",
-    srcs = ["project/configure", "project/probe.c"],
+    srcs = [
+        "project/configure",
+        "project/probe.c",
+    ],
 )
 
 # Exercise configure's compiler probe from a subdirectory, including
 # an explicit dynamic libgcc reference that ordinary C programs can omit.
 configure_make(
     name = "foreign_probe",
-    lib_source = ":sources",
     configure_in_place = True,
     features = ["-sanitize_pwd"],
-    targets = [],
-    out_binaries = ["probe"],
+    lib_source = ":sources",
+    out_binaries = [
+        "probe",
+        "probe-static-math",
+    ],
     out_data_dirs = ["share"],
+    targets = [],
 )
 
 py_test(

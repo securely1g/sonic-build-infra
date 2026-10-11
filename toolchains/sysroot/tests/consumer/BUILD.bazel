@@ -1,0 +1,29 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+
+cc_binary(
+    name = "c_probe",
+    srcs = ["c_probe.c"],
+)
+
+cc_binary(
+    name = "libshared_probe.so",
+    srcs = ["shared_probe.cc"],
+    copts = ["-pthread"],
+    linkopts = [
+        "-pthread",
+        "-Wl,-soname,libshared_probe.so",
+    ],
+    linkshared = True,
+)
+
+cc_import(
+    name = "shared_probe",
+    shared_library = ":libshared_probe.so",
+)
+
+cc_binary(
+    name = "probe",
+    srcs = ["probe.cc"],
+    deps = [":shared_probe"],
+)

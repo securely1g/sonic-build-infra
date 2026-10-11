@@ -13,7 +13,10 @@ $CC $CFLAGS $LDFLAGS -print-prog-name=as > assembler.txt
 # Unlike -print-prog-name, this reports the backend collect2 really invokes.
 $CC $CFLAGS $LDFLAGS -nostdlib -Wl,--version probe.c > linker-execution.txt 2>&1
 # Autoconf-style compiler check: the driver must work away from the execroot.
-(cd nested/build && $CC $CFLAGS ${CPPFLAGS:-} probe.c $LDFLAGS -lgcc_s -Wl,-Map=probe.map -o probe)
+(cd nested/build && $CC $CFLAGS ${CPPFLAGS:-} probe.c $LDFLAGS -lgcc_s -lm -Wl,-Map=probe.map -Wl,--dependency-file=probe.d -o probe)
+(cd nested/build && $CC $CFLAGS ${CPPFLAGS:-} probe.c $LDFLAGS -static -lm -Wl,-Map=probe-static-math.map -Wl,--dependency-file=probe-static-math.d -o probe-static-math)
 mkdir -p "$prefix/bin" "$prefix/share"
 cp nested/build/probe "$prefix/bin/"
-cp nested/build/probe.map assembler.txt linker.txt linker-execution.txt "$prefix/share/"
+cp nested/build/probe-static-math "$prefix/bin/"
+cp nested/build/probe.map nested/build/probe.d assembler.txt linker.txt linker-execution.txt "$prefix/share/"
+cp nested/build/probe-static-math.map nested/build/probe-static-math.d "$prefix/share/"
