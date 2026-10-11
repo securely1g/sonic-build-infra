@@ -1,0 +1,40 @@
+Subject: [PATCH] Preserve exact ELF shared-library artifacts in Rust linking
+
+Upstream: https://github.com/hermeticbuild/rules_rust/tree/fb6108715c7e1ab6b0c78b37aef2388e5aeb7cc3
+Reason: CcInfo can provide versioned, non-lib-prefixed, or same-basename ELF
+interface artifacts. Inferring an unversioned -l name loses that identity.
+Pass the declared artifact path to the native linker after the Rust archives,
+matching C++ linkage and preserving the ELF SONAME. The late position also
+keeps --as-needed from dropping DSOs before their Rust references appear.
+Runtime search paths use the actual DSO instead of its interface artifact.
+This allows ordinary rustc linking with panic=abort and cross-crate full LTO.
+Platform-specific Darwin and Windows link arguments stay unchanged.
+
+diff --git a/rust/private/rustc.bzl b/rust/private/rustc.bzl
+--- a/rust/private/rustc.bzl
++++ b/rust/private/rustc.bzl
+@@ -3110,7 +3110,9 @@
+         return depset([])
+ 
+     dylibs = [
+-        get_preferred_artifact(lib, use_pic)
++        # Interface libraries are link-time artifacts. The loader needs the
++        # runtime DSO, which can have a different filename and directory.
++        lib.dynamic_library or get_preferred_artifact(lib, use_pic)
+         for linker_input in dep_info.transitive_noncrates.to_list()
+         for lib in linker_input.libraries
+         if _is_dylib(lib)
+@@ -3448,6 +3450,13 @@
+                 ("-Clink-arg=%s" % get_preferred_artifact(lib, use_pic).path),
+                 ("-Clink-arg=%s--no-whole-archive" % prefix),
+             ])
++        elif include_link_flags and _is_dylib(lib):
++            # Preserve the exact ELF artifact (including interface libraries).
++            # Inferring -l names loses versions and cannot distinguish equal
++            # basenames in separate directories. Pass it after Rust archives,
++            # so --as-needed sees their references before considering the DSO.
++            artifact = get_preferred_artifact(lib, use_pic)
++            ret.append("-Clink-arg=%s" % artifact.path)
+         elif include_link_flags:
+             ret.extend(portable_link_flags(lib, use_pic, ambiguous_libs, get_lib_name_default))
+     _add_user_link_flags(ret, linker_input)
