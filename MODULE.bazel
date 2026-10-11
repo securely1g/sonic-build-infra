@@ -299,3 +299,13 @@ use_repo(wheel_pip, "sonic_wheel_pip")
     for version in ["3.11", "3.13"]
 ]
 use_repo(wheel_pip, "sonic_apt_pip")
+
+# Exercise the original pkg-config export patch against the pinned upstream code.
+http_archive(
+    name = "distroless_pkgconfig_regression",
+    urls = ["https://github.com/bazel-contrib/rules_distroless/releases/download/v0.9.4/rules_distroless-v0.9.4.tar.gz"],
+    sha256 = "5d43f4f44f0f0fb614194a07a6dcf7b29338cfc8ab7f6129ad1e4403c1ad1c73",
+    strip_prefix = "rules_distroless-0.9.4",
+    patches = ["//third_party/rules_distroless:0001-pkgconfig-files.patch"],
+    patch_args = ["-p1"],
+)
