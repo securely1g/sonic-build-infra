@@ -20,6 +20,7 @@ def _runtime_impl(ctx):
     args.add(ctx.file._prepare)
     args.add("--out", output.path)
     args.add("--architecture", ctx.attr.architecture)
+    args.add("--profile", ctx.attr.profile)
     args.add_all(ctx.files.packages, before_each = "--tar")
     ctx.actions.run(
         executable = python.interpreter,
@@ -38,6 +39,7 @@ build_tools_runtime = rule(
     attrs = {
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "packages": attr.label_list(allow_files = True, mandatory = True),
+        "profile": attr.string(default = "documentation", values = ["documentation", "configure"]),
         "_prepare": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
     },
@@ -72,12 +74,12 @@ if [ ! -d "$runfiles" ]; then
     done
 fi
 exec "$runfiles/{python}" "$runfiles/{launcher}" "{tool}" "$runfiles/{runtime}" "$@"
-""".replace("{python}", _runfile(ctx, python.interpreter)).replace("{launcher}", _runfile(ctx, ctx.file._launcher)).replace("{tool}", ctx.attr.tool).replace("{runtime}", _runfile(ctx, ctx.file._runtime))
+""".replace("{python}", _runfile(ctx, python.interpreter)).replace("{launcher}", _runfile(ctx, ctx.file._launcher)).replace("{tool}", ctx.attr.tool).replace("{runtime}", _runfile(ctx, ctx.file.runtime))
     ctx.actions.write(executable, script, is_executable = True)
     return [DefaultInfo(
         executable = executable,
         runfiles = ctx.runfiles(
-            files = [python.interpreter, ctx.file._launcher, ctx.file._runtime],
+            files = [python.interpreter, ctx.file._launcher, ctx.file.runtime],
             transitive_files = python.files,
         ),
     )]
@@ -86,9 +88,9 @@ build_tool = rule(
     implementation = _executable_impl,
     executable = True,
     attrs = {
-        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen"]),
+        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]),
         "_launcher": attr.label(default = Label(":launcher.py"), allow_single_file = True, cfg = "exec"),
-        "_runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
+        "runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
     },
 )
