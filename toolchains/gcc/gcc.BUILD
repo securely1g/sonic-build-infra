@@ -38,6 +38,17 @@ directory(
     ]),
 )
 
+# GCC invokes these programs itself, including from foreign build directories.
+directory(
+    name = "compiler_programs",
+    srcs = glob([
+        "bin/*-as",
+        "bin/*-ld",
+        "{target_arch}-linux/bin/as",
+        "{target_arch}-linux/bin/ld",
+    ]),
+)
+
 # Various supporting files needed to run the linker.
 filegroup(
     name = "linker_builtins",
