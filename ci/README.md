@@ -18,6 +18,13 @@ bash ci/bazel-ci.sh
 
 CI selects its URLs explicitly so user-specific Bazel settings cannot change
 its registries.
+
+Distroless patches, upstream regressions and package-import consumer tests live
+with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).
+This repository tests its own SONiC rules, toolchains and APT adapters against
+the selected published dependency; it does not maintain a second Distroless
+patch archive or test suite.
+
 The main branch contains the landed tar.bzl patch. The separate shared-Rust
 workspace uses its unchanged BCR dependencies. The source
 script selects matching execution/target platforms. Module versions, source

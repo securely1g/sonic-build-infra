@@ -303,19 +303,3 @@ use_repo(wheel_pip, "sonic_wheel_pip")
 ]
 
 use_repo(wheel_pip, "sonic_apt_pip")
-
-# Run source-owned compatibility regressions against one pinned upstream archive.
-# Applying the patches together also checks their composition.
-http_archive(
-    name = "distroless_compatibility_regression",
-    patch_args = ["-p1"],
-    patches = [
-        "//third_party/rules_distroless:0001-pkgconfig-files.patch",
-        "//third_party/rules_distroless:0002-pkgconfig-whitespace.patch",
-        "//third_party/rules_distroless:0003-multiarch-headers.patch",
-        "//third_party/rules_distroless:0004-concrete-packages.patch",
-    ],
-    sha256 = "5d43f4f44f0f0fb614194a07a6dcf7b29338cfc8ab7f6129ad1e4403c1ad1c73",
-    strip_prefix = "rules_distroless-0.9.4",
-    urls = ["https://github.com/bazel-contrib/rules_distroless/releases/download/v0.9.4/rules_distroless-v0.9.4.tar.gz"],
-)
