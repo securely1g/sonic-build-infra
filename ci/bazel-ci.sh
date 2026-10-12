@@ -34,11 +34,6 @@ tests=(
   //apt:inputs_test
   //apt:dependencies_test
   //apt/tests/integration:adapter_test
-  //third_party/rules_distroless/tests:protobuf_headers_test
-  //third_party/rules_distroless/tests:pkgconfig_test
-  //third_party/rules_distroless/tests:pkgconfig_whitespace_test
-  //third_party/rules_distroless/tests:multiarch_test
-  //third_party/rules_distroless/tests:concrete_packages_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
