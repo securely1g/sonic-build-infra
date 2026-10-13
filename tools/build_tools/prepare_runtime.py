@@ -92,20 +92,149 @@ def run_tool(command: list[str], *, environment: dict[str, str], data: bytes | N
     return result.stdout
 
 
+def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path]) -> None:
+    """Keep foreign_cc tools self-contained when it copies their tree artifact."""
+    script_tools = ("autoconf", "autoheader", "autom4te")
+    tools = {name: root / "usr/bin" / name for name in
+             ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep", *script_tools)}
+    for name, path in tools.items():
+        if not path.is_file():
+            raise RuntimeError(f"configure packages contain no {name}")
+    # Replace the package's compiled-in macro-directory options with one
+    # launcher-provided path. Keep every language/macro definition unchanged.
+    config = root / "usr/share/autoconf/autom4te.cfg"
+    lines = config.read_text().splitlines(keepends=True)
+    directory_option = "args: --prepend-include '/usr/share/autoconf'"
+    if sum(line.strip() == directory_option for line in lines) != 4:
+        raise RuntimeError("unexpected Autoconf macro-directory configuration")
+    config.write_text("".join(line for line in lines if line.strip() != directory_option))
+    environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
+    prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
+    for binary in [path for name, path in tools.items() if name not in script_tools] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")):
+        if not binary.is_file():
+            raise RuntimeError(f"configure packages contain no tool: {binary}")
+        listing = run_tool(prefix + ["--list", str(binary)], environment=environment).decode()
+        if "not found" in listing:
+            raise RuntimeError(f"incomplete runtime for {binary}:\n{listing}")
+        for resolved in re.findall(r"=>\s+(/\S+)", listing):
+            if not Path(resolved).resolve().is_relative_to(root):
+                raise RuntimeError(f"{binary.name} resolved an undeclared library: {resolved}")
+
+    # Perl embeds system library directories in its interpreter. Preserve the
+    # caller's explicit -I inputs, but remove those built-in host directories.
+    # The relocated core and XS modules come from the declared package bundle.
+    builtins = run_tool(prefix + [str(tools["perl"]), "-e", 'print join("\\0", @INC)'], environment=environment).decode().split("\0")
+    # Preserve Perl's configured search order. Searching for arbitrary files
+    # named Config.pm also finds nested packages such as Encode and Net; adding
+    # those directories would make "use Symbol" load Encode/Symbol.pm.
+    perl_directories = [root / path.lstrip("/") for path in builtins
+                        if path.startswith("/") and (root / path.lstrip("/")).is_dir()]
+    for module in ("Config.pm", "strict.pm", "DynaLoader.pm"):
+        if not any((directory / module).is_file() for directory in perl_directories):
+            raise RuntimeError(f"configure packages contain no Perl core module: {module}")
+    bootstrap = root / "share/sonic-build-tools/Sonic/BuildTools.pm"
+    bootstrap.parent.mkdir(parents=True, exist_ok=True)
+    quoted = ", ".join("'" + path.replace("'", "\\'") + "'" for path in builtins)
+    bootstrap.write_text("""package Sonic::BuildTools;
+BEGIN {
+    my %host = map { $_ => 1 } (""" + quoted + """);
+    @INC = grep { !$host{$_} } @INC;
+    # /proc/self/exe names ld.so because the launcher starts the private loader.
+    # Configure scripts use $^X when generating later Perl invocations.
+    my $root = __FILE__;
+    $root =~ s{/share/sonic-build-tools/Sonic/BuildTools.pm$}{};
+    $^X = "$root/bin/perl";
+}
+1;
+""")
+    (root / "bin").mkdir(exist_ok=True)
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    perl_path = ":".join('$root/' + str(path.relative_to(root)) for path in [bootstrap.parent.parent] + perl_directories)
+    for name, binary in tools.items():
+        script = '''#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+'''
+        if name in script_tools:
+            script += '''PATH="$root/bin${PATH:+:$PATH}"
+export PATH
+autom4te_perllibdir="$root/usr/share/autoconf"
+AC_MACRODIR="$root/usr/share/autoconf"
+AUTOM4TE_CFG="$root/usr/share/autoconf/autom4te.cfg"
+trailer_m4="$root/usr/share/autoconf/autoconf/trailer.m4"
+AUTOM4TE="$root/bin/autom4te"
+M4="$root/bin/m4"
+export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
+'''
+        if name in ("bison", "flex"):
+            script += 'M4="$root/bin/m4"\nBISON_PKGDATADIR="$root/usr/share/bison"\nexport M4 BISON_PKGDATADIR\n'
+        if name == "make":
+            script += 'MAKE="$root/bin/make"\nexport MAKE\n'
+        if name == "perl":
+            script += 'PERL5LIB="' + perl_path + '"\nPERL5OPT="-MSonic::BuildTools"\nexport PERL5LIB PERL5OPT\n'
+        if name == "pkgconf":
+            # No host /usr/lib/pkgconfig fallback; foreign_cc supplies explicit
+            # PKG_CONFIG_LIBDIR/PATH for its declared target dependencies.
+            script += ': "${PKG_CONFIG_LIBDIR:=}"\nexport PKG_CONFIG_LIBDIR\n'
+        if name in script_tools:
+            script += 'exec "$root/bin/perl" "$root/' + str(binary.relative_to(root)) + '" '
+            if name == "autom4te":
+                script += '--prepend-include "$root/usr/share/autoconf" '
+            script += '"$@"\n'
+        else:
+            script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
+        launcher = root / "bin" / name
+        launcher.write_text(script)
+        launcher.chmod(0o755)
+    versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip() for name in tools}
+    manifest = {
+        "format_version": 1,
+        "profile": "configure",
+        "architecture": architecture,
+        "loader": str(loader.relative_to(root)),
+        "library_directories": [str(path.relative_to(root)) for path in libraries],
+        "tools": {name: str(path.relative_to(root)) for name, path in tools.items()},
+        "perl_directories": [str(path.relative_to(root)) for path in perl_directories],
+        "versions": versions,
+    }
+    (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--tar", action="append", default=[])
+    parser.add_argument("--profile", choices=("documentation", "configure"), default="documentation")
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
+    if args.profile == "configure":
+        # Bazel caches files inside tree outputs. Materialize directory aliases
+        # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
+        # a child through a directory symlink before its target is populated.
+        while True:
+            links = [path for path in root.rglob("*") if path.is_symlink() and path.is_dir()]
+            if not links:
+                break
+            for path in links:
+                target = path.resolve(strict=True)
+                if not target.is_relative_to(root) or path.is_relative_to(target):
+                    raise ValueError(f"invalid runtime directory alias: {path}")
+                path.unlink()
+                shutil.copytree(target, path, symlinks=True)
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
+    if args.profile == "configure":
+        prepare_configure(root, args.architecture, loader, libraries)
+        return
     tools = {name: root / path for name, path in {
         "aspell": "usr/bin/aspell",
         "doxygen": "usr/bin/doxygen",

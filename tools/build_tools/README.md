@@ -73,3 +73,84 @@ For this repository's native ARM64 configuration, add `--config=aarch64`.
 The consuming edge's `cfg = "exec"` selects the tools for the machine running
 the generator. A target architecture alone must not select these executables.
 Native CI does not establish remote execution or every cross-compilation pair.
+
+## Configure and Make builds
+
+Use these tools when compiling an upstream source release with `rules_foreign_cc`:
+
+| Target | Pinned executable |
+| --- | --- |
+| `@sonic_build_infra//tools/build_tools:make` | GNU Make 4.4.1 |
+| `@sonic_build_infra//tools/build_tools:m4` | GNU M4 1.4.19 |
+| `@sonic_build_infra//tools/build_tools:pkgconf` | pkgconf 1.8.1 |
+| `@sonic_build_infra//tools/build_tools:autoconf` | Autoconf 2.72 with its declared Perl/M4 and macro data |
+| `@sonic_build_infra//tools/build_tools:autoheader` | Generate config header templates using Autoconf 2.72 |
+| `@sonic_build_infra//tools/build_tools:autom4te` | Autoconf’s macro-processing helper with relocated configuration |
+| `@sonic_build_infra//tools/build_tools:bison` | Bison with its packaged parser skeletons and declared M4 |
+| `@sonic_build_infra//tools/build_tools:flex` | Flex with declared M4 |
+| `@sonic_build_infra//tools/build_tools:perl` | Perl 5.40.1, including core and native extension modules |
+
+The same dated Debian snapshots supply these execution tools. GNU Make uses
+explicit package URLs and checksums because the current APT resolver selects
+`make-guile` when asked for `make`; this keeps the ordinary GNU Make build.
+The `configure_runtime` tree contains these nine tools, their loader and shared
+libraries. It is separate from the Aspell/Doxygen runtime. Consumers extract
+existing package payloads; these rules never produce a Debian package.
+
+Register the standard foreign_cc toolchain adapters in the consuming root module:
+
+```starlark
+register_toolchains(
+    "@sonic_build_infra//tools/build_tools:make_toolchain",
+    "@sonic_build_infra//tools/build_tools:m4_toolchain",
+    "@sonic_build_infra//tools/build_tools:pkgconfig_toolchain",
+    "@sonic_build_infra//tools/build_tools:autoconf_toolchain",
+)
+```
+
+For a configure script that also needs Perl, add the runtime as execution data:
+
+```starlark
+configure_make(
+    name = "upstream_library",
+    # The component supplies its source, configure options and output files.
+    build_data = ["@sonic_build_infra//tools/build_tools:configure_runtime"],
+    env = {
+        "PERL": "$(execpath @sonic_build_infra//tools/build_tools:configure_runtime)/bin/perl",
+    },
+    features = ["-sanitize_pwd"],
+)
+```
+
+Disabling `sanitize_pwd` for this rule lets foreign_cc's shell wrapper remember
+the original execution directory before changing directory. It does not disable
+Bazel's action sandbox. Ordinary compiler rules retain their existing settings.
+These adapters do not make arbitrary upstream shell scripts fully independent
+of the host: foreign_cc still uses its documented shell and basic file utilities.
+
+The Autoconf scripts use their packaged Perl libraries and macro files, plus a
+private GNU grep for their M4 version probe. Their generated configuration
+removes the package’s hardcoded host macro-directory options and the launcher
+supplies the relocated directory instead.
+
+Directory aliases in the tool packages are materialized before publishing the
+runtime tree. This lets Bazel restore every child from its disk cache without
+depending on the order in which directory symlinks are restored.
+
+The launchers preserve the working directory and arguments. Recursive Make and
+Perl calls use the same declared tools. Perl searches its packaged core modules
+and caller-declared `-I` paths; it does not search the host's built-in Perl
+library directories. Use `-I` for source modules and declare those files as
+inputs. The launcher owns `PERL5LIB` and `PERL5OPT` to establish that runtime.
+For pkgconf, provide `PKG_CONFIG_LIBDIR` or `PKG_CONFIG_PATH` for declared target
+package metadata. An unset search directory does not fall back to the host's
+package database.
+
+Native AMD64 and ARM64 CI runs `configure_runtime_test` with an empty `PATH`,
+including Autoconf/header regeneration, parser/scanner generation, recursive calls,
+and native Perl module loading. It also compiles and
+runs a small C program linked to a library built by `configure_make_test`, proving the registered
+toolchains work when foreign_cc stages their runtime tree into an action.
+CI then repeats the tool runtime test in a fresh Bazel output directory, with
+compilation results shared only through the disk cache. It checks the execution
+log reports `PrepareBuildTools` as a disk-cache hit and retains that receipt.
