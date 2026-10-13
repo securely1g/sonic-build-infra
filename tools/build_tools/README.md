@@ -154,3 +154,19 @@ toolchains work when foreign_cc stages their runtime tree into an action.
 CI then repeats the tool runtime test in a fresh Bazel output directory, with
 compilation results shared only through the disk cache. It checks the execution
 log reports `PrepareBuildTools` as a disk-cache hit and retains that receipt.
+
+## Kerberos error and command table generators
+
+`//tools/build_tools:compile_et` and `:mk_cmds` expose Debian's generators for
+Kerberos builds that select `--with-system-et --with-system-ss`. The separate
+`:kerberos_runtime` tree contains both scripts, their templates, AWK and the
+small command-line tools they invoke. A `configure_make` consumer can declare
+that tree as `build_data` and prepend its `bin` directory to its action's PATH.
+
+The launchers use the declared interpreter and templates after the tree is
+copied to a new directory. They do not search the host PATH or `/usr/share` for
+these inputs. The package scripts' hardcoded AWK path is relocated; their
+existing template-directory overrides preserve the generator logic.
+`kerberos_runtime_test` exercises both generators with an empty PATH, checks
+stable generated C, and fails when the declared templates are missing. Both
+native AMD64 and ARM64 jobs run this test.
