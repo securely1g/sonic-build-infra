@@ -1,0 +1,68 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("//swig:defs.bzl", "swig_gen", "swig_gen_go", "swig_lib_deb")
+
+swig_lib_deb(
+    name = "swig_lib",
+    data = "@trixie//swig",
+    strip_prefix = "usr/share/swig/4.3.0",
+)
+
+[
+    swig_gen(
+        name = "python_" + mode,
+        cpp_out = "python/" + mode + "/features_wrap.cpp",
+        defines = definitions,
+        interface = "features.i",
+        python_out = "python/" + mode + "/features.py",
+        swig_lib = ":swig_lib",
+    )
+    for mode, definitions in [
+        (
+            "enabled",
+            [
+                "ENABLE_FEATURE",
+                "FEATURE_VALUE=37",
+            ],
+        ),
+        ("disabled", []),
+    ]
+]
+
+[
+    swig_gen_go(
+        name = "go_" + mode,
+        cxx_out = "go/" + mode + "/features_wrap.cxx",
+        defines = definitions,
+        go_out = "go/" + mode + "/features.go",
+        hdr_out = "go/" + mode + "/features_wrap.h",
+        interface = "features.i",
+        swig_lib = ":swig_lib",
+    )
+    for mode, definitions in [
+        (
+            "enabled",
+            [
+                "ENABLE_FEATURE",
+                "FEATURE_VALUE=37",
+            ],
+        ),
+        ("disabled", []),
+    ]
+]
+
+py_test(
+    name = "defines_test",
+    srcs = ["defines_test.py"],
+    args = [
+        "$(location python/enabled/features_wrap.cpp)",
+        "$(location python/disabled/features_wrap.cpp)",
+        "$(location go/enabled/features_wrap.cxx)",
+        "$(location go/disabled/features_wrap.cxx)",
+    ],
+    data = [
+        "go/disabled/features_wrap.cxx",
+        "go/enabled/features_wrap.cxx",
+        "python/disabled/features_wrap.cpp",
+        "python/enabled/features_wrap.cpp",
+    ],
+)

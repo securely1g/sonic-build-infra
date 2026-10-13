@@ -54,6 +54,9 @@ def _swig_gen_cc_impl(ctx):
     args.add("-keyword")
     args.add("-DSWIGWORDSIZE64")  # Important for 64-bit
 
+    for define in ctx.attr.defines:
+        args.add("-D" + define)
+
     # Get include flags (-Ipath)
     for include in compilation_context.includes.to_list():
         args.add("-I" + include)
@@ -144,6 +147,8 @@ def _swig_gen_go_impl(ctx):
     args.add("-intgosize")
     args.add("64")
     args.add("-DSWIGWORDSIZE64")
+    for define in ctx.attr.defines:
+        args.add("-D" + define)
 
     for include in compilation_context.includes.to_list():
         args.add("-I" + include)
@@ -184,6 +189,9 @@ def _swig_gen_go_impl(ctx):
 swig_gen_go = rule(
     implementation = _swig_gen_go_impl,
     attrs = {
+        "defines": attr.string_list(
+            doc = "SWIG preprocessor definitions, without -D (for example FEATURE or FEATURE=1). These do not set C++ compiler definitions.",
+        ),
         "interface": attr.label(
             mandatory = True,
             allow_single_file = [".i"],
@@ -226,6 +234,9 @@ swig_gen_go = rule(
 swig_gen = rule(
     implementation = _swig_gen_cc_impl,
     attrs = {
+        "defines": attr.string_list(
+            doc = "SWIG preprocessor definitions, without -D (for example FEATURE or FEATURE=1). These do not set C++ compiler definitions.",
+        ),
         "interface": attr.label(
             mandatory = True,
             allow_single_file = [".i"],

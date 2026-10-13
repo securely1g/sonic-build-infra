@@ -48,6 +48,7 @@ tests=(
   //tests:hello_deploy_tar_provides_debug_symbols_test
   //proto:protoc_version_test
   //python:py_native_library_test
+  //swig/tests:defines_test
   //tests:deploy_tar_timestamps_test
 )
 # These feature-specific targets are explicit; adding either public rule family
