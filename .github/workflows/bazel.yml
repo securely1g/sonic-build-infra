@@ -1,21 +1,18 @@
-name: Bazel
+name: GCC PR37 ablation
 
 on:
-  pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: bazel-${{ github.event.pull_request.number || github.ref }}
+  group: gcc37-ablation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   native:
-    name: Bazel (${{ matrix.arch }})
+    name: GCC PR37 ablation (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify native execution and install Bazel 8.5.1
         env:
           BAZEL_ARCH: ${{ matrix.bazel_arch }}
@@ -68,13 +66,13 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
           printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
-      - name: Build and test source rules
-        run: bash ci/bazel-ci.sh
-      - name: Retain validation evidence and sample runtime/debug outputs
+      - name: Run all eight GCC flag combinations
+        run: python3 ci/gcc37_ablation.py
+      - name: Retain GCC ablation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sonic-build-infra-${{ matrix.arch }}-${{ github.sha }}
-          path: ci-artifacts/
+          name: gcc37-ablation-${{ matrix.arch }}-${{ github.sha }}
+          path: gcc37-artifacts/
           if-no-files-found: error
           retention-days: 14
