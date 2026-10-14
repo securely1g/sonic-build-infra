@@ -18,3 +18,16 @@ rust_test(
         "//:tracing-subscriber",
     ],
 )
+
+rust_test(
+    name = "supervisor_io_test",
+    srcs = ["supervisor_io_test.rs"],
+    args = ["--test-threads=1"],
+    deps = [
+        "//:injectorpp",
+        "//:mio",
+        "//:nix",
+        "//:scopeguard",
+        "//:syslog-tracing",
+    ],
+)

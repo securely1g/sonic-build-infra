@@ -1,6 +1,6 @@
 # Shared Rust dependencies for SONiC
 
-Common and SWSS depend directly on this module's third-party Rust targets.
+Common, SWSS and the Rust supervisor listener depend directly on this module's third-party Rust targets.
 For example, Common's `CxxString` implements Serde's serialization traits and
 SWSS passes it to `serde_json`. Both use the same `:serde` and `:serde_core`
 targets, so Common does not need to expose aliases for those dependencies.
@@ -15,7 +15,7 @@ when those consumers are themselves dependencies of an image build.
 ## Pins and features
 
 `Cargo.toml` contains the union of third-party dependencies and requested
-features from Common and SWSS, including their tests and Cargo build helpers.
+features from Common, SWSS and the Rust supervisor listener, including their tests and Cargo build helpers.
 `Cargo.lock` preserves their existing package versions and checksums; the
 324 crates.io packages keep their pins. SONiC source packages remain in their
 owning modules instead of this lock.
@@ -37,7 +37,8 @@ When adding or updating a dependency:
 
 1. Update the owning component's Cargo manifest and tracked lock as usual.
 2. Update this manifest and lock, preserving unrelated package pins. Add a
-   public alias in `BUILD.bazel` when the component needs a new direct crate.
+   crate name to `_DIRECT_CRATES` in `BUILD.bazel` when the component needs a new
+   direct crate. Keep versioned exceptions, such as `serde_core`, as explicit aliases.
 3. Check that the component and shared locks agree on the selected package
    versions, source checksums and required features.
 4. Run this module's tests and the affected owner and consumer tests on both
@@ -69,3 +70,18 @@ and inspect the resolved Bazel graph. These standalone smoke tests do not prove
 that every Common or SWSS target works. Private compiler or binding-generator
 libraries can have separate dependency graphs; application crates exposing
 Rust traits across repository boundaries must share their defining targets.
+
+## Supervisor listener
+
+Version 0.0.3 adds the listener's Mio polling/signal/process features and public
+aliases for its runtime and test dependencies. The only new locked packages
+are nix 0.27.1, syslog-tracing 0.3.1 and injectorpp 0.4.0 at Git revision
+`c7317906a1d514ef99bf2fbd4c943908c265d280`. Existing package versions and
+checksums are unchanged. The listener's native Make Cargo files stay unchanged;
+its Bazel build uses this shared lock, and its README records the compatible
+version differences explicitly.
+
+The native supervisor I/O test verifies readiness on an isolated pipe, signal
+zero against the test's own process, function replacement/restoration through
+the pinned injector, and lazy syslog writer initialization. CI runs it on
+AMD64 and ARM64 alongside the existing public Serde/tracing tests.
