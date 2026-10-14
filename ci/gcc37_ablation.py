@@ -257,9 +257,13 @@ def main():
             rc = run(command, case / "test-command.log")
             events = [json.loads(line) for line in (case / "bep.json").read_text().splitlines()]
             summaries = [e["testSummary"] for e in events if "testSummary" in e]
+            test_results = [e["testResult"] for e in events if "testResult" in e]
             after = set(sandbox_root.iterdir()) if sandbox_root.is_dir() else set()
-            collect(case, output_base, after - before, bool(summaries))
-            record = {"case": bits, "bazel_exit": rc, "test_summary": summaries, "observations": observations(case)}
+            # A FAILED_TO_BUILD summary does not establish fresh test outputs.
+            # Only a testResult event permits reading installed outputs/testlogs.
+            collect(case, output_base, after - before, bool(test_results))
+            record = {"case": bits, "bazel_exit": rc, "test_summary": summaries,
+                      "test_results": test_results, "observations": observations(case)}
             if (case / "execution.json").exists():
                 record["foreign_actions"] = execution_records(case / "execution.json")
             else:
