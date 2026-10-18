@@ -258,3 +258,89 @@ cc_binary(
     linkshared = True,
     linkopts = ["-Wl,-soname,libmetadata-probe.so.1"],
 )
+
+# Debian's own maintainer-script and metadata generators, with pinned tools.
+[
+    build_tools_runtime(
+        name = "debian_runtime_" + architecture,
+        architecture = architecture,
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = [
+            "@build_tools//base-files",
+            "@build_tools//binutils",
+            "@build_tools//coreutils",
+            "@build_tools//dash",
+            "@build_tools//debhelper",
+            "@build_tools//dh-python",
+            "@build_tools//python3",
+            "@build_tools//findutils",
+            "@build_tools//grep",
+            "@build_tools//mawk",
+            "@build_tools//po-debconf",
+            "@build_tools//sed",
+        ],
+        profile = "debian",
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "debian_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":debian_runtime_amd64",
+        "@platforms//cpu:aarch64": ":debian_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = tool,
+        runtime = ":debian_runtime",
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "dh_installdeb",
+        "dh_installdebconf",
+        "dh_makeshlibs",
+        "dh_perl",
+        "dh_installsystemduser",
+        "dh_python3",
+        "dh_installtmpfiles",
+    ]
+]
+
+py_test(
+    name = "debian_runtime_test",
+    srcs = ["debian_runtime_test.py"],
+    args = [
+        "--installdeb=$(location :dh_installdeb)",
+        "--installdebconf=$(location :dh_installdebconf)",
+        "--makeshlibs=$(location :dh_makeshlibs)",
+        "--perl=$(location :dh_perl)",
+        "--systemduser=$(location :dh_installsystemduser)",
+        "--python=$(location :dh_python3)",
+        "--tmpfiles=$(location :dh_installtmpfiles)",
+        "--library=$(location :libmetadata_probe.so)",
+        "--runtime=$(location :debian_runtime)",
+    ],
+    data = [
+        ":debian_runtime",
+        ":dh_installdeb",
+        ":dh_installdebconf",
+        ":dh_installsystemduser",
+        ":dh_makeshlibs",
+        ":dh_perl",
+        ":dh_python3",
+        ":dh_installtmpfiles",
+        ":libmetadata_probe.so",
+    ],
+    visibility = ["//visibility:public"],
+)

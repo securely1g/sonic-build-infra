@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from configparser import ConfigParser
 import gzip
 import json
 import os
@@ -94,17 +95,25 @@ def run_tool(command: list[str], *, environment: dict[str, str], data: bytes | N
 
 def prepare_script_tools(root: Path, architecture: str, loader: Path, libraries: list[Path], profile: str) -> None:
     """Relocate script interpreters, data and subprocesses into one tool bundle."""
-    if profile == "metadata":
+    if profile in ("metadata", "debian"):
         script_tools = ("dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols", "dpkg-architecture")
         native_tools = ("perl", "dpkg", "dpkg-query", "objdump")
     else:
         script_tools = ("autoconf", "autoheader", "autom4te")
         native_tools = ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep")
-    tools = {name: root / "usr/bin" / name for name in (*native_tools, *script_tools)}
+    shell_tools = ()
+    python_tools = ()
+    if profile == "debian":
+        script_tools += ("dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_installtmpfiles")
+        native_tools += ("cp", "chmod", "mkdir", "rm", "mv", "rmdir", "install", "sort", "find", "cat", "sed", "expr", "dirname", "mktemp", "ln", "grep", "mawk", "dash", "msgconv", "msgfmt")
+        shell_tools = ("po2debconf",)
+        python_tools = ("dh_python3",)
+        native_tools += ("python3", "python3.13")
+    tools = {name: root / "usr/bin" / name for name in (*native_tools, *script_tools, *shell_tools, *python_tools)}
     for name, path in tools.items():
         if not path.is_file():
             raise RuntimeError(f"{profile} packages contain no {name}")
-    if profile == "metadata":
+    if profile in ("metadata", "debian"):
         # dpkg-dev's dependency closure includes unrelated system alternatives
         # such as /etc/rmt. They are unused by these metadata tools and their
         # targets are installed by package scripts outside this private bundle.
@@ -124,7 +133,7 @@ def prepare_script_tools(root: Path, architecture: str, loader: Path, libraries:
         config.write_text("".join(line for line in lines if line.strip() != directory_option))
     environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
-    for binary in [path for name, path in tools.items() if name not in script_tools] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")):
+    for binary in [path for name, path in tools.items() if name not in script_tools + shell_tools + python_tools] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")):
         if not binary.is_file():
             raise RuntimeError(f"configure packages contain no tool: {binary}")
         listing = run_tool(prefix + ["--list", str(binary)], environment=environment).decode()
@@ -161,7 +170,7 @@ BEGIN {
 }
 1;
 """
-    if profile == "metadata":
+    if profile in ("metadata", "debian"):
         # These supported Dpkg module settings prevent the metadata tools from
         # reading the host package database, configuration or library paths.
         # Consumers supply target libraries with -l and their original package
@@ -204,7 +213,7 @@ AUTOM4TE="$root/bin/autom4te"
 M4="$root/bin/m4"
 export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
 '''
-        if profile == "metadata":
+        if profile in ("metadata", "debian"):
             script += '''PATH="$root/bin"
 DPKG_DATADIR="$root/usr/share/dpkg"
 : "${DPKG_ADMINDIR:=$root/share/sonic-build-tools/empty-dpkg}"
@@ -215,6 +224,20 @@ export PATH DPKG_DATADIR DPKG_ADMINDIR DEB_VENDOR
 '''
             script += ': "${DEB_BUILD_ARCH:=' + architecture + '}"\n'
             script += ': "${DEB_HOST_ARCH:=' + architecture + '}"\nexport DEB_BUILD_ARCH DEB_HOST_ARCH\n'
+        if profile == "debian":
+            script += '''DEB_RULES_REQUIRES_ROOT=no
+export DEB_RULES_REQUIRES_ROOT
+PYTHONHOME="$root/usr"
+PYTHONPATH="$root/usr/share/dh-python"
+PYTHONNOUSERSITE=1
+PYTHONSAFEPATH=1
+export PYTHONHOME PYTHONPATH PYTHONNOUSERSITE PYTHONSAFEPATH
+DH_DATAFILES="$root/usr/share/debhelper"
+DH_AUTOSCRIPTDIR="$root/usr/share/debhelper/autoscripts"
+PODEBCONF_LIB="$root/share/sonic-build-tools/intltool-debian"
+PODEBCONF_ENCODINGS="$root/usr/share/po-debconf/encodings"
+export DH_DATAFILES DH_AUTOSCRIPTDIR PODEBCONF_LIB PODEBCONF_ENCODINGS
+'''
         if name in ("bison", "flex"):
             script += 'M4="$root/bin/m4"\nBISON_PKGDATADIR="$root/usr/share/bison"\nexport M4 BISON_PKGDATADIR\n'
         if name == "make":
@@ -225,7 +248,17 @@ export PATH DPKG_DATADIR DPKG_ADMINDIR DEB_VENDOR
             # No host /usr/lib/pkgconfig fallback; foreign_cc supplies explicit
             # PKG_CONFIG_LIBDIR/PATH for its declared target dependencies.
             script += ': "${PKG_CONFIG_LIBDIR:=}"\nexport PKG_CONFIG_LIBDIR\n'
-        if name in script_tools:
+        if profile == "debian":
+            defaults = ConfigParser()
+            defaults.read(root / "usr/share/python3/debian_defaults")
+            for key, field in (("DEFAULT", "default-version"), ("SUPPORTED", "supported-versions")):
+                value = defaults["DEFAULT"][field].replace("python", "")
+                script += 'DEBPYTHON3_' + key + '="' + value + '"\nexport DEBPYTHON3_' + key + '\n'
+        if name in python_tools:
+            script += 'exec "$root/bin/python3" "$root/share/sonic-build-tools/dh_python_bootstrap.py" "$root" "$@"\n'
+        elif name in shell_tools:
+            script += 'exec "$root/bin/dash" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
+        elif name in script_tools:
             script += 'exec "$root/bin/perl" "$root/' + str(binary.relative_to(root)) + '" '
             if name == "autom4te":
                 script += '--prepend-include "$root/usr/share/autoconf" '
@@ -235,7 +268,27 @@ export PATH DPKG_DATADIR DPKG_ADMINDIR DEB_VENDOR
         launcher = root / "bin" / name
         launcher.write_text(script)
         launcher.chmod(0o755)
-    versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip() for name in tools}
+    if profile == "debian":
+        for alias, target in (("awk", "mawk"), ("sh", "dash")):
+            (root / "bin" / alias).unlink(missing_ok=True)
+            (root / "bin" / alias).symlink_to(target)
+        intltool = root / "share/sonic-build-tools/intltool-debian/intltool-merge"
+        intltool.parent.mkdir(parents=True)
+        intltool.write_text('#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "${0%/*}/../../.." && pwd -P)\nexec "$root/bin/perl" "$root/usr/share/intltool-debian/intltool-merge" "$@"\n')
+        intltool.chmod(0o755)
+    # dh_* has no --version option. Read the version from its declared Perl
+    # module; do not run it against an invented or host Debian source tree.
+    versions = {}
+    for name in tools:
+        if name == "dh_python3":
+            command = [str(root / "bin" / name), "--version"]
+        elif name.startswith("dh_"):
+            command = [str(root / "bin/perl"), "-MDebian::Debhelper::Dh_Lib", "-e", "print Debian::Debhelper::Dh_Lib::DH_BUILTIN_VERSION()"]
+        elif name in ("dash", "po2debconf", "mawk"):
+            continue
+        else:
+            command = [str(root / "bin" / name), "--version"]
+        versions[name] = run_tool(command, environment=environment).decode().strip()
     manifest = {
         "format_version": 1,
         "profile": profile,
@@ -254,14 +307,22 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--tar", action="append", default=[])
-    parser.add_argument("--profile", choices=("documentation", "configure", "metadata"), default="documentation")
+    parser.add_argument("--python-bootstrap", type=Path, required=True)
+    parser.add_argument("--profile", choices=("documentation", "configure", "metadata", "debian"), default="documentation")
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
-    if args.profile in ("configure", "metadata"):
+    if args.profile == "debian":
+        directory = root / "share/sonic-build-tools"
+        directory.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(args.python_bootstrap, directory / "dh_python_bootstrap.py")
+        # dh-python tries its adjacent test-data directory before the fixed
+        # system autoscripts directory. Preserve the declared original bytes.
+        shutil.copytree(root / "usr/share/debhelper/autoscripts", root / "usr/share/dh-python/autoscripts", dirs_exist_ok=True)
+    if args.profile in ("configure", "metadata", "debian"):
         # Bazel caches files inside tree outputs. Materialize directory aliases
         # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
         # a child through a directory symlink before its target is populated.
@@ -278,7 +339,7 @@ def main() -> None:
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
-    if args.profile in ("configure", "metadata"):
+    if args.profile in ("configure", "metadata", "debian"):
         prepare_script_tools(root, args.architecture, loader, libraries, args.profile)
         return
     tools = {name: root / path for name, path in {

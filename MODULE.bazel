@@ -36,6 +36,7 @@ local_path_override(
 )
 
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
+
 # The SONiC patch sorts above upstream 0.9.4 without a root override.
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.1")
 
@@ -130,6 +131,15 @@ apt.install(
         "pkgconf",
         "perl",
         "dpkg-dev",
+        "debhelper",
+        "dh-python",
+        "python3",
+        "po-debconf",
+        "coreutils",
+        "findutils",
+        "sed",
+        "mawk",
+        "dash",
         "base-files",
         "binutils",
         # Metadata tests inspect this library and its original symbols file.
