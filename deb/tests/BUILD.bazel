@@ -1,7 +1,12 @@
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import")
+load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@tar.bzl", "tar")
+load("//deb:metadata.bzl", "debian_library", "debian_metadata")
 load("//deb:sonic_deb.bzl", "sonic_deb")
+
+package(default_visibility = ["//visibility:public"])
 
 write_file(
     name = "binary_control",
@@ -51,4 +56,92 @@ py_test(
     srcs = ["control_archive_test.py"],
     args = ["$(rootpath :example_deb_control)"],
     data = [":example_deb_control"],
+)
+
+debian_library(
+    name = "libc",
+    control_tar = "@build_tools//libc6:control",
+    data = "@build_tools//libc6:data",
+)
+
+tar(
+    name = "library_data",
+    srcs = ["//tools/build_tools:libmetadata_probe.so"],
+    mtree = [
+        "usr/lib type=dir mode=0755 uid=0 gid=0",
+        "usr/lib/libmetadata-probe.so.1 type=file mode=0644 uid=0 gid=0 content=$(location //tools/build_tools:libmetadata_probe.so)",
+    ],
+)
+
+debian_metadata(
+    name = "library_metadata",
+    changelog = "changelog",
+    control = "control",
+    data = ":library_data",
+    dependencies = [":libc"],
+    generate_symbols = True,
+    package = "libmetadata-probe1",
+)
+
+cc_import(
+    name = "library",
+    shared_library = "//tools/build_tools:libmetadata_probe.so",
+)
+
+cc_binary(
+    name = "consumer",
+    srcs = ["consumer.c"],
+    deps = [":library"],
+)
+
+tar(
+    name = "binary_data",
+    srcs = [":consumer"],
+    mtree = [
+        "usr/bin type=dir mode=0755 uid=0 gid=0",
+        "usr/bin/metadata-probe type=file mode=0755 uid=0 gid=0 content=$(location :consumer)",
+    ],
+)
+
+debian_metadata(
+    name = "binary_metadata",
+    changelog = "changelog",
+    control = "control",
+    data = ":binary_data",
+    dependencies = [
+        ":libc",
+        ":library_metadata",
+    ],
+    package = "metadata-probe",
+    substitutions = {"misc:Depends": ""},
+    version = "2:1.2.3-4+sonic.1",
+)
+
+filegroup(
+    name = "symbols",
+    srcs = [":library_metadata"],
+    output_group = "symbols",
+)
+
+filegroup(
+    name = "receipt",
+    srcs = [":binary_metadata"],
+    output_group = "receipt",
+)
+
+py_test(
+    name = "metadata_test",
+    srcs = ["metadata_test.py"],
+    args = [
+        "$(location :binary_metadata)",
+        "$(location :library_metadata)",
+        "$(location :symbols)",
+        "$(location :receipt)",
+    ],
+    data = [
+        ":binary_metadata",
+        ":library_metadata",
+        ":receipt",
+        ":symbols",
+    ],
 )

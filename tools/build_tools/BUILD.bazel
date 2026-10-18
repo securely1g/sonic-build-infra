@@ -73,13 +73,28 @@ check_build_tools(
     build_tools_runtime(
         name = "configure_runtime_" + architecture,
         architecture = architecture,
-        profile = "configure",
-        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
-        packages = ["@build_make_" + architecture + "//:data.tar.xz"] + [
-            "@build_tools//" + tool for tool in ["m4", "pkgconf", "perl", "bison", "flex", "autoconf", "grep"]
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
         ],
+        packages = ["@build_make_" + architecture + "//:data.tar.xz"] + [
+            "@build_tools//" + tool
+            for tool in [
+                "m4",
+                "pkgconf",
+                "perl",
+                "bison",
+                "flex",
+                "autoconf",
+                "grep",
+            ]
+        ],
+        profile = "configure",
     )
-    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
 ]
 
 alias(
@@ -94,11 +109,21 @@ alias(
 [
     build_tool(
         name = tool,
-        tool = tool,
         runtime = ":configure_runtime",
+        tool = tool,
         visibility = ["//visibility:public"],
     )
-    for tool in ["make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]
+    for tool in [
+        "make",
+        "m4",
+        "pkgconf",
+        "perl",
+        "bison",
+        "flex",
+        "autoconf",
+        "autoheader",
+        "autom4te",
+    ]
 ]
 
 # foreign_cc expands each tool target separately. Distinct labels let all
@@ -108,15 +133,20 @@ alias(
         name = tool + "_runtime",
         srcs = [":configure_runtime"],
     )
-    for tool in ["make", "m4", "pkgconfig", "autoconf"]
+    for tool in [
+        "make",
+        "m4",
+        "pkgconfig",
+        "autoconf",
+    ]
 ]
 
 [
     native_tool_toolchain(
         name = toolchain_type + "_tool",
-        target = ":" + toolchain_type + "_runtime",
-        path = "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool,
         env = {variable: "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool},
+        path = "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool,
+        target = ":" + toolchain_type + "_runtime",
     )
     for toolchain_type, tool, variable in [
         ("make", "make", "MAKE"),
@@ -129,35 +159,63 @@ alias(
 [
     toolchain(
         name = toolchain_type + "_toolchain",
+        exec_compatible_with = ["@platforms//os:linux"],
         toolchain = ":" + toolchain_type + "_tool",
         toolchain_type = "@rules_foreign_cc//toolchains:" + toolchain_type + "_toolchain",
-        exec_compatible_with = ["@platforms//os:linux"],
         visibility = ["//visibility:public"],
     )
-    for toolchain_type in ["make", "m4", "pkgconfig", "autoconf"]
+    for toolchain_type in [
+        "make",
+        "m4",
+        "pkgconfig",
+        "autoconf",
+    ]
 ]
 
 py_test(
     name = "configure_runtime_test",
     srcs = ["configure_runtime_test.py"],
-    args = ["$(location :" + tool + ")" for tool in ["make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]],
-    data = [":make", ":m4", ":pkgconf", ":perl", ":bison", ":flex", ":autoconf", ":autoheader", ":autom4te"],
+    args = ["$(location :" + tool + ")" for tool in [
+        "make",
+        "m4",
+        "pkgconf",
+        "perl",
+        "bison",
+        "flex",
+        "autoconf",
+        "autoheader",
+        "autom4te",
+    ]],
+    data = [
+        ":autoconf",
+        ":autoheader",
+        ":autom4te",
+        ":bison",
+        ":flex",
+        ":m4",
+        ":make",
+        ":perl",
+        ":pkgconf",
+    ],
     visibility = ["//visibility:public"],
 )
 
 # Compile one small upstream-style project through the registered toolchains.
 filegroup(
     name = "configure_probe_sources",
-    srcs = ["tests/configure", "tests/probe.c"],
+    srcs = [
+        "tests/configure",
+        "tests/probe.c",
+    ],
 )
 
 configure_make(
     name = "configure_probe",
-    lib_source = ":configure_probe_sources",
     build_data = [":configure_runtime"],
     configure_in_place = True,
     env = {"PERL": "$(execpath :configure_runtime)/bin/perl"},
     features = ["-sanitize_pwd"],
+    lib_source = ":configure_probe_sources",
     out_static_libs = ["libprobe.a"],
 )
 
@@ -185,9 +243,9 @@ py_test(
             "@platforms//cpu:" + cpu,
         ],
         packages = [
+            "@build_tools//base-files",
             "@build_tools//binutils",
             "@build_tools//dpkg-dev",
-            "@build_tools//base-files",
             "@build_tools//perl",
         ],
         profile = "metadata",
@@ -236,13 +294,13 @@ py_test(
     ],
     data = [
         ":dpkg-gencontrol",
-        ":dpkg-shlibdeps",
         ":dpkg-gensymbols",
+        ":dpkg-shlibdeps",
         ":libmetadata_probe.so",
-        ":metadata_runtime",
         ":metadata_probe_binary",
-        "@build_tools//libc6:data",
+        ":metadata_runtime",
         "@build_tools//libc6:control",
+        "@build_tools//libc6:data",
     ],
     visibility = ["//visibility:public"],
 )
@@ -255,8 +313,9 @@ cc_binary(
 cc_binary(
     name = "libmetadata_probe.so",
     srcs = ["tests/metadata_probe_library.c"],
-    linkshared = True,
     linkopts = ["-Wl,-soname,libmetadata-probe.so.1"],
+    linkshared = True,
+    visibility = ["//deb/tests:__pkg__"],
 )
 
 # Debian's own maintainer-script and metadata generators, with pinned tools.
@@ -275,11 +334,11 @@ cc_binary(
             "@build_tools//dash",
             "@build_tools//debhelper",
             "@build_tools//dh-python",
-            "@build_tools//python3",
             "@build_tools//findutils",
             "@build_tools//grep",
             "@build_tools//mawk",
             "@build_tools//po-debconf",
+            "@build_tools//python3",
             "@build_tools//sed",
         ],
         profile = "debian",
@@ -336,10 +395,10 @@ py_test(
         ":dh_installdeb",
         ":dh_installdebconf",
         ":dh_installsystemduser",
+        ":dh_installtmpfiles",
         ":dh_makeshlibs",
         ":dh_perl",
         ":dh_python3",
-        ":dh_installtmpfiles",
         ":libmetadata_probe.so",
     ],
     visibility = ["//visibility:public"],

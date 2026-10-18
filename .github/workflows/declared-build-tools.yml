@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'deb/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'deb/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
@@ -107,6 +107,7 @@ jobs:
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
             //tools/build_tools:metadata_runtime_test \
+            //deb/tests:metadata_test \
             //tools/build_tools:debian_runtime_test \
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
