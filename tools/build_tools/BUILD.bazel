@@ -174,3 +174,87 @@ py_test(
     data = [":configure_probe_binary"],
     visibility = ["//visibility:public"],
 )
+
+# These tools generate package metadata; they do not build Debian archives.
+[
+    build_tools_runtime(
+        name = "metadata_runtime_" + architecture,
+        architecture = architecture,
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = [
+            "@build_tools//binutils",
+            "@build_tools//dpkg-dev",
+            "@build_tools//base-files",
+            "@build_tools//perl",
+        ],
+        profile = "metadata",
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "metadata_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":metadata_runtime_amd64",
+        "@platforms//cpu:aarch64": ":metadata_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = tool,
+        runtime = ":metadata_runtime",
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "dpkg-gencontrol",
+        "dpkg-shlibdeps",
+        "dpkg-gensymbols",
+    ]
+]
+
+py_test(
+    name = "metadata_runtime_test",
+    srcs = ["metadata_runtime_test.py"],
+    args = [
+        "--gencontrol=$(location :dpkg-gencontrol)",
+        "--shlibdeps=$(location :dpkg-shlibdeps)",
+        "--gensymbols=$(location :dpkg-gensymbols)",
+        "--library=$(location :libmetadata_probe.so)",
+        "--runtime=$(location :metadata_runtime)",
+        "--binary=$(location :metadata_probe_binary)",
+        "--libc-data=$(location @build_tools//libc6:data)",
+        "--libc-control=$(location @build_tools//libc6:control)",
+    ],
+    data = [
+        ":dpkg-gencontrol",
+        ":dpkg-shlibdeps",
+        ":dpkg-gensymbols",
+        ":libmetadata_probe.so",
+        ":metadata_runtime",
+        ":metadata_probe_binary",
+        "@build_tools//libc6:data",
+        "@build_tools//libc6:control",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "metadata_probe_binary",
+    srcs = ["tests/metadata_probe.c"],
+)
+
+cc_binary(
+    name = "libmetadata_probe.so",
+    srcs = ["tests/metadata_probe_library.c"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,libmetadata-probe.so.1"],
+)
