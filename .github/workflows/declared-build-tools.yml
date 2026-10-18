@@ -70,18 +70,43 @@ jobs:
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
+          # Inspect the configured metadata test before any build action runs.
+          bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
+            'deps(//tools/build_tools:metadata_runtime_test)' > ci-artifacts/metadata-actions.json
+          python3 - <<'PYTHON'
+          import json, re
+          from pathlib import Path
+          root = Path("ci-artifacts")
+          graph = json.loads((root / "metadata-actions.json").read_text())
+          fragments = {item["id"]: item for item in graph["pathFragments"]}
+          def path(identifier):
+              node = fragments[identifier]
+              return (path(node["parentId"]) + "/" if node.get("parentId") else "") + node["label"]
+          artifacts = {item["id"]: path(item["pathFragmentId"]) for item in graph["artifacts"]}
+          actions = graph["actions"]
+          deb_outputs = [artifacts[i] for action in actions for i in action.get("outputIds", [])
+                         if artifacts[i].endswith(".deb")]
+          creation = [action.get("mnemonic") for action in actions
+                      if re.search(r"dpkg-deb.*(?:--build| -b )|dpkg-buildpackage",
+                                   " ".join(action.get("arguments", [])))]
+          receipt = dict(action_count=len(actions), deb_outputs=deb_outputs, deb_creation_commands=creation)
+          (root / "metadata-action-audit.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          assert actions and not deb_outputs and not creation, receipt
+          PYTHON
           bazel --ignore_all_rc_files build "${flags[@]}" \
             --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
             //tools/build_tools:aspell //tools/build_tools:doxygen \
             //tools/build_tools:make //tools/build_tools:m4 \
             //tools/build_tools:pkgconf //tools/build_tools:perl \
             //tools/build_tools:bison //tools/build_tools:flex \
+            //tools/build_tools:dpkg-gencontrol //tools/build_tools:dpkg-shlibdeps //tools/build_tools:dpkg-gensymbols \
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
+            //tools/build_tools:metadata_runtime_test \
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
