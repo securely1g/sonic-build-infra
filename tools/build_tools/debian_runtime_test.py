@@ -1,0 +1,125 @@
+"""Exercise Debian's original script generators with an isolated tool runtime."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    for name in ('install', 'fixperms', 'installinit', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
+        parser.add_argument('--' + name, type=Path, required=True)
+    args = parser.parse_args()
+    paths = {key: value.absolute() for key, value in vars(args).items()}
+    receipt = json.loads((paths['runtime'] / 'toolchain.json').read_text())
+    assert receipt['profile'] == 'debian', receipt
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        debian = root / 'debian'
+        package = debian / 'sonic-script-probe'
+        for directory in ('DEBIAN', 'etc', 'usr/lib', 'usr/bin', 'usr/lib/systemd/user', 'usr/lib/python3/dist-packages'):
+            (package / directory).mkdir(parents=True, exist_ok=True)
+        (debian / 'control').write_text('''Source: sonic-script-probe
+Section: misc
+Priority: optional
+Maintainer: SONiC <securely1g@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Rules-Requires-Root: no
+
+Package: sonic-script-probe
+Architecture: any
+Depends: ${misc:Depends}, ${perl:Depends}, ${python3:Depends}
+Description: Check original Debian installation script generation
+''')
+        (debian / 'changelog').write_text('''sonic-script-probe (1.0-1) unstable; urgency=medium
+
+  * Test maintainer scripts.
+
+ -- SONiC <securely1g@gmail.com>  Sun, 18 Oct 2026 00:00:00 +0000
+''')
+        (package / 'etc/sonic-script-probe.conf').write_text('enabled=yes\n')
+        (package / 'usr/lib/python3/dist-packages/sonic_script_probe.py').write_text('enabled = True\n')
+        # Real egg metadata must still generate dependencies. Disabling all
+        # dependency scanning hides missing installed Python requirements.
+        egg = package / 'usr/lib/python3/dist-packages/sonic_script_probe-1.0.egg-info'
+        egg.mkdir()
+        (egg / 'PKG-INFO').write_text('Metadata-Version: 1.2\nName: sonic-script-probe\nVersion: 1.0\n')
+        (egg / 'requires.txt').write_text('sonic-dependency-probe\nsonic-unmapped-probe\n')
+        (debian / 'py3dist-overrides').write_text('sonic-dependency-probe python3-sonic-dependency-probe\n')
+        # Apply the source .install manifest with upstream dh_install: the
+        # runtime receives the versioned library, not its development symlink.
+        staged = debian / 'tmp/usr/lib'
+        staged.mkdir(parents=True)
+        shutil.copyfile(paths['library'], staged / 'libmetadata-probe.so.1')
+        (staged / 'libmetadata-probe.so').symlink_to('libmetadata-probe.so.1')
+        (debian / 'sonic-script-probe.install').write_text('usr/lib/libmetadata-probe.so.*\n')
+        shutil.copyfile(paths['library'], package / 'usr/lib/python3/dist-packages/_probe.so')
+        (package / 'usr/bin/sonic-script-probe').write_text('#!/usr/bin/perl\nprint "ok\\n";\n')
+        (package / 'usr/bin/sonic-script-probe').chmod(0o755)
+        (package / 'usr/lib/systemd/user/sonic-script-probe.service').write_text('[Unit]\nDescription=Probe\n[Service]\nExecStart=/usr/bin/sonic-script-probe\n[Install]\nWantedBy=default.target\n')
+        (debian / 'sonic-script-probe.init').write_text('#!/bin/sh\n### BEGIN INIT INFO\n# Provides: sonic-script-probe\n# Required-Start: $remote_fs\n# Required-Stop: $remote_fs\n# Default-Start: 2 3 4 5\n# Default-Stop: 0 1 6\n### END INIT INFO\nexit 0\n')
+        (debian / 'sonic-script-probe.config').write_text('#!/bin/sh\n. /usr/share/debconf/confmodule\ndb_input low sonic-script-probe/enabled || true\ndb_go\n')
+        (debian / 'sonic-script-probe.postinst').write_text('#!/bin/sh\nset -e\n. /usr/share/debconf/confmodule\n#DEBHELPER#\n')
+        (debian / 'sonic-script-probe.maintscript').write_text('rm_conffile /etc/sonic-script-probe.old 0.9~\n')
+        (debian / 'sonic-script-probe.tmpfiles').write_text('d /run/sonic-script-probe 0755 root root -\n')
+        (debian / 'sonic-script-probe.templates').write_text('Template: sonic-script-probe/enabled\nType: boolean\nDefault: false\n_Description: Enable the probe?\n')
+        po = debian / 'po'
+        po.mkdir()
+        (po / 'POTFILES.in').write_text('[type: gettext/rfc822deb] sonic-script-probe.templates\n')
+        (po / 'fr.po').write_text('''msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Language: fr\\n"
+
+msgid "Enable the probe?"
+msgstr "Activer la sonde ?"
+''')
+        # Reproduce a group-writable checkout and restrictive source modes.
+        (package / 'etc/sonic-script-probe.conf').chmod(0o664)
+        (package / 'usr/bin/sonic-script-probe').chmod(0o775)
+        (package / 'etc').chmod(0o770)
+        owner = (package / 'etc/sonic-script-probe.conf').stat().st_uid
+        environment = dict(os.environ, PATH='', DEB_RULES_REQUIRES_ROOT='no', DH_COMPAT='13', DEB_HOST_ARCH=receipt['architecture'], LANG='C', LC_ALL='C')
+        environment.pop('PERL5LIB', None)
+        environment.pop('PERL5OPT', None)
+        for name in ('install', 'installinit', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'fixperms', 'makeshlibs', 'installdeb'):
+            subprocess.run([str(paths[name]), '-psonic-script-probe'], cwd=root, env=environment, check=True)
+        assert (package / 'etc/sonic-script-probe.conf').stat().st_uid == owner
+        assert (package / 'etc/sonic-script-probe.conf').stat().st_mode & 0o777 == 0o644
+        assert (package / 'usr/bin/sonic-script-probe').stat().st_mode & 0o777 == 0o755
+        assert (package / 'etc').stat().st_mode & 0o777 == 0o755
+        assert (package / 'usr/lib/libmetadata-probe.so.1').is_file()
+        assert not (package / 'usr/lib/libmetadata-probe.so').exists()
+        controls = package / 'DEBIAN'
+        assert '/etc/sonic-script-probe.conf' in (controls / 'conffiles').read_text()
+        assert 'ldconfig' in (controls / 'triggers').read_text()
+        assert 'libmetadata-probe 1 sonic-script-probe' in (controls / 'shlibs').read_text()
+        templates = (controls / 'templates').read_text()
+        assert 'Description-fr' in templates and 'Activer la sonde ?' in templates, templates
+        assert 'py3compile -p sonic-script-probe:' in (controls / 'postinst').read_text()
+        assert 'py3clean -p sonic-script-probe:' in (controls / 'prerm').read_text()
+        assert 'systemd-tmpfiles' in (controls / 'postinst').read_text()
+        assert (package / 'usr/lib/tmpfiles.d/sonic-script-probe.conf').is_file()
+        architecture = {'amd64': 'x86_64-linux-gnu', 'arm64': 'aarch64-linux-gnu'}[receipt['architecture']]
+        assert (package / f'usr/lib/python3/dist-packages/_probe.cpython-313-{architecture}.so').is_file()
+        assert 'update-rc.d' in (controls / 'postinst').read_text()
+        assert 'invoke-rc.d' in (controls / 'prerm').read_text()
+        assert (package / 'etc/init.d/sonic-script-probe').is_file()
+        assert 'db_purge' in (controls / 'postrm').read_text()
+        assert 'deb-systemd-helper --user' in (controls / 'postinst').read_text()
+        assert '#DEBHELPER#' not in (controls / 'postinst').read_text()
+        assert 'rm_conffile /etc/sonic-script-probe.old' in (controls / 'preinst').read_text()
+        substvars = (debian / 'sonic-script-probe.substvars').read_text()
+        assert 'debconf' in substvars and 'init-system-helpers' in substvars and 'perl:Depends=perl:any' in substvars, substvars
+        assert 'python3-sonic-dependency-probe' in substvars, substvars
+        assert 'python3-sonic-unmapped-probe' not in substvars, substvars
+        for name in ('preinst', 'postinst', 'postrm', 'config'):
+            assert (controls / name).stat().st_mode & 0o777 == 0o755, name
+        print(json.dumps(dict(architecture=receipt['architecture'], generated_controls=sorted(p.name for p in controls.iterdir()), substitutions=substvars), indent=2))
+
+
+if __name__ == '__main__':
+    main()

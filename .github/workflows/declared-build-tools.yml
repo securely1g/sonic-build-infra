@@ -72,7 +72,7 @@ jobs:
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
           # Inspect the configured metadata test before any build action runs.
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
-            'deps(//tools/build_tools:metadata_runtime_test)' > ci-artifacts/metadata-actions.json
+            'deps(set(//tools/build_tools:metadata_runtime_test //tools/build_tools:debian_runtime_test))' > ci-artifacts/metadata-actions.json
           python3 - <<'PYTHON'
           import json, re
           from pathlib import Path
@@ -107,6 +107,7 @@ jobs:
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
             //tools/build_tools:metadata_runtime_test \
+            //tools/build_tools:debian_runtime_test \
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log

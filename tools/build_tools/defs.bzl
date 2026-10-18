@@ -22,11 +22,12 @@ def _runtime_impl(ctx):
     args.add("--architecture", ctx.attr.architecture)
     args.add("--profile", ctx.attr.profile)
     args.add_all(ctx.files.packages, before_each = "--tar")
+    args.add("--python-bootstrap", ctx.file._python_bootstrap)
     ctx.actions.run(
         executable = python.interpreter,
         arguments = [args],
         inputs = ctx.files.packages,
-        tools = depset([python.interpreter, ctx.file._prepare], transitive = [python.files]),
+        tools = depset([python.interpreter, ctx.file._prepare, ctx.file._python_bootstrap], transitive = [python.files]),
         outputs = [output],
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
         mnemonic = "PrepareBuildTools",
@@ -39,7 +40,8 @@ build_tools_runtime = rule(
     attrs = {
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "packages": attr.label_list(allow_files = True, mandatory = True),
-        "profile": attr.string(default = "documentation", values = ["documentation", "configure", "kerberos", "metadata"]),
+        "profile": attr.string(default = "documentation", values = ["documentation", "configure", "kerberos", "metadata", "debian"]),
+        "_python_bootstrap": attr.label(default = Label(":dh_python_bootstrap.py"), allow_single_file = True, cfg = "exec"),
         "_prepare": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
     },
@@ -88,7 +90,7 @@ build_tool = rule(
     implementation = _executable_impl,
     executable = True,
     attrs = {
-        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols"]),
+        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols", "dh_install", "dh_fixperms", "dh_installinit", "dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_python3", "dh_installtmpfiles"]),
         "_launcher": attr.label(default = Label(":launcher.py"), allow_single_file = True, cfg = "exec"),
         "runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),

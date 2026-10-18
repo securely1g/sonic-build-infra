@@ -209,3 +209,37 @@ the final binary control paragraph. Removing the library or its dependency
 metadata must fail even when the host has libc installed. The test also checks
 that Perl modules and dpkg data are loaded from the declared runtime. The
 existing native build-tools workflow runs this test on AMD64 and ARM64.
+
+## Generate Debian installation scripts
+
+The `dh_install`, `dh_fixperms`, `dh_installinit`, `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
+`dh_installsystemduser`, `dh_installtmpfiles` and `dh_python3` targets run Debian's original debhelper programs from the
+same pinned snapshot as the other execution tools. Their separate
+`debian_runtime` includes Perl, debhelper data, translated-template tools and
+private subprocesses. Python helpers also use the pinned Debian Python 3.13
+interpreter, package-name mappings and autoscripts. A small bootstrap changes
+only dh-python's fixed ABI-query, mapping and dpkg paths. Dependency metadata
+remains enabled; package searches use the private dpkg database. Installed shebangs and package paths retain their Debian values. The launcher uses the original tools' `DH_DATAFILES`,
+`DH_AUTOSCRIPTDIR` and `PODEBCONF_*` configuration instead of copying their logic.
+
+A source producer stages its compiled payload under `debian/<package>` in a
+private action directory, copies its original `debian/control`, `changelog` and
+maintainer inputs, then runs the relevant commands before `dpkg-gencontrol`.
+Run `dh_fixperms` on the staged package before generating its final archive,
+just as the normal Debian helper sequence does. A config file copied from a
+group-writable checkout becomes mode 0644, and directories and executables
+become mode 0755. Set `DEB_RULES_REQUIRES_ROOT=no` for rootless staging;
+the archive writer assigns root ownership without changing host file ownership.
+Package-specific special modes still follow the owner's rules.
+
+For example, iproute2 needs `dh_installdebconf` followed by `dh_installdeb`: this
+keeps its translated configuration question, debconf dependency, removal of
+obsolete conffiles and purge script. `dh_python3` supplies bytecode setup/removal scripts and derives
+Python dependencies from the actual module/extension payload. Shared-library producers use
+`dh_makeshlibs` to generate the normal `ldconfig` trigger and library metadata.
+The commands do not run package installation scripts or create a DEB.
+
+`debian_runtime_test` checks these behaviors with an empty caller PATH on native
+AMD64 and ARM64. Source producers remain responsible for selecting the original
+helper order/options, packaging the resulting controls, and checking actual
+installation and removal of their resulting DEBs.
