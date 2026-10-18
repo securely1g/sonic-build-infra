@@ -90,7 +90,7 @@ build_tool = rule(
     implementation = _executable_impl,
     executable = True,
     attrs = {
-        "tool": attr.string(mandatory = True, values = ["compile_et", "mk_cmds", "aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols", "dh_install", "dh_installinit", "dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_python3", "dh_installtmpfiles"]),
+        "tool": attr.string(mandatory = True, values = ["compile_et", "mk_cmds", "aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols", "dh_install", "dh_fixperms", "dh_installinit", "dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_python3", "dh_installtmpfiles"]),
         "_launcher": attr.label(default = Label(":launcher.py"), allow_single_file = True, cfg = "exec"),
         "runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),

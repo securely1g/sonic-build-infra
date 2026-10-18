@@ -367,6 +367,7 @@ alias(
     )
     for tool in [
         "dh_install",
+        "dh_fixperms",
         "dh_installinit",
         "dh_installdeb",
         "dh_installdebconf",
@@ -383,6 +384,7 @@ py_test(
     srcs = ["debian_runtime_test.py"],
     args = [
         "--install=$(location :dh_install)",
+        "--fixperms=$(location :dh_fixperms)",
         "--installinit=$(location :dh_installinit)",
         "--installdeb=$(location :dh_installdeb)",
         "--installdebconf=$(location :dh_installdebconf)",
@@ -396,6 +398,7 @@ py_test(
     ],
     data = [
         ":debian_runtime",
+        ":dh_fixperms",
         ":dh_install",
         ":dh_installdeb",
         ":dh_installdebconf",

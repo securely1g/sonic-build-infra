@@ -196,7 +196,7 @@ existing native build-tools workflow runs this test on AMD64 and ARM64.
 
 ## Generate Debian installation scripts
 
-The `dh_install`, `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
+The `dh_install`, `dh_fixperms`, `dh_installinit`, `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
 `dh_installsystemduser`, `dh_installtmpfiles` and `dh_python3` targets run Debian's original debhelper programs from the
 same pinned snapshot as the other execution tools. Their separate
 `debian_runtime` includes Perl, debhelper data, translated-template tools and
@@ -209,6 +209,13 @@ remains enabled; package searches use the private dpkg database. Installed sheba
 A source producer stages its compiled payload under `debian/<package>` in a
 private action directory, copies its original `debian/control`, `changelog` and
 maintainer inputs, then runs the relevant commands before `dpkg-gencontrol`.
+Run `dh_fixperms` on the staged package before generating its final archive,
+just as the normal Debian helper sequence does. A config file copied from a
+group-writable checkout becomes mode 0644, and directories and executables
+become mode 0755. Set `DEB_RULES_REQUIRES_ROOT=no` for rootless staging;
+the archive writer assigns root ownership without changing host file ownership.
+Package-specific special modes still follow the owner's rules.
+
 For example, iproute2 needs `dh_installdebconf` followed by `dh_installdeb`: this
 keeps its translated configuration question, debconf dependency, removal of
 obsolete conffiles and purge script. `dh_python3` supplies bytecode setup/removal scripts and derives

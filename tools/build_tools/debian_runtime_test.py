@@ -10,7 +10,7 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ('install', 'installinit', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
+    for name in ('install', 'fixperms', 'installinit', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
         parser.add_argument('--' + name, type=Path, required=True)
     args = parser.parse_args()
     paths = {key: value.absolute() for key, value in vars(args).items()}
@@ -77,11 +77,20 @@ msgstr ""
 msgid "Enable the probe?"
 msgstr "Activer la sonde ?"
 ''')
-        environment = dict(os.environ, PATH='', DH_COMPAT='13', DEB_HOST_ARCH=receipt['architecture'], LANG='C', LC_ALL='C')
+        # Reproduce a group-writable checkout and restrictive source modes.
+        (package / 'etc/sonic-script-probe.conf').chmod(0o664)
+        (package / 'usr/bin/sonic-script-probe').chmod(0o775)
+        (package / 'etc').chmod(0o770)
+        owner = (package / 'etc/sonic-script-probe.conf').stat().st_uid
+        environment = dict(os.environ, PATH='', DEB_RULES_REQUIRES_ROOT='no', DH_COMPAT='13', DEB_HOST_ARCH=receipt['architecture'], LANG='C', LC_ALL='C')
         environment.pop('PERL5LIB', None)
         environment.pop('PERL5OPT', None)
-        for name in ('install', 'installinit', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'makeshlibs', 'installdeb'):
+        for name in ('install', 'installinit', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'fixperms', 'makeshlibs', 'installdeb'):
             subprocess.run([str(paths[name]), '-psonic-script-probe'], cwd=root, env=environment, check=True)
+        assert (package / 'etc/sonic-script-probe.conf').stat().st_uid == owner
+        assert (package / 'etc/sonic-script-probe.conf').stat().st_mode & 0o777 == 0o644
+        assert (package / 'usr/bin/sonic-script-probe').stat().st_mode & 0o777 == 0o755
+        assert (package / 'etc').stat().st_mode & 0o777 == 0o755
         assert (package / 'usr/lib/libmetadata-probe.so.1').is_file()
         assert not (package / 'usr/lib/libmetadata-probe.so').exists()
         controls = package / 'DEBIAN'
