@@ -1,0 +1,16 @@
+Source: metadata-probe
+Section: utils
+Priority: optional
+Maintainer: SONiC contributors <securely1g@gmail.com>
+
+Package: libmetadata-probe1
+Architecture: any
+Depends: ${shlibs:Depends}
+Description: Library compiled by the Debian metadata integration test
+ The exported symbol determines the consumer's minimum library version.
+
+Package: metadata-probe
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Consumer compiled by the Debian metadata integration test
+ Its package dependencies come from the exact linked ELF files.
