@@ -33,7 +33,7 @@ jobs:
             bazel_arch: arm64
             bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       image: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
     defaults:
@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl gdb git python3 tar xz-utils
+          apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl gdb git libxml2 python3 tar xz-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -70,6 +70,10 @@ jobs:
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
       - name: Build and test source rules
         run: bash ci/bazel-ci.sh
+      - name: Reject conflicting sysroot package files
+        run: python3 toolchains/sysroot/tests/validate_collisions.py --artifacts ci-artifacts/sysroot-collisions
+      - name: Validate the combined AMD64 and ARM64 sysroot with GCC and Clang
+        run: python3 toolchains/sysroot/tests/validate.py --artifacts ci-artifacts/shared-sysroot
       - name: Retain validation evidence and sample runtime/debug outputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -78,3 +82,19 @@ jobs:
           path: ci-artifacts/
           if-no-files-found: error
           retention-days: 14
+
+  compare-sysroots:
+    name: Compare sysroot contents across native hosts
+    needs: native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sonic-build-infra-*-${{ github.sha }}
+          path: native-evidence
+      - name: Require identical source archives and sysroot files
+        run: python3 toolchains/sysroot/tests/compare_receipts.py native-evidence/*/shared-sysroot/validation.json

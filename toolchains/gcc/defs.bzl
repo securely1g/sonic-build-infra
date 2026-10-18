@@ -8,12 +8,13 @@ load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
 load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
 load("@rules_cc//cc/toolchains:tool_map.bzl", "cc_tool_map")
 load("@rules_cc//cc/toolchains:toolchain.bzl", "cc_toolchain")
+load("@rules_cc//cc/toolchains/args:sysroot.bzl", "cc_sysroot")
 load("//toolchains/gcc:gcc.bzl", "GCC_METADATA", "gcc_repo_name")
 load(
     "//toolchains/gcc/args:platform_dependent_args.bzl",
     "PLATFORM_DEPENDENT_ARGS",
     "resolve_args",
-    "resolve_packages",
+    "resolve_inputs",
 )
 
 _PLATFORM_DEPENDENT_ARGS = PLATFORM_DEPENDENT_ARGS
@@ -80,7 +81,7 @@ def sonic_host_toolchain(
                  distribution every tool is taken from.
         debian_gcc_major: Major version of the GCC that built the sysroot, e.g. `14`.
                           Debian's paths only carry the major.
-        sysroot: Map of package_name -> Label of its //:directory, to build the Debian based sysroot.
+        sysroot: Label of the shared Debian repository directory (//root:sysroot).
         target_platform: The constraint_value() target specifying the environment we'll deploy to.
                          e.g. //platforms:trixie.
         visibility: Visibility of the generated `toolchain()` target.
@@ -163,18 +164,24 @@ def sonic_host_toolchain(
         },
     )
 
-    # The args name the packages they need, and resolve_packages hands cc_args
-    # exactly those -- it fails on a package that goes unreferenced.
+    cc_sysroot(
+        name = name + "_sysroot",
+        sysroot = sysroot,
+        data = [sysroot],
+    )
+
+    # Declare the shared sysroot and compiler-private directories used by each
+    # action. cc_args formats their paths and includes their files as inputs.
     for spec in _PLATFORM_DEPENDENT_ARGS:
         args = resolve_args(cpu, version, debian_gcc_major, spec.args)
-        packages = resolve_packages(sysroot, gcc_repo, args)
+        inputs = resolve_inputs(sysroot, gcc_repo, args)
 
         cc_args(
             name = name + spec.suffix,
             actions = spec.actions,
             args = args,
-            data = packages.values(),
-            format = packages,
+            data = inputs.values(),
+            format = inputs,
             visibility = ["//visibility:public"],
         )
 
@@ -185,7 +192,7 @@ def sonic_host_toolchain(
 
     cc_toolchain(
         name = name + "_cc_toolchain",
-        args = _PLATFORM_INDEPENDENT_ARGS + platform_dependent_args,
+        args = _PLATFORM_INDEPENDENT_ARGS + [":" + name + "_sysroot"] + platform_dependent_args,
         compiler = "gcc",
         enabled_features = _FEATURES,
         known_features = _FEATURES,

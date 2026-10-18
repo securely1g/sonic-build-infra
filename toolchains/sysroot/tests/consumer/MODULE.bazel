@@ -1,0 +1,43 @@
+module(name = "sonic_sysroot_consumer")
+
+bazel_dep(name = "sonic-build-infra", version = "0.0.16", repo_name = "sonic_build_infra")
+local_path_override(
+    module_name = "sonic-build-infra",
+    path = "../../../..",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.20")
+bazel_dep(name = "toolchains_llvm", version = "1.11.2")
+
+single_version_override(
+    module_name = "tar.bzl",
+    version = "0.10.5-sonic.1",
+)
+
+sysroots = use_extension("@sonic_build_infra//toolchains/sysroot:extensions.bzl", "sysroots")
+
+# Reuse the repository declared by sonic-build-infra. Both compilers and both
+# target architectures receive this one directory.
+use_repo(sysroots, "sonic_sysroot")
+
+gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
+use_repo(gcc, "gcc_toolchains")
+
+# Match the upstream version of Clang in the native Trixie SONiC builder.
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "19.1.7",
+    stdlib = {"": "dynamic-stdc++-14"},
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sonic_sysroot//root:sysroot",
+    targets = [
+        "linux-x86_64",
+        "linux-aarch64",
+    ],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")

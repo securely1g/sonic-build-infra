@@ -15,6 +15,9 @@ bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
 
+sysroot_tar = use_extension("@tar.bzl//tar:extensions.bzl", "toolchains")
+use_repo(sysroot_tar, "bsd_tar_toolchains_linux_amd64", "bsd_tar_toolchains_linux_arm64")
+
 # Root builds must select the patch even when another dependency requests the
 # upstream release, which sorts above its SONiC prerelease version.
 single_version_override(
@@ -36,6 +39,7 @@ local_path_override(
 )
 
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
+
 # The SONiC patch sorts above upstream 0.9.4 without a root override.
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.1")
 
@@ -50,6 +54,12 @@ GCC_TOOLCHAINS = {
     },
 }
 
+# One multiarch directory shared by GCC and Clang on both architectures.
+# Consumers import this same repository through use_extension/use_repo.
+sysroots = use_extension("//toolchains/sysroot:extensions.bzl", "sysroots")
+sysroots.debian(name = "sonic_sysroot")
+use_repo(sysroots, "sonic_sysroot")
+
 gcc = use_extension("//toolchains/gcc:extensions.bzl", "gcc")
 
 [
@@ -58,6 +68,7 @@ gcc = use_extension("//toolchains/gcc:extensions.bzl", "gcc")
         integrity = integrity,
         release = toolchain["release"],
         suite = toolchain["suite"],
+        sysroot = "@sonic_sysroot//root:sysroot",
         target_platform = "//platforms:trixie",
         version = version,
     )
@@ -121,15 +132,15 @@ apt.install(
     packages = [
         "aspell",
         "aspell-en",
-        "doxygen",
         "autoconf",
-        "grep",
         "bison",
+        "doxygen",
         "flex",
-        "m4",
-        "pkgconf",
-        "perl",
+        "grep",
         "libprotobuf-dev",
+        "m4",
+        "perl",
+        "pkgconf",
         "protobuf-compiler",
     ],
     suites = [
@@ -240,10 +251,10 @@ http_archive(
     urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim-runtime_9.1.1230-2_all.deb"],
 )
 
-# Raw apt package repos the cc toolchains reach into.
+# Raw APT source archives used to assemble the shared compiler sysroots.
 #
-# We need to bring these packages into scope so that the gcc toolchains
-# can refer to them to create their sysroots.
+# Import these repositories for //toolchains/sysroot:packages.bzl; compilers
+# consume the combined sysroot rather than individual package directories.
 #
 # Will fail loudly if the versions get out of sync.
 SYSROOT_PACKAGE_REPO_TEMPLATES = [
@@ -254,6 +265,19 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
     "trixie_libgcc-s1-{arch}_14.2.0-19",
     "trixie_libstdc---14-dev-{arch}_14.2.0-19",
     "trixie_libstdc--6-{arch}_14.2.0-19",
+] + [
+    "trixie_" + package + "-{arch}_14.2.0-19"
+    for package in [
+        "gcc-14-base",
+        "libasan8",
+        "libatomic1",
+        "libgomp1",
+        "libhwasan0",
+        "libitm1",
+        "liblsan0",
+        "libtsan2",
+        "libubsan1",
+    ]
 ]
 
 [
@@ -263,6 +287,8 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
     ]
     for arch in ARCHITECTURES
 ]
+
+use_repo(apt, "trixie_libquadmath0-amd64_14.2.0-19")
 
 uv = use_extension("@aspect_rules_py//uv/unstable:extension.bzl", "uv")
 uv.declare_hub(
