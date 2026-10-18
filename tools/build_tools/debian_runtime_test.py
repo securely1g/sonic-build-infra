@@ -10,7 +10,7 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ('installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
+    for name in ('install', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
         parser.add_argument('--' + name, type=Path, required=True)
     args = parser.parse_args()
     paths = {key: value.absolute() for key, value in vars(args).items()}
@@ -42,7 +42,20 @@ Description: Check original Debian installation script generation
 ''')
         (package / 'etc/sonic-script-probe.conf').write_text('enabled=yes\n')
         (package / 'usr/lib/python3/dist-packages/sonic_script_probe.py').write_text('enabled = True\n')
-        shutil.copyfile(paths['library'], package / 'usr/lib/libmetadata-probe.so.1')
+        # Real egg metadata must still generate dependencies. Disabling all
+        # dependency scanning hides missing installed Python requirements.
+        egg = package / 'usr/lib/python3/dist-packages/sonic_script_probe-1.0.egg-info'
+        egg.mkdir()
+        (egg / 'PKG-INFO').write_text('Metadata-Version: 1.2\nName: sonic-script-probe\nVersion: 1.0\n')
+        (egg / 'requires.txt').write_text('sonic-dependency-probe\nsonic-unmapped-probe\n')
+        (debian / 'py3dist-overrides').write_text('sonic-dependency-probe python3-sonic-dependency-probe\n')
+        # Apply the source .install manifest with upstream dh_install: the
+        # runtime receives the versioned library, not its development symlink.
+        staged = debian / 'tmp/usr/lib'
+        staged.mkdir(parents=True)
+        shutil.copyfile(paths['library'], staged / 'libmetadata-probe.so.1')
+        (staged / 'libmetadata-probe.so').symlink_to('libmetadata-probe.so.1')
+        (debian / 'sonic-script-probe.install').write_text('usr/lib/libmetadata-probe.so.*\n')
         shutil.copyfile(paths['library'], package / 'usr/lib/python3/dist-packages/_probe.so')
         (package / 'usr/bin/sonic-script-probe').write_text('#!/usr/bin/perl\nprint "ok\\n";\n')
         (package / 'usr/bin/sonic-script-probe').chmod(0o755)
@@ -66,8 +79,10 @@ msgstr "Activer la sonde ?"
         environment = dict(os.environ, PATH='', DH_COMPAT='13', DEB_HOST_ARCH=receipt['architecture'], LANG='C', LC_ALL='C')
         environment.pop('PERL5LIB', None)
         environment.pop('PERL5OPT', None)
-        for name in ('installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'makeshlibs', 'installdeb'):
+        for name in ('install', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'makeshlibs', 'installdeb'):
             subprocess.run([str(paths[name]), '-psonic-script-probe'], cwd=root, env=environment, check=True)
+        assert (package / 'usr/lib/libmetadata-probe.so.1').is_file()
+        assert not (package / 'usr/lib/libmetadata-probe.so').exists()
         controls = package / 'DEBIAN'
         assert '/etc/sonic-script-probe.conf' in (controls / 'conffiles').read_text()
         assert 'ldconfig' in (controls / 'triggers').read_text()
@@ -86,6 +101,8 @@ msgstr "Activer la sonde ?"
         assert 'rm_conffile /etc/sonic-script-probe.old' in (controls / 'preinst').read_text()
         substvars = (debian / 'sonic-script-probe.substvars').read_text()
         assert 'debconf' in substvars and 'init-system-helpers' in substvars and 'perl:Depends=perl:any' in substvars, substvars
+        assert 'python3-sonic-dependency-probe' in substvars, substvars
+        assert 'python3-sonic-unmapped-probe' not in substvars, substvars
         for name in ('preinst', 'postinst', 'postrm', 'config'):
             assert (controls / name).stat().st_mode & 0o777 == 0o755, name
         print(json.dumps(dict(architecture=receipt['architecture'], generated_controls=sorted(p.name for p in controls.iterdir()), substitutions=substvars), indent=2))

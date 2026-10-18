@@ -196,14 +196,14 @@ existing native build-tools workflow runs this test on AMD64 and ARM64.
 
 ## Generate Debian installation scripts
 
-The `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
+The `dh_install`, `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
 `dh_installsystemduser`, `dh_installtmpfiles` and `dh_python3` targets run Debian's original debhelper programs from the
 same pinned snapshot as the other execution tools. Their separate
 `debian_runtime` includes Perl, debhelper data, translated-template tools and
 private subprocesses. Python helpers also use the pinned Debian Python 3.13
 interpreter, package-name mappings and autoscripts. A small bootstrap changes
-only dh-python's fixed ABI-query and mapping paths; host package guessing is
-disabled. Installed shebangs and package paths retain their Debian values. The launcher uses the original tools' `DH_DATAFILES`,
+only dh-python's fixed ABI-query, mapping and dpkg paths. Dependency metadata
+remains enabled; package searches use the private dpkg database. Installed shebangs and package paths retain their Debian values. The launcher uses the original tools' `DH_DATAFILES`,
 `DH_AUTOSCRIPTDIR` and `PODEBCONF_*` configuration instead of copying their logic.
 
 A source producer stages its compiled payload under `debian/<package>` in a

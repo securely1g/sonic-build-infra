@@ -13,6 +13,7 @@ with tarfile.open(sys.argv[1]) as archive:
         assert member.uid == member.gid == 0, member
     def contents(name):
         return archive.extractfile(members[name]).read().decode()
+    assert "Version: 1:1.0-1\n" in contents("control")
     assert "Multi-Arch: same\n" in contents("control")
     assert "Depends: libc6 (>= 2.41)\n" in contents("control")
     assert contents("conffiles") == "/etc/example.conf\n"

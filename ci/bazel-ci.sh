@@ -102,6 +102,8 @@ for filename in ('actions.json', 'apt-python313-actions.json'):
 PYTHON
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
+# Analysis-only filename check: inspects the DEB provider without building its archive.
+"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors //deb/tests:filename_test
 # Include external test labels and their canonical repository paths in artifacts.
 cp -aL bazel-testlogs "$artifacts/testlogs"
 # The image consumer runs Python 3.13; retain its separate hub/runfiles proof.

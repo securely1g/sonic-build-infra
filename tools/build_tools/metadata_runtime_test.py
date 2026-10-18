@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -13,7 +14,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser()
     for name in ("gencontrol", "shlibdeps", "gensymbols", "library", "runtime", "binary", "libc-data", "libc-control"):
-        parser.add_argument("--" + name, required=True, type=lambda value: Path(value).absolute())
+        parser.add_argument("--" + name, required=True, type=lambda value: Path(os.path.abspath(value)))
     args = parser.parse_args()
     expected_arch = {"x86_64": "amd64", "aarch64": "arm64"}[platform.machine()]
     manifest = json.loads((args.runtime / "toolchain.json").read_text())

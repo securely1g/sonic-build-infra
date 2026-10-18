@@ -189,7 +189,8 @@ def _sonic_deb_assemble_impl(ctx):
     # Debian filename convention: <package>_<version>_<arch>.deb. We're in a rule
     # impl (analysis time), so ctx.attr.architecture is a concrete string even
     # though the caller passed a platform-derived select().
-    deb_name = "{}_{}_{}.deb".format(ctx.attr.package, ctx.attr.version, ctx.attr.architecture)
+    filename_version = ctx.attr.version.split(":")[-1]
+    deb_name = "{}_{}_{}.deb".format(ctx.attr.package, filename_version, ctx.attr.architecture)
     output_deb = ctx.actions.declare_file(deb_name)
 
     # `ar` comes from the CC toolchain.
@@ -291,6 +292,7 @@ sonic_deb = macro(
 
     The output file is named `<package>_<version>_<arch>.deb`,
     with `arch` derived from the target platform (i.e. `--platform` flag).
+    The filename omits any version epoch; the control retains the full version.
 
     By default the required fields plus Depends are emitted. Producers with
     existing Debian packaging can pass a final binary control_file and
