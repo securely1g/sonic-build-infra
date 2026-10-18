@@ -129,6 +129,11 @@ apt.install(
         "m4",
         "pkgconf",
         "perl",
+        "dpkg-dev",
+        "base-files",
+        "binutils",
+        # Metadata tests inspect this library and its original symbols file.
+        "libc6",
         "libprotobuf-dev",
         "protobuf-compiler",
     ],
