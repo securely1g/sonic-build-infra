@@ -403,3 +403,68 @@ py_test(
     ],
     visibility = ["//visibility:public"],
 )
+
+# Kerberos keeps Debian's compile_et and mk_cmds rather than selecting its
+# bundled substitutes. Give these generators their own small execution bundle.
+[
+    build_tools_runtime(
+        name = "kerberos_runtime_" + architecture,
+        architecture = architecture,
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = ["@build_tools//" + tool for tool in [
+            "comerr-dev",
+            "ss-dev",
+            "mawk",
+            "sed",
+            "grep",
+            "coreutils",
+            "diffutils",
+        ]],
+        profile = "kerberos",
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "kerberos_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":kerberos_runtime_amd64",
+        "@platforms//cpu:aarch64": ":kerberos_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = tool,
+        runtime = ":kerberos_runtime",
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "compile_et",
+        "mk_cmds",
+    ]
+]
+
+py_test(
+    name = "kerberos_runtime_test",
+    srcs = ["kerberos_runtime_test.py"],
+    args = [
+        "$(location :kerberos_runtime)",
+        "$(location :compile_et)",
+        "$(location :mk_cmds)",
+    ],
+    data = [
+        ":compile_et",
+        ":kerberos_runtime",
+        ":mk_cmds",
+    ],
+    visibility = ["//visibility:public"],
+)

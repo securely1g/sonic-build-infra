@@ -120,6 +120,9 @@ apt.install(
 apt.install(
     dependency_set = "build_tools",
     packages = [
+        "comerr-dev",
+        "ss-dev",
+        "diffutils",
         "aspell",
         "aspell-en",
         "doxygen",

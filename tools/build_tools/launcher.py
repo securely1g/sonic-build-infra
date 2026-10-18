@@ -12,7 +12,7 @@ def main():
     manifest = json.loads((root / "toolchain.json").read_text())
     if manifest.get("format_version") != 1 or tool not in manifest["tools"]:
         raise SystemExit("unsupported build-tool runtime")
-    if manifest.get("profile") in ("configure", "metadata", "debian"):
+    if manifest.get("profile") in ("configure", "metadata", "debian", "kerberos"):
         executable = str(root / "bin" / tool)
         environment = {key: value for key, value in os.environ.items() if not key.startswith("LD_")}
         os.execve(executable, [executable] + arguments, environment)

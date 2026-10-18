@@ -302,13 +302,76 @@ export DH_DATAFILES DH_AUTOSCRIPTDIR PODEBCONF_LIB PODEBCONF_ENCODINGS
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def prepare_kerberos(root: Path, architecture: str, loader: Path, libraries: list[Path]) -> None:
+    """Relocate Debian's error/command table generators and their private tools."""
+    scripts = {"compile_et": "et", "mk_cmds": "ss"}
+    binaries = ("mawk", "sed", "grep", "basename", "cmp", "rm", "mv", "chmod")
+    environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
+    prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
+    for name in binaries:
+        binary = root / "usr/bin" / name
+        if not binary.is_file():
+            raise RuntimeError(f"Kerberos tool package contains no {name}")
+        listing = run_tool(prefix + ["--list", str(binary)], environment=environment).decode()
+        if "not found" in listing:
+            raise RuntimeError(f"incomplete runtime for {name}:\n{listing}")
+        for resolved in re.findall(r"=>\s+(/\S+)", listing):
+            if not Path(resolved).resolve().is_relative_to(root):
+                raise RuntimeError(f"{name} resolved an undeclared library: {resolved}")
+    for name, directory in scripts.items():
+        script = root / "usr/bin" / name
+        text = script.read_text()
+        if text.count("AWK=/usr/bin/awk\n") != 1:
+            raise RuntimeError(f"Unexpected AWK configuration in {name}")
+        # Preserve Debian's generator logic. Its template directory has an
+        # upstream override; only the hardcoded interpreter needs relocation.
+        text = text.replace("AWK=/usr/bin/awk\n", 'AWK="$SONIC_BUILD_TOOLS_AWK"\n')
+        script.write_text(text)
+        required = ("et_h.awk", "et_c.awk") if directory == "et" else ("ct_c.sed", "ct_c.awk")
+        if not all((root / "usr/share" / directory / file).is_file() for file in required):
+            raise RuntimeError(f"Missing declared {name} templates")
+    (root / "bin").mkdir(exist_ok=True)
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    for name in (*binaries, *scripts):
+        launcher = '''#!/bin/sh
+# AUTO-GENERATED. DO NOT EDIT MANUALLY.
+# Generator: tools/build_tools/prepare_runtime.py
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+'''
+        if name in scripts:
+            variable = "_ET_DIR_OVERRIDE" if name == "compile_et" else "_SS_DIR_OVERRIDE"
+            launcher += 'PATH="$root/bin"\nSONIC_BUILD_TOOLS_AWK="$root/bin/mawk"\n'
+            launcher += variable + '="$root/usr/share/' + scripts[name] + '"\n'
+            launcher += 'export PATH SONIC_BUILD_TOOLS_AWK ' + variable + '\n'
+            launcher += 'exec /bin/sh "$root/usr/bin/' + name + '" "$@"\n'
+        else:
+            launcher += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/usr/bin/' + name + '" "$@"\n'
+        path = root / "bin" / name
+        path.write_text(launcher)
+        path.chmod(0o755)
+    manifest = {
+        "_generated": {"notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY.", "generator": "tools/build_tools/prepare_runtime.py"},
+        "format_version": 1,
+        "profile": "kerberos",
+        "architecture": architecture,
+        "loader": str(loader.relative_to(root)),
+        "library_directories": [str(path.relative_to(root)) for path in libraries],
+        "tools": {name: "usr/bin/" + name for name in (*binaries, *scripts)},
+    }
+    (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--tar", action="append", default=[])
     parser.add_argument("--python-bootstrap", type=Path, required=True)
-    parser.add_argument("--profile", choices=("documentation", "configure", "metadata", "debian"), default="documentation")
+    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "metadata", "debian"), default="documentation")
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -339,6 +402,9 @@ def main() -> None:
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
+    if args.profile == "kerberos":
+        prepare_kerberos(root, args.architecture, loader, libraries)
+        return
     if args.profile in ("configure", "metadata", "debian"):
         prepare_script_tools(root, args.architecture, loader, libraries, args.profile)
         return
