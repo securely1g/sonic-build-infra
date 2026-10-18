@@ -15,6 +15,9 @@ bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
 
+sysroot_tar = use_extension("@tar.bzl//tar:extensions.bzl", "toolchains")
+use_repo(sysroot_tar, "bsd_tar_toolchains_linux_amd64", "bsd_tar_toolchains_linux_arm64")
+
 # Root builds must select the patch even when another dependency requests the
 # upstream release, which sorts above its SONiC prerelease version.
 single_version_override(
@@ -272,6 +275,19 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
     "trixie_libgcc-s1-{arch}_14.2.0-19",
     "trixie_libstdc---14-dev-{arch}_14.2.0-19",
     "trixie_libstdc--6-{arch}_14.2.0-19",
+] + [
+    "trixie_" + package + "-{arch}_14.2.0-19"
+    for package in [
+        "gcc-14-base",
+        "libasan8",
+        "libatomic1",
+        "libgomp1",
+        "libhwasan0",
+        "libitm1",
+        "liblsan0",
+        "libtsan2",
+        "libubsan1",
+    ]
 ]
 
 [
@@ -281,6 +297,8 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
     ]
     for arch in ARCHITECTURES
 ]
+
+use_repo(apt, "trixie_libquadmath0-amd64_14.2.0-19")
 
 uv = use_extension("@aspect_rules_py//uv/unstable:extension.bzl", "uv")
 uv.declare_hub(
