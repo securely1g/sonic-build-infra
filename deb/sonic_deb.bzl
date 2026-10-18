@@ -65,7 +65,48 @@ _sonic_md5sums_from_tar = rule(
     },
 )
 
-def _sonic_control_tar_impl(name, visibility, package, version, maintainer, description, depends, md5sums_file):
+def _checked_control_impl(ctx):
+    output = ctx.actions.declare_file(ctx.label.name + ".control")
+    args = ctx.actions.args()
+    args.add("--input", ctx.file.src)
+    args.add("--output", output)
+    args.add("--package", ctx.attr.package)
+    args.add("--version", ctx.attr.version)
+    args.add("--architecture", ctx.attr.architecture)
+    ctx.actions.run(
+        executable = ctx.executable._checker,
+        arguments = [args],
+        inputs = [ctx.file.src],
+        outputs = [output],
+        mnemonic = "DebControlCheck",
+    )
+    return [DefaultInfo(files = depset([output]))]
+
+_checked_control = rule(
+    implementation = _checked_control_impl,
+    attrs = {
+        "src": attr.label(allow_single_file = True, mandatory = True),
+        "package": attr.string(mandatory = True),
+        "version": attr.string(mandatory = True),
+        "architecture": attr.string(mandatory = True),
+        "_checker": attr.label(default = Label("//deb:check_control"), executable = True, cfg = "exec"),
+    },
+)
+
+_CONTROL_MODES = {
+    "conffiles": "0644",
+    "config": "0755",
+    "postinst": "0755",
+    "postrm": "0755",
+    "preinst": "0755",
+    "prerm": "0755",
+    "shlibs": "0644",
+    "symbols": "0644",
+    "templates": "0644",
+    "triggers": "0644",
+}
+
+def _sonic_control_tar_impl(name, visibility, package, version, maintainer, description, depends, md5sums_file, control_file, control_files):
     # dpkg requires Package, Version, Architecture, Maintainer, Description.
     # Depends is the only relationship field we carry (SONiC hand-writes it).
     control_lines = [
@@ -86,22 +127,44 @@ def _sonic_control_tar_impl(name, visibility, package, version, maintainer, desc
         "",
     ]
 
-    write_file(
-        name = name + "_file",
-        out = name + ".control",
-        content = content,
-    )
+    if control_file:
+        if maintainer or description or depends:
+            fail("control_file supplies all control fields; do not also set maintainer, description or depends")
+        _checked_control(
+            name = name + "_file",
+            src = control_file,
+            package = package,
+            version = version,
+            architecture = _DEB_ARCH,
+        )
+    else:
+        write_file(
+            name = name + "_file",
+            out = name + ".control",
+            content = content,
+        )
+
+    srcs = [":" + name + "_file", md5sums_file]
+    mtree = [
+        ". uid=0 gid=0 time=0 mode=0755 type=dir",
+        "./control uid=0 gid=0 time=0 mode=0644 type=file content=$(location :%s_file)" % name,
+        "./md5sums uid=0 gid=0 time=0 mode=0644 type=file content=$(location %s)" % md5sums_file,
+    ]
+    destinations = []
+    for source, destination in control_files.items():
+        if destination not in _CONTROL_MODES:
+            fail("Unsupported control file %r; expected one of %s" % (destination, sorted(_CONTROL_MODES.keys())))
+        if destination in destinations:
+            fail("Duplicate control file: " + destination)
+        destinations.append(destination)
+        srcs.append(source)
+        mtree.append("./%s uid=0 gid=0 time=0 mode=%s type=file content=$(location %s)" % (destination, _CONTROL_MODES[destination], source))
 
     tar(
         name = name,
-        srcs = [name + "_file", md5sums_file],
-        # We always need a compressed control file.
+        srcs = srcs,
         compress = "gzip",
-        mtree = [
-            ". uid=0 gid=0 time=0 mode=0755 type=dir",
-            "./control uid=0 gid=0 time=0 mode=0644 type=file content=$(location %s_file)" % name,
-            "./md5sums uid=0 gid=0 time=0 mode=0644 type=file content=$(location %s)" % md5sums_file,
-        ],
+        mtree = mtree,
         visibility = visibility,
     )
 
@@ -115,6 +178,8 @@ _sonic_control_tar = macro(
         "description": attr.string(default = "", configurable = False),
         "depends": attr.string_list(configurable = False),
         "md5sums_file": attr.label(mandatory = True, allow_files = True, configurable = False),
+        "control_file": attr.label(allow_single_file = True, configurable = False),
+        "control_files": attr.label_keyed_string_dict(allow_files = True, configurable = False),
     },
 )
 
@@ -189,7 +254,7 @@ _sonic_deb_assemble = rule(
     toolchains = use_cc_toolchain() + [_TAR_TOOLCHAIN],
 )
 
-def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends, **kwargs):
+def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends, control_file, control_files, **kwargs):
     md5sums = name + "_md5sums"
     control = name + "_control"
 
@@ -205,6 +270,9 @@ def _sonic_deb_impl(name, visibility, data, package, version, maintainer, descri
         description = description,
         depends = depends,
         md5sums_file = ":" + md5sums,
+        control_file = control_file,
+        control_files = control_files,
+        visibility = visibility,
     )
 
     _sonic_deb_assemble(
@@ -224,8 +292,11 @@ sonic_deb = macro(
     The output file is named `<package>_<version>_<arch>.deb`,
     with `arch` derived from the target platform (i.e. `--platform` flag).
 
-    Only the dpkg-required control fields plus `Depends` are emitted.
-    Add further fields / maintainer scripts (e.g. `Homepage`) here when a migrated package needs them.
+    By default the required fields plus Depends are emitted. Producers with
+    existing Debian packaging can pass a final binary control_file and
+    control_files for conffiles, maintainer scripts, triggers, shlibs and symbols.
+    Generate these with the owning component's Debian packaging tools; source
+    control stanzas and unresolved substitution variables are not accepted.
     """,
     implementation = _sonic_deb_impl,
     # So callers can set `tags` (and the other common attributes) on a deb.
@@ -242,5 +313,7 @@ sonic_deb = macro(
         "maintainer": attr.string(default = "", configurable = False, doc = "Debian `Maintainer:` field."),
         "description": attr.string(default = "", configurable = False, doc = "Debian `Description:` field."),
         "depends": attr.string_list(configurable = False, doc = "Debian `Depends:` list (hand-written; no auto-shlibs)."),
+        "control_file": attr.label(allow_single_file = True, configurable = False, doc = "Final binary control from the producer, for example dpkg-gencontrol output; package/version/target architecture must match."),
+        "control_files": attr.label_keyed_string_dict(allow_files = True, configurable = False, doc = "Producer-owned file labels mapped to Debian control member names, such as {\":generated_postinst\": \"postinst\", \":conffiles\": \"conffiles\"}. These must be final files, including any debhelper expansions."),
     },
 )

@@ -1,0 +1,54 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("@tar.bzl", "tar")
+load("//deb:sonic_deb.bzl", "sonic_deb")
+
+write_file(
+    name = "binary_control",
+    out = "binary.control",
+    content = [
+        "Package: sonic-example",
+        "Version: 1.0-1",
+        "Maintainer: SONiC maintainers <sonic-dev@lists.sonicfoundation.dev>",
+        "Depends: libc6 (>= 2.41)",
+        "Multi-Arch: same",
+        "Description: Test package metadata",
+    ] + select({
+        "@platforms//cpu:x86_64": ["Architecture: amd64"],
+        "@platforms//cpu:aarch64": ["Architecture: arm64"],
+        "@platforms//cpu:armv7": ["Architecture: armhf"],
+    }) + [""],
+)
+
+tar(
+    name = "payload",
+    srcs = ["example.conf"],
+    mtree = [
+        ". uid=0 gid=0 time=0 mode=0755 type=dir",
+        "./etc uid=0 gid=0 time=0 mode=0755 type=dir",
+        "./etc/example.conf uid=0 gid=0 time=0 mode=0644 type=file content=$(location example.conf)",
+    ],
+)
+
+sonic_deb(
+    name = "example_deb",
+    control_file = ":binary_control",
+    control_files = {
+        "conffiles": "conffiles",
+        "postinst": "postinst",
+        "triggers": "triggers",
+    },
+    data = ":payload",
+    package = "sonic-example",
+    tags = ["manual"],
+    version = "1.0-1",
+    visibility = ["//deb/tests:__pkg__"],
+)
+
+# This checks only the control TAR; it never executes the DEB assembly action.
+py_test(
+    name = "control_archive_test",
+    srcs = ["control_archive_test.py"],
+    args = ["$(rootpath :example_deb_control)"],
+    data = [":example_deb_control"],
+)
