@@ -30,6 +30,8 @@ bazel_cmd=(bazel --ignore_all_rc_files)
 # The workflow runs this on both native AMD64 and ARM64 hosts.
 python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
 tests=(
+  //deb:check_control_test
+  //deb/tests:control_archive_test
   //apt:selection_test
   //apt:inputs_test
   //apt:dependencies_test
@@ -100,6 +102,8 @@ for filename in ('actions.json', 'apt-python313-actions.json'):
 PYTHON
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
+# Analysis-only filename check: inspects the DEB provider without building its archive.
+"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors //deb/tests:filename_test
 # Include external test labels and their canonical repository paths in artifacts.
 cp -aL bazel-testlogs "$artifacts/testlogs"
 # The image consumer runs Python 3.13; retain its separate hub/runfiles proof.
