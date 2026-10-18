@@ -170,3 +170,42 @@ existing template-directory overrides preserve the generator logic.
 `kerberos_runtime_test` exercises both generators with an empty PATH, checks
 stable generated C, and fails when the declared templates are missing. Both
 native AMD64 and ARM64 jobs run this test.
+
+## Debian package metadata
+
+Use `:dpkg-gencontrol`, `:dpkg-shlibdeps` and `:dpkg-gensymbols` when a source producer needs Debian
+package metadata. For example, the Rust supervisor listener owns its package
+name and description in `debian/control`; `dpkg-shlibdeps` derives the minimum
+library versions from its compiled executable, and `dpkg-gencontrol` combines
+those dependencies with the original control and changelog files. A source
+library can export its symbols with `dpkg-gensymbols` using that library's ELF
+and original changelog version.
+
+These tools produce text metadata only. They do not create a `.deb`, compile the
+program again, or mark any package as installed. The public executable targets
+use the same execution configuration and `FilesToRunProvider` pattern shown
+above. `:metadata_runtime` exposes their shared tree when a generator needs to
+invoke several of its tools.
+
+The existing `build_tools` APT set supplies pinned dpkg-dev, binutils, Perl and
+all runtime dependencies. The metadata profile uses its own Perl modules,
+architecture data, dynamic loader and objdump. It starts with an empty package
+database and no default host library search directories. Pass the actual target
+libraries with `-l<directory>` and their original `DEBIAN/shlibs` or
+`DEBIAN/symbols` through package build directories (`-S<directory>`). A producer
+can instead pass its own generated shlibs file with `-L<file>`. Explicit package
+metadata must be a declared input; libraries alone cannot tell dpkg their
+Debian package names or version policy. Do not copy dependencies from an older
+image's installed package record.
+
+`DPKG_ADMINDIR` can select a declared package database when one is needed. The
+caller must set `DEB_HOST_ARCH` when generating metadata for an architecture
+different from the native execution architecture. Native AMD64 and ARM64 are
+the tested configurations; this profile does not supply cross objdump tools.
+
+`//tools/build_tools:metadata_runtime_test` compiles a small program, derives its
+libc dependency from the matching pinned package's symbols file, then generates
+the final binary control paragraph. Removing the library or its dependency
+metadata must fail even when the host has libc installed. The test also checks
+that Perl modules and dpkg data are loaded from the declared runtime. The
+existing native build-tools workflow runs this test on AMD64 and ARM64.

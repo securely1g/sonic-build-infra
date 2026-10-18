@@ -92,22 +92,36 @@ def run_tool(command: list[str], *, environment: dict[str, str], data: bytes | N
     return result.stdout
 
 
-def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path]) -> None:
-    """Keep foreign_cc tools self-contained when it copies their tree artifact."""
-    script_tools = ("autoconf", "autoheader", "autom4te")
-    tools = {name: root / "usr/bin" / name for name in
-             ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep", *script_tools)}
+def prepare_script_tools(root: Path, architecture: str, loader: Path, libraries: list[Path], profile: str) -> None:
+    """Relocate script interpreters, data and subprocesses into one tool bundle."""
+    if profile == "metadata":
+        script_tools = ("dpkg-gencontrol", "dpkg-shlibdeps", "dpkg-gensymbols", "dpkg-architecture")
+        native_tools = ("perl", "dpkg", "dpkg-query", "objdump")
+    else:
+        script_tools = ("autoconf", "autoheader", "autom4te")
+        native_tools = ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep")
+    tools = {name: root / "usr/bin" / name for name in (*native_tools, *script_tools)}
     for name, path in tools.items():
         if not path.is_file():
-            raise RuntimeError(f"configure packages contain no {name}")
-    # Replace the package's compiled-in macro-directory options with one
-    # launcher-provided path. Keep every language/macro definition unchanged.
-    config = root / "usr/share/autoconf/autom4te.cfg"
-    lines = config.read_text().splitlines(keepends=True)
-    directory_option = "args: --prepend-include '/usr/share/autoconf'"
-    if sum(line.strip() == directory_option for line in lines) != 4:
-        raise RuntimeError("unexpected Autoconf macro-directory configuration")
-    config.write_text("".join(line for line in lines if line.strip() != directory_option))
+            raise RuntimeError(f"{profile} packages contain no {name}")
+    if profile == "metadata":
+        # dpkg-dev's dependency closure includes unrelated system alternatives
+        # such as /etc/rmt. They are unused by these metadata tools and their
+        # targets are installed by package scripts outside this private bundle.
+        # Bazel tree artifacts cannot contain dangling links. Required tools
+        # above and their runtime libraries below are still checked explicitly.
+        for link in root.rglob("*"):
+            if link.is_symlink() and not link.exists():
+                link.unlink()
+    if profile == "configure":
+        # Replace the package's compiled-in macro-directory options with one
+        # launcher-provided path. Keep every language/macro definition unchanged.
+        config = root / "usr/share/autoconf/autom4te.cfg"
+        lines = config.read_text().splitlines(keepends=True)
+        directory_option = "args: --prepend-include '/usr/share/autoconf'"
+        if sum(line.strip() == directory_option for line in lines) != 4:
+            raise RuntimeError("unexpected Autoconf macro-directory configuration")
+        config.write_text("".join(line for line in lines if line.strip() != directory_option))
     environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
     for binary in [path for name, path in tools.items() if name not in script_tools] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")):
@@ -135,7 +149,7 @@ def prepare_configure(root: Path, architecture: str, loader: Path, libraries: li
     bootstrap = root / "share/sonic-build-tools/Sonic/BuildTools.pm"
     bootstrap.parent.mkdir(parents=True, exist_ok=True)
     quoted = ", ".join("'" + path.replace("'", "\\'") + "'" for path in builtins)
-    bootstrap.write_text("""package Sonic::BuildTools;
+    bootstrap_content = """package Sonic::BuildTools;
 BEGIN {
     my %host = map { $_ => 1 } (""" + quoted + """);
     @INC = grep { !$host{$_} } @INC;
@@ -146,7 +160,28 @@ BEGIN {
     $^X = "$root/bin/perl";
 }
 1;
-""")
+"""
+    if profile == "metadata":
+        # These supported Dpkg module settings prevent the metadata tools from
+        # reading the host package database, configuration or library paths.
+        # Consumers supply target libraries with -l and their original package
+        # shlibs/symbols metadata through package build directories or -L.
+        bootstrap_content += r'''
+require Dpkg;
+my $root = __FILE__;
+$root =~ s{/share/sonic-build-tools/Sonic/BuildTools.pm$}{};
+$Dpkg::CONFDIR = "$root/etc/dpkg";
+$Dpkg::LIBDIR = "$root/usr/lib/dpkg";
+$Dpkg::ADMINDIR = $ENV{DPKG_ADMINDIR};
+require Dpkg::Shlibs;
+Dpkg::Shlibs::blank_library_paths();
+1;
+'''
+        empty_db = root / "share/sonic-build-tools/empty-dpkg"
+        (empty_db / "info").mkdir(parents=True)
+        (empty_db / "status").write_text("")
+        (root / "etc/dpkg").mkdir(parents=True, exist_ok=True)
+    bootstrap.write_text(bootstrap_content)
     (root / "bin").mkdir(exist_ok=True)
     library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
     perl_path = ":".join('$root/' + str(path.relative_to(root)) for path in [bootstrap.parent.parent] + perl_directories)
@@ -158,7 +193,7 @@ case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
 root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
 unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
 '''
-        if name in script_tools:
+        if profile == "configure" and name in script_tools:
             script += '''PATH="$root/bin${PATH:+:$PATH}"
 export PATH
 autom4te_perllibdir="$root/usr/share/autoconf"
@@ -169,6 +204,17 @@ AUTOM4TE="$root/bin/autom4te"
 M4="$root/bin/m4"
 export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
 '''
+        if profile == "metadata":
+            script += '''PATH="$root/bin"
+DPKG_DATADIR="$root/usr/share/dpkg"
+: "${DPKG_ADMINDIR:=$root/share/sonic-build-tools/empty-dpkg}"
+# base-files supplies the Debian vendor file; its postinst normally selects
+# the default vendor. This extracted tool runtime selects that file explicitly.
+DEB_VENDOR=Debian
+export PATH DPKG_DATADIR DPKG_ADMINDIR DEB_VENDOR
+'''
+            script += ': "${DEB_BUILD_ARCH:=' + architecture + '}"\n'
+            script += ': "${DEB_HOST_ARCH:=' + architecture + '}"\nexport DEB_BUILD_ARCH DEB_HOST_ARCH\n'
         if name in ("bison", "flex"):
             script += 'M4="$root/bin/m4"\nBISON_PKGDATADIR="$root/usr/share/bison"\nexport M4 BISON_PKGDATADIR\n'
         if name == "make":
@@ -192,7 +238,7 @@ export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip() for name in tools}
     manifest = {
         "format_version": 1,
-        "profile": "configure",
+        "profile": profile,
         "architecture": architecture,
         "loader": str(loader.relative_to(root)),
         "library_directories": [str(path.relative_to(root)) for path in libraries],
@@ -271,14 +317,14 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--tar", action="append", default=[])
-    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos"), default="documentation")
+    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "metadata"), default="documentation")
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
-    if args.profile == "configure":
+    if args.profile in ("configure", "metadata"):
         # Bazel caches files inside tree outputs. Materialize directory aliases
         # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
         # a child through a directory symlink before its target is populated.
@@ -295,8 +341,8 @@ def main() -> None:
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
-    if args.profile == "configure":
-        prepare_configure(root, args.architecture, loader, libraries)
+    if args.profile in ("configure", "metadata"):
+        prepare_script_tools(root, args.architecture, loader, libraries, args.profile)
         return
     if args.profile == "kerberos":
         prepare_kerberos(root, args.architecture, loader, libraries)
