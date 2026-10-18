@@ -8,7 +8,7 @@ The only struct we really need is `PLATFORM_DEPENDENT_ARGS`
 
 load("//toolchains/gcc:gcc.bzl", "GCC_METADATA")
 
-def resolve_args(cpu, version, gcc_major, args):
+def resolve_args(cpu, version, gcc_major, args, tool_prefix = None):
     """Fills in the toolchain's names, leaving directory placeholders for cc_args.
 
     Args:
@@ -17,6 +17,7 @@ def resolve_args(cpu, version, gcc_major, args):
         gcc_major: the major version of the GCC that built the sysroot, e.g.
                    `14`. Debian's paths only carry the major.
         args: the arg templates, from PLATFORM_DEPENDENT_ARGS below.
+        tool_prefix: Compiler distribution target triple, independent of Debian paths.
 
     Returns:
         The args with every `{single}` placeholder filled in.
@@ -24,7 +25,7 @@ def resolve_args(cpu, version, gcc_major, args):
     arch = GCC_METADATA[cpu]
     return [
         arg.format(
-            gcc = arch.gcc,
+            gcc = tool_prefix or arch.gcc,
             gcc_major = gcc_major,
             gcc_version = version,
             multiarch = arch.multiarch,
@@ -46,7 +47,6 @@ def resolve_inputs(sysroot, gcc_repo, args):
     """
     available = {
         "sysroot": sysroot,
-        "gcc-builtin": gcc_repo + "//:builtin_headers",
         "gcc-programs": gcc_repo + "//:compiler_programs",
     }
     return {
@@ -57,10 +57,8 @@ def resolve_inputs(sysroot, gcc_repo, args):
 
 # {single} placeholders are architecture/version fields. {{doubled}} ones
 # become directory placeholders resolved by cc_args with declared inputs.
-# Keep compiler-private headers first, then the shared Debian headers.
+# GCC builtin headers and system headers come from the shared Debian sysroot.
 _C_INCLUDES_ARGS = [
-    "-isystem",
-    "{{gcc-builtin}}/lib/gcc/{gcc}/{gcc_version}/include",
     "-isystem",
     "{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}/include",
     "-isystem",
@@ -74,8 +72,6 @@ _C_INCLUDES_ARGS = [
 # no fixed-depth relative fallback or package-specific layout is needed.
 _CPP_INCLUDES_ARGS = [
     "-isystem",
-    "{{gcc-builtin}}/lib/gcc/{gcc}/{gcc_version}/include",
-    "-isystem",
     "{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}/include",
     "-isystem",
     "{{sysroot}}/usr/include/c++/{gcc_major}",
@@ -88,8 +84,8 @@ _CPP_INCLUDES_ARGS = [
 ]
 
 _LINK_ARGS = [
-    # GCC's distribution uses a generic target triple; point it at Debian's
-    # multiarch startup files and development libraries explicitly.
+    # Select the target architecture's startup files and development libraries
+    # explicitly from the shared multiarch sysroot.
     "-B",
     "{{sysroot}}/usr/lib/{multiarch}/",
     "-B",

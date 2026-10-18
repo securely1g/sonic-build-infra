@@ -112,6 +112,6 @@ CI also checks both architectures' ELF identifiers and header locations inside
 this one tree. The native C probe checks an architecture-specific Linux syscall
 constant, so using the other architecture's headers fails compilation. A final
 job compares all source archive hashes and the complete sysroot content hash
-from the two native runners. Sharing a sysroot does not make a native-only
-compiler cross-compile; these checks execute GCC and Clang natively on each
-architecture.
+from the two native runners. These checks execute GCC and Clang natively on each architecture. The separate
+[cross-compilation checks](../gcc/README.md) build ARM64 programs with both
+compilers on AMD64, then execute those outputs on a native ARM64 runner.

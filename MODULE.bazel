@@ -43,17 +43,6 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = Tr
 # The SONiC patch sorts above upstream 0.9.4 without a root override.
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.1")
 
-GCC_TOOLCHAINS = {
-    "14.2.0": {
-        "release": "20-08-2026",
-        "suite": "trixie",
-        "integrity": {
-            "x86_64": "sha256-QcX9m+ftDHwwDe4YQ0lxtnq0VkO52B8xlgkk3HOulDc=",
-            "aarch64": "sha256-mF+uzgBydl6AfMYmQTzpbQWh53gaqrluJaGtfznxRZ0=",
-        },
-    },
-}
-
 # One multiarch directory shared by GCC and Clang on both architectures.
 # Consumers import this same repository through use_extension/use_repo.
 sysroots = use_extension("//toolchains/sysroot:extensions.bzl", "sysroots")
@@ -61,21 +50,6 @@ sysroots.debian(name = "sonic_sysroot")
 use_repo(sysroots, "sonic_sysroot")
 
 gcc = use_extension("//toolchains/gcc:extensions.bzl", "gcc")
-
-[
-    gcc.debian_toolchain(
-        arch = arch,
-        integrity = integrity,
-        release = toolchain["release"],
-        suite = toolchain["suite"],
-        sysroot = "@sonic_sysroot//root:sysroot",
-        target_platform = "//platforms:trixie",
-        version = version,
-    )
-    for version, toolchain in GCC_TOOLCHAINS.items()
-    for arch, integrity in toolchain["integrity"].items()
-]
-
 use_repo(gcc, "gcc_toolchains")
 
 ARCHITECTURES = [
@@ -83,7 +57,7 @@ ARCHITECTURES = [
     "arm64",
 ]
 
-# Every toolchain the gcc.debian_toolchain() tags above declare,
+# Every toolchain the gcc.debian_toolchain() tags below declare,
 # one cc and one binutils toolchain per tag.
 register_toolchains("@gcc_toolchains//:all")
 
@@ -131,23 +105,23 @@ apt.install(
     dependency_set = "build_tools",
     packages = [
         "aspell",
-        "comerr-dev",
-        "ss-dev",
-        "mawk",
-        "sed",
-        "coreutils",
-        "diffutils",
         "aspell-en",
         "autoconf",
         "bison",
+        "comerr-dev",
+        "coreutils",
+        "diffutils",
         "doxygen",
         "flex",
         "grep",
         "libprotobuf-dev",
         "m4",
+        "mawk",
         "perl",
         "pkgconf",
         "protobuf-compiler",
+        "sed",
+        "ss-dev",
     ],
     suites = [
         "trixie",
@@ -295,6 +269,164 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
 ]
 
 use_repo(apt, "trixie_libquadmath0-amd64_14.2.0-19")
+
+# Debian compiler executables and the libraries needed to run them. Native
+# AMD64, native ARM64 and AMD64-to-ARM64 builds use the same package snapshot.
+# Target headers and libraries remain in the shared sonic_sysroot repository.
+GCC_RUNTIME_PACKAGES = {
+    "binutils-common": "2.44-3",
+    "gcc-14-base": "14.2.0-19",
+    "libc6": "2.41-12+deb13u3",
+    "libgcc-s1": "14.2.0-19",
+    "libstdc++6": "14.2.0-19",
+    "libcc1-0": "14.2.0-19",
+    "libgmp10": "2:6.3.0+dfsg-3",
+    "libmpfr6": "4.2.2-1",
+    "libmpc3": "1.3.1-1+b3",
+    "libisl23": "0.27-1",
+    "libzstd1": "1.5.7+dfsg-1",
+    "zlib1g": "1:1.3.dfsg+really1.3.1-1+b1",
+    "libjansson4": "2.14-2+b3",
+    "libsframe1": "2.44-3",
+}
+
+apt.install(
+    dependency_set = "gcc_runtime",
+    include_transitive = False,
+    packages = [
+        name + ":" + arch + " (= " + version + ")"
+        for arch in ARCHITECTURES
+        for name, version in GCC_RUNTIME_PACKAGES.items()
+    ],
+    suites = ["trixie"],
+)
+
+GCC_RUNTIME_REPOS = {
+    arch: {
+        name: "trixie_" + name.replace("+", "-") + "-" + arch + "_" + version.replace("+", "-").replace(":", "-")
+        for name, version in GCC_RUNTIME_PACKAGES.items()
+    }
+    for arch in ARCHITECTURES
+}
+
+[
+    use_repo(apt, repo)
+    for repos in GCC_RUNTIME_REPOS.values()
+    for name, repo in repos.items()
+    # These packages were already imported for the shared sysroot above.
+    if name not in [
+        "gcc-14-base",
+        "libc6",
+        "libgcc-s1",
+        "libstdc++6",
+    ]
+]
+
+NATIVE_GCC_PLATFORMS = {
+    "amd64": {
+        "cpu": "x86_64",
+        # Debian package names use x86-64; executable names use x86_64.
+        "package_prefix": "x86-64-linux-gnu",
+        "tool_prefix": "x86_64-linux-gnu",
+    },
+    "arm64": {
+        "cpu": "aarch64",
+        "package_prefix": "aarch64-linux-gnu",
+        "tool_prefix": "aarch64-linux-gnu",
+    },
+}
+
+NATIVE_GCC_PACKAGES = {
+    arch: {
+        "gcc-14-" + platform["package_prefix"]: "14.2.0-19",
+        "g++-14-" + platform["package_prefix"]: "14.2.0-19",
+        "cpp-14-" + platform["package_prefix"]: "14.2.0-19",
+        "binutils-" + platform["package_prefix"]: "2.44-3",
+        # Native binutils keep these libraries in separate packages; the
+        # cross binutils package carries its own copies for its target.
+        "libbinutils": "2.44-3",
+        "libctf0": "2.44-3",
+        "libctf-nobfd0": "2.44-3",
+    }
+    for arch, platform in NATIVE_GCC_PLATFORMS.items()
+}
+
+apt.install(
+    dependency_set = "gcc_native",
+    include_transitive = False,
+    packages = [
+        name + ":" + arch + " (= " + version + ")"
+        for arch, packages in NATIVE_GCC_PACKAGES.items()
+        for name, version in packages.items()
+    ],
+    suites = ["trixie"],
+)
+
+NATIVE_GCC_REPOS = {
+    arch: [
+        "trixie_" + name.replace("+", "-") + "-" + arch + "_" + version
+        for name, version in packages.items()
+    ]
+    for arch, packages in NATIVE_GCC_PACKAGES.items()
+}
+
+[
+    use_repo(apt, repo)
+    for repos in NATIVE_GCC_REPOS.values()
+    for repo in repos
+]
+
+[
+    gcc.debian_toolchain(
+        arch = platform["cpu"],
+        debian_packages = [
+            "@" + repo + "//:data.tar.xz"
+            for repo in NATIVE_GCC_REPOS[arch] + GCC_RUNTIME_REPOS[arch].values()
+        ],
+        suite = "trixie",
+        sysroot = "@sonic_sysroot//root:sysroot",
+        target_platform = "//platforms:trixie",
+        tool_prefix = platform["tool_prefix"],
+        version = "14.2.0",
+    )
+    for arch, platform in NATIVE_GCC_PLATFORMS.items()
+]
+
+CROSS_GCC_PACKAGES = {
+    "gcc-14-aarch64-linux-gnu": "14.2.0-19cross1",
+    "g++-14-aarch64-linux-gnu": "14.2.0-19cross1",
+    "cpp-14-aarch64-linux-gnu": "14.2.0-19cross1",
+    "gcc-14-aarch64-linux-gnu-base": "14.2.0-19cross1",
+    "binutils-aarch64-linux-gnu": "2.44-3",
+}
+
+apt.install(
+    dependency_set = "gcc_cross_amd64",
+    include_transitive = False,
+    packages = [name + ":amd64 (= " + version + ")" for name, version in CROSS_GCC_PACKAGES.items()],
+    suites = ["trixie"],
+)
+
+CROSS_GCC_REPOS = [
+    "trixie_" + name.replace("+", "-") + "-amd64_" + version
+    for name, version in CROSS_GCC_PACKAGES.items()
+]
+
+[use_repo(apt, repo) for repo in CROSS_GCC_REPOS]
+
+gcc.debian_toolchain(
+    arch = "aarch64",
+    debian_packages = [
+        "@" + repo + "//:data.tar.xz"
+        for repo in CROSS_GCC_REPOS + GCC_RUNTIME_REPOS["amd64"].values()
+    ],
+    exec_arch = "x86_64",
+    suite = "trixie",
+    sysroot = "@sonic_sysroot//root:sysroot",
+    target_platform = "//platforms:trixie",
+    tool_prefix = "aarch64-linux-gnu",
+    version = "14.2.0",
+)
 
 uv = use_extension("@aspect_rules_py//uv/unstable:extension.bzl", "uv")
 uv.declare_hub(

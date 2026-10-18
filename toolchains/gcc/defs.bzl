@@ -1,7 +1,7 @@
 """Macro for declaring SONiC's GCC toolchains.
 
-Every toolchain is a host toolchain, which means that it can only execute in the platform it targets.
-Cross-compilation is easy to add later if we need to.
+Execution and target architectures are independent. Omitting exec_cpu keeps
+the native toolchain behavior.
 """
 
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
@@ -37,21 +37,23 @@ _FEATURES = [
 
 _GCC_CAPABILITIES = [Label("@rules_cc//cc/toolchains/capabilities:supports_pic")]
 
-def bin(cpu, version, tool):
+def bin(cpu, version, tool, exec_cpu = None, tool_prefix = None):
     """A tool from one GCC distribution, e.g. its `objcopy`.
 
     Args:
-        cpu: The `@platforms//cpu` the distribution runs on, e.g. `x86_64`.
+        cpu: The target `@platforms//cpu`, e.g. `aarch64`.
         version: The GCC version, e.g. `14.2.0`. With `cpu` it names the
                  `gcc.debian_toolchain()` tag that fetched the distribution.
         tool: The unprefixed tool name, e.g. `objcopy`.
+        exec_cpu: Architecture running the executable; defaults to cpu.
+        tool_prefix: Distribution target triple; defaults to the native prefix.
 
     Returns:
         The label of that tool in the distribution's repo.
     """
     return "@{repo}//:bin/{prefix}-{tool}".format(
-        repo = gcc_repo_name(cpu, version),
-        prefix = GCC_METADATA[cpu].gcc,
+        repo = gcc_repo_name(cpu, version, exec_cpu),
+        prefix = tool_prefix or GCC_METADATA[cpu].gcc,
         tool = tool,
     )
 
@@ -62,8 +64,10 @@ def sonic_host_toolchain(
         debian_gcc_major,
         sysroot,
         target_platform,
-        visibility = None):
-    """Declares a GCC toolchain where `exec == target == $cpu`.
+        visibility = None,
+        exec_cpu = None,
+        tool_prefix = None):
+    """Declares a GCC toolchain with separate execution and target CPUs.
 
     Called from `gcc.debian_toolchain()`.
 
@@ -73,7 +77,7 @@ def sonic_host_toolchain(
     Args:
         name: Name of the `toolchain()` target.
               This is what `register_toolchains` refers to.
-        cpu: The `@platforms//cpu` value this toolchain both runs on and targets,
+        cpu: The `@platforms//cpu` value this toolchain targets,
               e.g. `x86_64`.
         version: The GCC version this toolchain compiles with, e.g. `14.2.0`.
                  Together with `cpu` it names the `gcc.debian_toolchain()` tag
@@ -85,15 +89,17 @@ def sonic_host_toolchain(
         target_platform: The constraint_value() target specifying the environment we'll deploy to.
                          e.g. //platforms:trixie.
         visibility: Visibility of the generated `toolchain()` target.
+        exec_cpu: Architecture running the compiler; defaults to cpu.
+        tool_prefix: Distribution target triple; defaults to the native prefix.
     """
 
-    # The repo the `gcc` extension fetched this (version, cpu)'s distribution
-    # into. Derived rather than passed in, so it cannot name a different
-    # toolchain than `version` and `cpu` resolve the args from.
-    gcc_repo = "@" + gcc_repo_name(cpu, version)
+    # Select the distribution by compiler version and execution/target CPUs.
+    # Target-specific headers and libraries continue to use cpu.
+    exec_cpu = exec_cpu or cpu
+    gcc_repo = "@" + gcc_repo_name(cpu, version, exec_cpu)
 
     def _bin(tool):
-        return bin(cpu, version, tool)
+        return bin(cpu, version, tool, exec_cpu, tool_prefix)
 
     # Support files the compiler and linker need alongside the driver.
     native.alias(
@@ -137,16 +143,22 @@ def sonic_host_toolchain(
     cc_tool(
         name = name + "_ar",
         src = _bin("gcc-ar"),
+        data = [
+            name + "_multicall_support_files",
+            gcc_repo + "//:compiler_programs",
+        ],
         tags = ["manual"],
     )
     cc_tool(
         name = name + "_objcopy",
         src = _bin("objcopy"),
+        data = [name + "_multicall_support_files"],
         tags = ["manual"],
     )
     cc_tool(
         name = name + "_strip",
         src = _bin("strip"),
+        data = [name + "_multicall_support_files"],
         tags = ["manual"],
     )
 
@@ -173,7 +185,7 @@ def sonic_host_toolchain(
     # Declare the shared sysroot and compiler-private directories used by each
     # action. cc_args formats their paths and includes their files as inputs.
     for spec in _PLATFORM_DEPENDENT_ARGS:
-        args = resolve_args(cpu, version, debian_gcc_major, spec.args)
+        args = resolve_args(cpu, version, debian_gcc_major, spec.args, tool_prefix)
         inputs = resolve_inputs(sysroot, gcc_repo, args)
 
         cc_args(
@@ -200,8 +212,7 @@ def sonic_host_toolchain(
         tool_map = name + "_tools",
     )
 
-    # A host toolchain runs on the same platform it targets, so exec and target
-    # take the same constraints.
+    # Tool binaries run on exec_cpu; headers, libraries and outputs use cpu.
     constraints = [
         Label("@platforms//os:linux"),
         Label("@platforms//cpu:" + cpu),
@@ -209,7 +220,10 @@ def sonic_host_toolchain(
 
     native.toolchain(
         name = name,
-        exec_compatible_with = constraints,
+        exec_compatible_with = [
+            Label("@platforms//os:linux"),
+            Label("@platforms//cpu:" + exec_cpu),
+        ],
         target_compatible_with = constraints + [target_platform],
         toolchain = name + "_cc_toolchain",
         toolchain_type = Label("@bazel_tools//tools/cpp:toolchain_type"),

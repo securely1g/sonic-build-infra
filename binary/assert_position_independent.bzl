@@ -19,10 +19,13 @@ def _assert_position_independent_test_impl(ctx):
         "READELF": readelf.short_path,
         "LIBRARY_UNDER_TEST": library.short_path,
     }
+    runfiles = ctx.runfiles(files = [library, readelf])
+    if binutils.runfiles["readelf"]:
+        runfiles = runfiles.merge(binutils.runfiles["readelf"])
     return [
         DefaultInfo(
             executable = exe,
-            runfiles = ctx.runfiles(files = [library, readelf]),
+            runfiles = runfiles,
         ),
         RunEnvironmentInfo(environment = env),
     ]

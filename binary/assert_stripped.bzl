@@ -23,10 +23,14 @@ def _assert_stripped_test_impl(ctx):
         "BINARY_UNDER_TEST": stripped.short_path,
         "DEBUG_DIR": debug.short_path,
     }
+    runfiles = ctx.runfiles(files = [stripped, debug, objdump, readelf])
+    for tool in ["objdump", "readelf"]:
+        if binutils.runfiles[tool]:
+            runfiles = runfiles.merge(binutils.runfiles[tool])
     return [
         DefaultInfo(
             executable = exe,
-            runfiles = ctx.runfiles(files = [stripped, debug, objdump, readelf]),
+            runfiles = runfiles,
         ),
         RunEnvironmentInfo(environment = env),
     ]

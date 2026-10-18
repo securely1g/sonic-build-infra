@@ -1,9 +1,24 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@sonic_build_infra//binary:assert_position_independent.bzl", "assert_position_independent")
+load("@sonic_build_infra//toolchains/binutils:binutils_toolchain.bzl", "binutils_binary")
+
+# Exercise the public executable interface, including each tool's runfiles.
+binutils_binary(
+    name = "readelf",
+    tool = "readelf",
+)
+
+binutils_binary(
+    name = "objcopy",
+    tool = "objcopy",
+)
 
 cc_binary(
     name = "c_probe",
     srcs = ["c_probe.c"],
+    deps = [":generated_value_archive"],
 )
 
 cc_binary(
@@ -15,6 +30,7 @@ cc_binary(
         "-Wl,-soname,libshared_probe.so",
     ],
     linkshared = True,
+    deps = [":generated_value_archive"],
 )
 
 cc_import(
@@ -26,4 +42,75 @@ cc_binary(
     name = "probe",
     srcs = ["probe.cc"],
     deps = [":shared_probe"],
+)
+
+# genrule builds tools for the execution platform, while generated_value is
+# compiled for the target platform. The cross-build test requires AMD64 here
+# and ARM64 for the generated C source and its consumers.
+cc_binary(
+    name = "generate_source",
+    srcs = ["generate_source.c"],
+)
+
+genrule(
+    name = "generated_value_source",
+    outs = ["generated_value.c"],
+    cmd = "$(location :generate_source) > $@",
+    tools = [":generate_source"],
+)
+
+cc_library(
+    name = "generated_value",
+    srcs = [":generated_value_source"],
+    hdrs = ["generated_value.h"],
+    linkstatic = True,
+)
+
+# Force native consumers through a real static archive, so missing gcc-ar
+# runtime files cannot hide behind linking the library's object files directly.
+cc_import(
+    name = "generated_value_archive",
+    hdrs = ["generated_value.h"],
+    static_library = ":generated_value",
+)
+
+cc_binary(
+    name = "cross_c_probe",
+    srcs = ["c_probe.c"],
+    deps = [":generated_value"],
+)
+
+cc_binary(
+    name = "libcross_shared_probe.so",
+    srcs = ["shared_probe.cc"],
+    copts = ["-pthread"],
+    linkopts = [
+        "-pthread",
+        "-Wl,-soname,libcross_shared_probe.so",
+    ],
+    linkshared = True,
+    deps = [":generated_value"],
+)
+
+cc_import(
+    name = "cross_shared_probe",
+    shared_library = ":libcross_shared_probe.so",
+)
+
+cc_binary(
+    name = "cross_probe",
+    srcs = ["probe.cc"],
+    deps = [":cross_shared_probe"],
+)
+
+# This shell test runs on AMD64 and inspects the ARM64 library with the cross
+# binutils toolchain. Its runfiles must include the tool's private runtime.
+assert_position_independent(
+    name = "cross_position_independent_test",
+    library = ":libcross_shared_probe.so",
+)
+
+assert_position_independent(
+    name = "native_position_independent_test",
+    library = ":libshared_probe.so",
 )

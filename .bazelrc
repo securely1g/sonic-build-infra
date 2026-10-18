@@ -4,8 +4,8 @@ common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-regis
 common --registry=https://bcr.bazel.build/
 
 # Build all release binaries for `trixie`.
-# These are host toolchains (exec == target == $cpu),
-# so --config=aarch64 only resolves when Bazel itself is running on an aarch64 machine.
+# On AMD64, --config=aarch64 selects the ARM64 cross compiler. Set
+# --host_platform=//platforms:x86_64_trixie for AMD64 build-time generators.
 common --platforms=//platforms:x86_64_trixie
 common:aarch64 --platforms=//platforms:aarch64_trixie
 

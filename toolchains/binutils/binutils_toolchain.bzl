@@ -8,20 +8,26 @@ BINUTILS_TOOLS = [
     "objdump",
 ]
 
+_BINUTILS_FIELDS = {
+    tool: "FilesToRun provider to the {} binary".format(tool)
+    for tool in BINUTILS_TOOLS
+}
+_BINUTILS_FIELDS["runfiles"] = "Per-tool runtime files, preserved when exposing an executable target."
+
 BinutilsInfo = provider(
     doc = "Paths to different binutils, such as readelf, for the execution platform. This exists because cc toolchains do not forward certain binutils tools.",
-    fields = {
-        tool: "FilesToRun provider to the {} binary".format(tool)
-        for tool in BINUTILS_TOOLS
-    },
+    fields = _BINUTILS_FIELDS,
 )
 
 def _binutils_toolchain_impl(ctx):
+    defaults = {
+        tool: getattr(ctx.attr, tool)[DefaultInfo]
+        for tool in BINUTILS_TOOLS
+    }
+    tools = {tool: default.files_to_run for tool, default in defaults.items()}
+    tools["runfiles"] = {tool: default.default_runfiles for tool, default in defaults.items()}
     toolchain_info = platform_common.ToolchainInfo(
-        binutils = BinutilsInfo(**{
-            tool: getattr(ctx.attr, tool)[DefaultInfo].files_to_run
-            for tool in BINUTILS_TOOLS
-        }),
+        binutils = BinutilsInfo(**tools),
     )
     return [
         toolchain_info,
@@ -50,10 +56,13 @@ def _binutils_binary_impl(ctx):
 
     out = ctx.actions.declare_file(ctx.label.name)
     ctx.actions.symlink(output = out, target_file = tool, is_executable = True)
+    runfiles = ctx.runfiles(files = [tool])
+    if binutils.runfiles[ctx.attr.tool]:
+        runfiles = runfiles.merge(binutils.runfiles[ctx.attr.tool])
     return [
         DefaultInfo(
             executable = out,
-            runfiles = ctx.runfiles(files = [tool]),
+            runfiles = runfiles,
         ),
     ]
 
