@@ -131,6 +131,12 @@ apt.install(
     dependency_set = "build_tools",
     packages = [
         "aspell",
+        "comerr-dev",
+        "ss-dev",
+        "mawk",
+        "sed",
+        "coreutils",
+        "diffutils",
         "aspell-en",
         "autoconf",
         "bison",
