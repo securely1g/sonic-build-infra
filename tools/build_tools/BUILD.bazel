@@ -367,6 +367,7 @@ alias(
     )
     for tool in [
         "dh_install",
+        "dh_installinit",
         "dh_installdeb",
         "dh_installdebconf",
         "dh_makeshlibs",
@@ -382,6 +383,7 @@ py_test(
     srcs = ["debian_runtime_test.py"],
     args = [
         "--install=$(location :dh_install)",
+        "--installinit=$(location :dh_installinit)",
         "--installdeb=$(location :dh_installdeb)",
         "--installdebconf=$(location :dh_installdebconf)",
         "--makeshlibs=$(location :dh_makeshlibs)",
@@ -397,6 +399,7 @@ py_test(
         ":dh_install",
         ":dh_installdeb",
         ":dh_installdebconf",
+        ":dh_installinit",
         ":dh_installsystemduser",
         ":dh_installtmpfiles",
         ":dh_makeshlibs",

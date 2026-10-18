@@ -10,7 +10,7 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ('install', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
+    for name in ('install', 'installinit', 'installdeb', 'installdebconf', 'makeshlibs', 'perl', 'systemduser', 'python', 'tmpfiles', 'library', 'runtime'):
         parser.add_argument('--' + name, type=Path, required=True)
     args = parser.parse_args()
     paths = {key: value.absolute() for key, value in vars(args).items()}
@@ -60,6 +60,7 @@ Description: Check original Debian installation script generation
         (package / 'usr/bin/sonic-script-probe').write_text('#!/usr/bin/perl\nprint "ok\\n";\n')
         (package / 'usr/bin/sonic-script-probe').chmod(0o755)
         (package / 'usr/lib/systemd/user/sonic-script-probe.service').write_text('[Unit]\nDescription=Probe\n[Service]\nExecStart=/usr/bin/sonic-script-probe\n[Install]\nWantedBy=default.target\n')
+        (debian / 'sonic-script-probe.init').write_text('#!/bin/sh\n### BEGIN INIT INFO\n# Provides: sonic-script-probe\n# Required-Start: $remote_fs\n# Required-Stop: $remote_fs\n# Default-Start: 2 3 4 5\n# Default-Stop: 0 1 6\n### END INIT INFO\nexit 0\n')
         (debian / 'sonic-script-probe.config').write_text('#!/bin/sh\n. /usr/share/debconf/confmodule\ndb_input low sonic-script-probe/enabled || true\ndb_go\n')
         (debian / 'sonic-script-probe.postinst').write_text('#!/bin/sh\nset -e\n. /usr/share/debconf/confmodule\n#DEBHELPER#\n')
         (debian / 'sonic-script-probe.maintscript').write_text('rm_conffile /etc/sonic-script-probe.old 0.9~\n')
@@ -79,7 +80,7 @@ msgstr "Activer la sonde ?"
         environment = dict(os.environ, PATH='', DH_COMPAT='13', DEB_HOST_ARCH=receipt['architecture'], LANG='C', LC_ALL='C')
         environment.pop('PERL5LIB', None)
         environment.pop('PERL5OPT', None)
-        for name in ('install', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'makeshlibs', 'installdeb'):
+        for name in ('install', 'installinit', 'installdebconf', 'systemduser', 'tmpfiles', 'perl', 'python', 'makeshlibs', 'installdeb'):
             subprocess.run([str(paths[name]), '-psonic-script-probe'], cwd=root, env=environment, check=True)
         assert (package / 'usr/lib/libmetadata-probe.so.1').is_file()
         assert not (package / 'usr/lib/libmetadata-probe.so').exists()
@@ -95,6 +96,9 @@ msgstr "Activer la sonde ?"
         assert (package / 'usr/lib/tmpfiles.d/sonic-script-probe.conf').is_file()
         architecture = {'amd64': 'x86_64-linux-gnu', 'arm64': 'aarch64-linux-gnu'}[receipt['architecture']]
         assert (package / f'usr/lib/python3/dist-packages/_probe.cpython-313-{architecture}.so').is_file()
+        assert 'update-rc.d' in (controls / 'postinst').read_text()
+        assert 'invoke-rc.d' in (controls / 'prerm').read_text()
+        assert (package / 'etc/init.d/sonic-script-probe').is_file()
         assert 'db_purge' in (controls / 'postrm').read_text()
         assert 'deb-systemd-helper --user' in (controls / 'postinst').read_text()
         assert '#DEBHELPER#' not in (controls / 'postinst').read_text()

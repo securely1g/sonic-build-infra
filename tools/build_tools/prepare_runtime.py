@@ -104,7 +104,7 @@ def prepare_script_tools(root: Path, architecture: str, loader: Path, libraries:
     shell_tools = ()
     python_tools = ()
     if profile == "debian":
-        script_tools += ("dh_install", "dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_installtmpfiles")
+        script_tools += ("dh_install", "dh_installinit", "dh_installdeb", "dh_installdebconf", "dh_makeshlibs", "dh_perl", "dh_installsystemduser", "dh_installtmpfiles")
         native_tools += ("cp", "chmod", "mkdir", "rm", "mv", "rmdir", "install", "sort", "find", "cat", "sed", "expr", "dirname", "mktemp", "ln", "grep", "mawk", "dash", "msgconv", "msgfmt")
         shell_tools = ("po2debconf",)
         python_tools = ("dh_python3",)
