@@ -1,9 +1,8 @@
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import")
 load("@rules_python//python:defs.bzl", "py_test")
-load("@rules_python//python:py_test.bzl", "py_test")
 load("@tar.bzl", "tar")
-load("//deb:metadata.bzl", "debian_library", "debian_metadata")
+load("//deb:metadata.bzl", "debian_library", "debian_library_group", "debian_metadata")
 load("//deb:sonic_deb.bzl", "sonic_deb")
 load(":filename_test.bzl", "filename_test")
 
@@ -104,15 +103,26 @@ tar(
     ],
 )
 
+debian_library_group(
+    name = "system_libraries",
+    dependencies = [":libc"],
+)
+
+debian_library_group(
+    name = "source_libraries",
+    dependencies = [
+        ":system_libraries",
+        ":library_metadata",
+        ":libc",
+    ],
+)
+
 debian_metadata(
     name = "binary_metadata",
     changelog = "changelog",
     control = "control",
     data = ":binary_data",
-    dependencies = [
-        ":libc",
-        ":library_metadata",
-    ],
+    dependencies = [":source_libraries"],
     package = "metadata-probe",
     substitutions = {"misc:Depends": ""},
     version = "2:1.2.3-4+sonic.1",

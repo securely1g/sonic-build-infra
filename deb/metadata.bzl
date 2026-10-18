@@ -2,6 +2,32 @@
 
 DebianLibraryInfo = provider(fields = ["data", "control_tar", "symbols", "shlibs"])
 
+# A caller such as Syncd selects the retained DASH SDK as one dependency,
+# while dpkg still receives each original package's own ABI metadata.
+DebianLibrariesInfo = provider(fields = ["libraries"])
+
+def _libraries(targets):
+    result = []
+    seen = {}
+    for target in targets:
+        libraries = target[DebianLibrariesInfo].libraries if DebianLibrariesInfo in target else [target[DebianLibraryInfo]]
+        for library in libraries:
+            key = (library.data.path, str(library.control_tar), str(library.symbols), str(library.shlibs))
+            if key not in seen:
+                seen[key] = True
+                result.append(library)
+    return result
+
+def _library_group_impl(ctx):
+    libraries = _libraries(ctx.attr.dependencies)
+    return [DefaultInfo(files = depset([library.data for library in libraries])), DebianLibrariesInfo(libraries = libraries)]
+
+debian_library_group = rule(
+    implementation = _library_group_impl,
+    attrs = {"dependencies": attr.label_list(providers = [[DebianLibraryInfo], [DebianLibrariesInfo]])},
+    doc = "Group original library metadata without merging package identities.",
+)
+
 def _library_impl(ctx):
     if not (ctx.file.control_tar or ctx.file.symbols or ctx.file.shlibs):
         fail("Declare a control archive, symbols or shlibs for this library")
@@ -56,8 +82,7 @@ def _metadata_impl(ctx):
             config[name] = file.path
     if symbols:
         config["outputs"]["symbols"] = symbols.path
-    for target in ctx.attr.dependencies:
-        dependency = target[DebianLibraryInfo]
+    for dependency in _libraries(ctx.attr.dependencies):
         row = {}
         for name in ["data", "control_tar", "symbols", "shlibs"]:
             file = getattr(dependency, name)
@@ -106,7 +131,7 @@ debian_metadata = rule(
         "changelog": attr.label(allow_single_file = True, mandatory = True),
         "package": attr.string(mandatory = True),
         "version": attr.string(),
-        "dependencies": attr.label_list(providers = [DebianLibraryInfo]),
+        "dependencies": attr.label_list(providers = [[DebianLibraryInfo], [DebianLibrariesInfo]]),
         "substitutions": attr.string_dict(),
         "substvars": attr.label(allow_single_file = True),
         "symbols": attr.label(allow_single_file = True),
