@@ -2,6 +2,21 @@
 # See sonic_deb.bzl for the public `sonic_deb` macro.
 
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+py_binary(
+    name = "check_control",
+    srcs = ["check_control.py"],
+)
+
+py_test(
+    name = "check_control_test",
+    srcs = [
+        "check_control.py",
+        "check_control_test.py",
+    ],
+    imports = ["."],
+)
 
 py_binary(
     name = "md5sums_from_tar",
