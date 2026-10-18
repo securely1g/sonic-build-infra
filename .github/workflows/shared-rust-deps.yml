@@ -73,11 +73,14 @@ jobs:
           python3 -m unittest discover -s tools/rust -p '*_test.py'
           mkdir -p rust/deps/ci-artifacts
           cd rust/deps
-          bazel test --jobs=2 --lockfile_mode=update --test_output=errors --build_event_json_file=ci-artifacts/test-events.json //tests:serde_roundtrip_test //tests:tracing_test //tests:supervisor_io_test 2>&1 | tee ci-artifacts/tests.log
+          bazel test --jobs=2 --lockfile_mode=update --test_output=errors --build_event_json_file=ci-artifacts/test-events.json //tests:serde_roundtrip_test //tests:tracing_test //tests:supervisor_io_test //tests:panic_runtime_test 2>&1 | tee ci-artifacts/tests.log
           bazel cquery --noimplicit_deps 'kind("rust_library rule", deps(//:serde))' > ci-artifacts/serde-dependencies.txt
           cp bazel-testlogs/tests/serde_roundtrip_test/test.xml ci-artifacts/serde-test.xml
           cp bazel-testlogs/tests/tracing_test/test.xml ci-artifacts/tracing-test.xml
           cp bazel-testlogs/tests/supervisor_io_test/test.xml ci-artifacts/supervisor-io-test.xml
+          cp bazel-testlogs/tests/panic_runtime_test/test.xml ci-artifacts/panic-runtime-test.xml
+          bazel test --jobs=2 -c opt --@rules_rust//rust/settings:lto=fat --@rules_rust//rust/settings:codegen_units=1 --test_output=errors --build_event_json_file=ci-artifacts/release-events.json //tests:panic_runtime_test 2>&1 | tee ci-artifacts/release-tests.log
+          cp bazel-testlogs/tests/panic_runtime_test/test.xml ci-artifacts/panic-release-test.xml
           test ! -e Cargo.Bazel.lock
           git diff --exit-code -- Cargo.lock
       - name: Collect shared dependency evidence
