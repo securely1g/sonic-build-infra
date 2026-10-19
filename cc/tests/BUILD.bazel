@@ -1,0 +1,27 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_python//python:defs.bzl", "py_test")
+
+cc_test(
+    name = "transitive_runtime_test",
+    srcs = ["test.c"],
+    linkopts = ["-Wl,--as-needed"],
+    linkstatic = False,
+    deps = ["//cc/tests/middle:api"],
+)
+
+py_test(
+    name = "shared_library_layout_test",
+    srcs = ["shared_library_layout_test.py"],
+    args = [
+        "$(location //toolchains/binutils:readelf)",
+        "$(location :transitive_runtime_test)",
+        "$(location //cc/tests/middle:shared)",
+        "$(location //cc/tests/leaf:shared)",
+    ],
+    data = [
+        ":transitive_runtime_test",
+        "//cc/tests/leaf:shared",
+        "//cc/tests/middle:shared",
+        "//toolchains/binutils:readelf",
+    ],
+)

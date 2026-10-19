@@ -51,6 +51,8 @@ tests=(
   //swig/tests:defines_test
   //tests:deploy_tar_timestamps_test
   //toolchains/gcc/tests:foreign_link_test
+  //cc/tests:transitive_runtime_test
+  //cc/tests:shared_library_layout_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
