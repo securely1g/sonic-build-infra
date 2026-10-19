@@ -51,3 +51,13 @@ cc_args(
     ],
     visibility = ["//visibility:public"],
 )
+
+# Preserve the previous GCC distribution's transitive runtime search behavior.
+# cc_import relocates DSOs into _solib directories, so consumers' search paths
+# must also resolve dependencies of those imported shared libraries.
+cc_args(
+    name = "transitive_runtime_search_paths",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = ["-Wl,--disable-new-dtags"],
+    visibility = ["//visibility:public"],
+)

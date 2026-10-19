@@ -54,3 +54,16 @@ before changing directory. GCC also receives a `-B`
 directory prefix for the downloaded, CPU-specific assembler and linker aliases.
 GCC's driver accepts a filename prefix, but its `collect2` link helper searches
 directories; using the aliases keeps both stages on the declared tools.
+
+## Imported shared-library chains
+
+`//toolchains/gcc/tests/runtime:transitive_runtime_test` links an executable to
+an imported middle DSO, which imports a leaf DSO from another package. This
+matches consumers such as SWSS Common and sonic-db-cli. The executable has no
+direct reference to the leaf, so the runtime loader must find a transitive
+`DT_NEEDED` entry through Bazel's generated library search paths.
+
+Debian's linker defaults to `DT_RUNPATH`, unlike the previous GCC distribution's
+`DT_RPATH`. GCC explicitly retains `DT_RPATH` so imported DSOs remain usable
+after Bazel places them in `_solib`. A consumer that intentionally needs
+`DT_RUNPATH` may still pass `-Wl,--enable-new-dtags` in its link options.

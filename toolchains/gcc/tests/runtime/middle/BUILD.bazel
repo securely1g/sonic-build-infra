@@ -1,0 +1,26 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+
+cc_binary(
+    name = "libprobe_middle.so.0",
+    testonly = True,
+    srcs = ["middle.c"],
+    linkopts = ["-Wl,-soname,libprobe_middle.so.0"],
+    linkshared = True,
+    deps = ["//toolchains/gcc/tests/runtime/leaf:shared"],
+)
+
+cc_import(
+    name = "import",
+    testonly = True,
+    shared_library = ":libprobe_middle.so.0",
+)
+
+cc_library(
+    name = "shared",
+    testonly = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":import",
+        "//toolchains/gcc/tests/runtime/leaf:shared",
+    ],
+)

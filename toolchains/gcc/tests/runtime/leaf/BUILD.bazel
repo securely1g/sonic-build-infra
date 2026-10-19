@@ -1,0 +1,22 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+
+cc_binary(
+    name = "libprobe_leaf.so.0",
+    testonly = True,
+    srcs = ["leaf.c"],
+    linkopts = ["-Wl,-soname,libprobe_leaf.so.0"],
+    linkshared = True,
+)
+
+cc_import(
+    name = "import",
+    testonly = True,
+    shared_library = ":libprobe_leaf.so.0",
+)
+
+cc_library(
+    name = "shared",
+    testonly = True,
+    visibility = ["//visibility:public"],
+    deps = [":import"],
+)

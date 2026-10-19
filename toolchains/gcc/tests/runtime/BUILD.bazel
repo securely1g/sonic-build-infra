@@ -1,0 +1,10 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# The leaf is an indirect DT_NEEDED dependency of the executable. Imported
+# libraries are relocated into _solib, as in Common and sonic-db-cli consumers.
+cc_test(
+    name = "transitive_runtime_test",
+    srcs = ["test.c"],
+    linkstatic = False,
+    deps = ["//toolchains/gcc/tests/runtime/middle:shared"],
+)

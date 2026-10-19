@@ -23,6 +23,7 @@ _PLATFORM_INDEPENDENT_ARGS = [
     Label("//toolchains/gcc/args:nostdinc"),
     Label("//toolchains/gcc/args:nostdinc++"),
     Label("//toolchains/gcc/args:add_build_ids"),
+    Label("//toolchains/gcc/args:transitive_runtime_search_paths"),
     Label("//toolchains/args:no_absolute_paths_for_builtins"),
     Label("//toolchains/args:warnings"),
     Label("//toolchains/args:dpkg_buildflags"),
