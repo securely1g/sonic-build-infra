@@ -1,0 +1,21 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
+
+package(default_testonly = True)
+
+cc_library(
+    name = "implementation",
+    srcs = ["leaf.c"],
+    hdrs = ["leaf.h"],
+    visibility = ["//cc/tests/middle:__pkg__"],
+)
+
+cc_shared_library(
+    name = "shared",
+    shared_lib_name = "libnative_leaf.so.0",
+    user_link_flags = [
+        "-Wl,-soname,libnative_leaf.so.0",
+        "-Wl,--enable-new-dtags",
+    ],
+    visibility = ["//cc/tests:__subpackages__"],
+    deps = [":implementation"],
+)

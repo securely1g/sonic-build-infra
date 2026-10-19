@@ -1,0 +1,35 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
+load("//cc:shared_library.bzl", "shared_library_cc_info")
+
+package(default_testonly = True)
+
+cc_library(
+    name = "implementation",
+    srcs = ["middle.c"],
+    hdrs = ["middle.h"],
+    deps = ["//cc/tests/leaf:implementation"],
+)
+
+cc_shared_library(
+    name = "shared",
+    dynamic_deps = ["//cc/tests/leaf:shared"],
+    shared_lib_name = "libnative_middle.so.0",
+    user_link_flags = [
+        "-Wl,-soname,libnative_middle.so.0",
+        "-Wl,--enable-new-dtags",
+    ],
+    visibility = ["//cc/tests:__pkg__"],
+    deps = [":implementation"],
+)
+
+shared_library_cc_info(
+    name = "shared_link",
+    shared_library = ":shared",
+)
+
+cc_library(
+    name = "api",
+    hdrs = ["middle.h"],
+    visibility = ["//cc/tests:__pkg__"],
+    deps = [":shared_link"],
+)
