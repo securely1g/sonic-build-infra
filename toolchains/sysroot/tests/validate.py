@@ -12,7 +12,12 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import tarfile
+
+# Resolve our sibling helper even when PYTHONSAFEPATH is enabled.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from validate_debian_compiler import artifact_paths, validate_debian_compiler, validate_public_binutils
 
 ARCHITECTURES = {
     "amd64": ("x86_64-linux-gnu", 62, "ld-linux-x86-64.so.2"),
@@ -20,7 +25,7 @@ ARCHITECTURES = {
 }
 
 
-def audit_graph(graph_text, compiler, architecture):
+def audit_graph(graph_text, compiler, architecture, required_sources=("c_probe.c", "probe.cc", "shared_probe.cc")):
     graph = json.loads(graph_text)
     fragments = {item["id"]: item for item in graph["pathFragments"]}
 
@@ -39,9 +44,7 @@ def audit_graph(graph_text, compiler, architecture):
         assert "--remap-inputs" not in command, command
     native = [item for item in actions if item["mnemonic"] in ("CppCompile", "CppLink")]
     compiles = [item["arguments"] for item in native if item["mnemonic"] == "CppCompile"]
-    assert all(any(source in args for args in compiles) for source in (
-        "c_probe.c", "probe.cc", "shared_probe.cc",
-    )), "missing C or C++ compilation"
+    assert all(any(source in args for args in compiles) for source in required_sources), "missing C or C++ compilation"
     sysroots = set()
     for action in native:
         arguments = action["arguments"]
@@ -203,7 +206,7 @@ def main():
     consumer = Path(__file__).resolve().parent / "consumer"
     cpu = platform.machine()
     architecture = {"x86_64": "amd64", "aarch64": "arm64"}[cpu]
-    triplet, _, loader_name = ARCHITECTURES[architecture]
+    triplet, machine, loader_name = ARCHITECTURES[architecture]
     sysroot_label = "@sonic_sysroot//root:sysroot"
     receipts = {}
     programs = {}
@@ -219,6 +222,7 @@ def main():
             # `info execution_root` does not analyze the consumer's targets and
             # need not resolve its apparent platform/toolchain repository names.
             target_options = [] if command == "info" else [
+                f"--host_platform=@sonic_build_infra//platforms:{cpu}_trixie",
                 f"--platforms=@sonic_build_infra//platforms:{cpu}_trixie",
                 f"--extra_toolchains={toolchain}",
             ]
@@ -229,10 +233,13 @@ def main():
             ).strip()
 
         # Audit before executing build actions. These probes produce executables
-        # and a shared library, never Debian packages.
-        graph_text = bazel("aquery", "--output=jsonproto", "deps(set(//:c_probe //:probe))")
+        # and static/shared libraries, never Debian packages.
+        graph_text = bazel("aquery", "--output=jsonproto", "deps(set(//:c_probe //:probe //:readelf //:objcopy //:native_position_independent_test))")
         (evidence / "actions.json").write_text(graph_text + "\n")
         actions, compiles, sysroot_path = audit_graph(graph_text, compiler, architecture)
+        graph = json.loads(graph_text)
+        paths = artifact_paths(graph)
+        assert any(action["mnemonic"] == "CppArchive" for action in actions), "missing native archive action"
         bazel("build", "//:c_probe", "//:probe")
         execution_root = Path(bazel("info", "execution_root"))
         root = execution_root / sysroot_path
@@ -264,11 +271,20 @@ def main():
         for name in ("c_probe", "probe", "libshared_probe.so"):
             destination = saved / name
             shutil.copy2(output("//:" + name), destination)
+            header = destination.read_bytes()[:20]
+            assert header[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", header, 18)[0] == machine, destination
             binaries[name] = destination
             binary_hashes[name] = hashlib.sha256(destination.read_bytes()).hexdigest()
         c_binary = binaries["c_probe"]
         cpp_binary = binaries["probe"]
         shared_library = binaries["libshared_probe.so"]
+        archive = evidence / "libgenerated_value.a"
+        shutil.copy2(output("//:generated_value"), archive)
+        headers = subprocess.check_output(["readelf", "--file-header", str(archive)], text=True, env=dict(os.environ, LC_ALL="C"))
+        expected_machine = {62: "Advanced Micro Devices X86-64", 183: "AArch64"}[machine]
+        archive_machines = re.findall(r"Machine:\s+([^\n]+)", headers)
+        assert archive_machines and set(archive_machines) == {expected_machine}, headers
+        (evidence / "libgenerated_value.a-elf.txt").write_text(headers)
         dynamic = subprocess.check_output(
             ["readelf", "--dynamic", str(shared_library)], text=True,
             env=dict(os.environ, LC_ALL="C"),
@@ -299,8 +315,17 @@ def main():
             "link_arguments": [item["arguments"] for item in actions if item["mnemonic"] == "CppLink"],
             "loaded_libraries": loaded,
             "binary_sha256": binary_hashes,
+            "archive_sha256": {archive.name: hashlib.sha256(archive.read_bytes()).hexdigest()},
             **tree_receipt,
         }
+        if compiler == "gcc":
+            receipts[compiler]["debian_compiler"] = validate_debian_compiler(
+                execution_root, compiler_path, graph, paths, evidence,
+                execution_architecture=architecture, target_architecture=architecture,
+            )
+            receipts[compiler]["public_binutils"] = validate_public_binutils(
+                bazel, c_binary, machine, "//:native_position_independent_test", evidence / "binutils",
+            )
         lockfile = consumer / "MODULE.bazel.lock"
         assert lockfile.is_file(), "Keep Bazel's generated module lockfile enabled for validation evidence"
         shutil.copy2(lockfile, evidence / "MODULE.bazel.lock")

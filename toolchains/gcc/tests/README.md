@@ -38,7 +38,7 @@ recreates that check from a nested directory:
 **After:** the toolchain supplies these paths (AMD64 example, shortened):
 
 ```text
--B /bazel/external/gcc/x86_64-linux/bin/
+-B /bazel/external/gcc/x86_64-linux-gnu/bin/
 --sysroot=/bazel/external/sonic_sysroot/root
 -L /bazel/external/sonic_sysroot/root/usr/lib/gcc/x86_64-linux-gnu/14/
 -L /bazel/external/sonic_sysroot/root/usr/lib/x86_64-linux-gnu/
