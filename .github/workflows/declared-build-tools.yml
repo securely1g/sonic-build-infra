@@ -44,7 +44,7 @@ jobs:
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
       # Preview the rules_distroless CcInfo provider fix before registry publication.
-      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/codex/distroless-runtime-runpath
+      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
     steps:
       - name: Prepare Bazel bootstrap dependencies
         run: |
