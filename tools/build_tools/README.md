@@ -170,3 +170,76 @@ existing template-directory overrides preserve the generator logic.
 `kerberos_runtime_test` exercises both generators with an empty PATH, checks
 stable generated C, and fails when the declared templates are missing. Both
 native AMD64 and ARM64 jobs run this test.
+
+## Debian package metadata
+
+Use `:dpkg-gencontrol`, `:dpkg-shlibdeps` and `:dpkg-gensymbols` when a source producer needs Debian
+package metadata. For example, the Rust supervisor listener owns its package
+name and description in `debian/control`; `dpkg-shlibdeps` derives the minimum
+library versions from its compiled executable, and `dpkg-gencontrol` combines
+those dependencies with the original control and changelog files. A source
+library can export its symbols with `dpkg-gensymbols` using that library's ELF
+and original changelog version.
+
+These tools produce text metadata only. They do not create a `.deb`, compile the
+program again, or mark any package as installed. The public executable targets
+use the same execution configuration and `FilesToRunProvider` pattern shown
+above. `:metadata_runtime` exposes their shared tree when a generator needs to
+invoke several of its tools.
+
+The existing `build_tools` APT set supplies pinned dpkg-dev, binutils, Perl and
+all runtime dependencies. The metadata profile uses its own Perl modules,
+architecture data, dynamic loader and objdump. It starts with an empty package
+database and no default host library search directories. Pass the actual target
+libraries with `-l<directory>` and their original `DEBIAN/shlibs` or
+`DEBIAN/symbols` through package build directories (`-S<directory>`). A producer
+can instead pass its own generated shlibs file with `-L<file>`. Explicit package
+metadata must be a declared input; libraries alone cannot tell dpkg their
+Debian package names or version policy. Do not copy dependencies from an older
+image's installed package record.
+
+`DPKG_ADMINDIR` can select a declared package database when one is needed. The
+caller must set `DEB_HOST_ARCH` when generating metadata for an architecture
+different from the native execution architecture. Native AMD64 and ARM64 are
+the tested configurations; this profile does not supply cross objdump tools.
+
+`//tools/build_tools:metadata_runtime_test` compiles a small program, derives its
+libc dependency from the matching pinned package's symbols file, then generates
+the final binary control paragraph. Removing the library or its dependency
+metadata must fail even when the host has libc installed. The test also checks
+that Perl modules and dpkg data are loaded from the declared runtime. The
+existing native build-tools workflow runs this test on AMD64 and ARM64.
+
+## Generate Debian installation scripts
+
+The `dh_install`, `dh_fixperms`, `dh_installinit`, `dh_installdeb`, `dh_installdebconf`, `dh_makeshlibs`, `dh_perl` and
+`dh_installsystemduser`, `dh_installtmpfiles` and `dh_python3` targets run Debian's original debhelper programs from the
+same pinned snapshot as the other execution tools. Their separate
+`debian_runtime` includes Perl, debhelper data, translated-template tools and
+private subprocesses. Python helpers also use the pinned Debian Python 3.13
+interpreter, package-name mappings and autoscripts. A small bootstrap changes
+only dh-python's fixed ABI-query, mapping and dpkg paths. Dependency metadata
+remains enabled; package searches use the private dpkg database. Installed shebangs and package paths retain their Debian values. The launcher uses the original tools' `DH_DATAFILES`,
+`DH_AUTOSCRIPTDIR` and `PODEBCONF_*` configuration instead of copying their logic.
+
+A source producer stages its compiled payload under `debian/<package>` in a
+private action directory, copies its original `debian/control`, `changelog` and
+maintainer inputs, then runs the relevant commands before `dpkg-gencontrol`.
+Run `dh_fixperms` on the staged package before generating its final archive,
+just as the normal Debian helper sequence does. A config file copied from a
+group-writable checkout becomes mode 0644, and directories and executables
+become mode 0755. Set `DEB_RULES_REQUIRES_ROOT=no` for rootless staging;
+the archive writer assigns root ownership without changing host file ownership.
+Package-specific special modes still follow the owner's rules.
+
+For example, iproute2 needs `dh_installdebconf` followed by `dh_installdeb`: this
+keeps its translated configuration question, debconf dependency, removal of
+obsolete conffiles and purge script. `dh_python3` supplies bytecode setup/removal scripts and derives
+Python dependencies from the actual module/extension payload. Shared-library producers use
+`dh_makeshlibs` to generate the normal `ldconfig` trigger and library metadata.
+The commands do not run package installation scripts or create a DEB.
+
+`debian_runtime_test` checks these behaviors with an empty caller PATH on native
+AMD64 and ARM64. Source producers remain responsible for selecting the original
+helper order/options, packaging the resulting controls, and checking actual
+installation and removal of their resulting DEBs.

@@ -1,0 +1,5 @@
+metadata-probe (1.0-1) unstable; urgency=medium
+
+  * Check dependencies generated from a source library and its consumer.
+
+ -- SONiC contributors <securely1g@gmail.com>  Sun, 18 Oct 2026 00:00:00 +0000
