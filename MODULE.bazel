@@ -124,6 +124,8 @@ apt.install(
         "findutils",
         "flex",
         "gcc-14",
+        # The ARM64 kernel builds a 32-bit compatibility vDSO with this compiler.
+        "gcc-arm-linux-gnueabihf:arm64",
         "grep",
         "gzip",
         "kernel-wedge",
