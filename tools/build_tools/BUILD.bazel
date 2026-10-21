@@ -8,6 +8,7 @@ python_runtime(name = "python_runtime")
 
 # dpkg-shlibdeps needs the native runtime libraries' symbols/shlibs metadata and
 # file ownership lists when packaging the source-built linux-kbuild programs.
+# Keep the kernel root independent of unrelated source-generator packages.
 _KERNEL_LINK_LIBRARIES = [
     "libc6",
     "libelf1t64",
@@ -25,9 +26,9 @@ _KERNEL_LINK_LIBRARIES = [
             "@platforms//os:linux",
             "@platforms//cpu:" + cpu,
         ],
-        metadata_controls = ["@build_tools//" + name + ":control" for name in _KERNEL_LINK_LIBRARIES],
-        metadata_data = ["@build_tools//" + name + ":data" for name in _KERNEL_LINK_LIBRARIES],
-        packages = ["@build_tools"],
+        metadata_controls = ["@kernel_build_tools//" + name + ":control" for name in _KERNEL_LINK_LIBRARIES],
+        metadata_data = ["@kernel_build_tools//" + name + ":data" for name in _KERNEL_LINK_LIBRARIES],
+        packages = ["@kernel_build_tools"],
     )
     for architecture, cpu in [
         ("amd64", "x86_64"),
@@ -277,5 +278,54 @@ py_test(
     srcs = ["kerberos_runtime_test.py"],
     args = ["$(location :kerberos_runtime)", "$(location :compile_et)", "$(location :mk_cmds)"],
     data = [":kerberos_runtime", ":compile_et", ":mk_cmds"],
+    visibility = ["//visibility:public"],
+)
+
+# Autotools bootstrap and interface generators run on the execution platform.
+# Their libraries/data are private; target headers/libraries remain consumer deps.
+[
+    build_tools_runtime(
+        name = "foreign_runtime_" + architecture,
+        architecture = architecture,
+        profile = "foreign",
+        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
+        packages = ["@build_make_" + architecture + "//:data.tar.xz"] + [
+            "@build_tools//" + tool for tool in [
+                "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "automake",
+                "libtool", "libtool-bin", "coreutils", "diffutils", "grep", "sed", "mawk",
+                "findutils", "bash", "dash", "protobuf-compiler", "protobuf-compiler-grpc",
+                "thrift-compiler", "python3", "libxml-simple-perl", "graphviz", "fonts-dejavu-core", "debianutils",
+            ]
+        ] + ["@build_tools//libprotobuf-dev:data"],
+    )
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+
+alias(
+    name = "foreign_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":foreign_runtime_amd64",
+        "@platforms//cpu:aarch64": ":foreign_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(name = tool, tool = tool, runtime = ":foreign_runtime", visibility = ["//visibility:public"])
+    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "dot"]
+]
+
+py_test(
+    name = "foreign_runtime_test",
+    srcs = ["foreign_runtime_test.py"],
+    args = ["$(location :foreign_runtime)", "$(location :metadata_runtime)"],
+    data = [":foreign_runtime", ":metadata_runtime"],
+    visibility = ["//visibility:public"],
+)
+
+# Relocatable bin/doxygen and bin/aspell for upstream metadata Makefiles.
+alias(
+    name = "metadata_runtime",
+    actual = ":runtime",
     visibility = ["//visibility:public"],
 )

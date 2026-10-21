@@ -229,3 +229,41 @@ The ARM32 output is inspected, not executed. These tests produce no DEBs. Kernel
 package compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
 `sonic-buildimage` consumer. This shared-runtime smoke test does not compile a
 full kernel.
+
+## Autotools and interface generators
+
+`//tools/build_tools:foreign_runtime` supplies a private native execution bundle
+for upstream configure/Make builds: autoreconf, Automake/aclocal, Libtool,
+protobuf/gRPC and Thrift generators, Python, Perl (including XML::Simple), and
+their shell utilities, libraries and macro data. Use it in a `build_data` edge
+of `rules_foreign_cc`, or an explicit `cfg = "exec"` attribute. Its `bin` directory
+may be prepended to the action's PATH. Executable targets such as `:autoreconf`,
+`:protoc`, `:grpc_cpp_plugin` and `:thrift` are also public.
+
+The protoc bundle includes its matching well-known `.proto` definitions. Its
+wrapper appends the private schema directory after explicit caller include
+paths, and retains protoc's implicit current-directory lookup when no include
+paths were supplied (including through a response file).
+
+The PI and BMv2 source producers need these tools to bootstrap their upstream
+Autotools files and generate protocol interfaces. DASH's SAI metadata generation
+uses the same declared Perl runtime. Target protobuf, gRPC, Boost and other
+libraries remain separate target dependencies. This bundle neither builds Debian
+packages nor supplies project runtime files to images.
+
+`foreign_runtime_test` copies the bundle to another directory and bootstraps an
+Autotools/Libtool project, generates C++/Python/gRPC interfaces importing
+`google.protobuf.Any`/`Empty` and Thrift interfaces, and checks include precedence
+and private Python/Perl loading with an empty incoming PATH. Both native
+architectures run this test in the declared-build-tools workflow.
+
+`foreign_runtime/bin/dot` uses a private Graphviz plugin index and declared
+DejaVu fonts through `GVBINDIR` and a private Fontconfig configuration. Its Perl
+runtime includes XML::Simple, Data::Dumper and Getopt::Long for SAI metadata.
+Combine `foreign_runtime/bin` with the public `metadata_runtime/bin` to provide
+relocatable Doxygen and Aspell to upstream metadata Makefiles. Keep target-object
+binutils (such as `nm`) in the selected C/C++ toolchain.
+
+The relocation test also checks both metadata wrappers and renders an SVG with
+Graphviz. Graphviz documents the plugin-directory override in its
+[command-line environment reference](https://www.graphviz.org/doc/info/command.html#GVBINDIR).
