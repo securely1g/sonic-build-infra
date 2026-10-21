@@ -19,3 +19,7 @@ assert len(argv["include_cases"]) == 8
 assert len(argv["long_commands"]) == 2
 assert all(case["original_failed_e2big"] and case["adapted_compiled_and_ran"] for case in argv["long_commands"])
 assert argv["linker_and_other_operands_preserved"]
+assert len(argv["long_library_commands"]) == 2
+assert all(case["original_failed_e2big"] and case["adapted_linked_and_ran"] for case in argv["long_library_commands"])
+assert len(argv["library_cases"]) == 8
+assert argv["library_path_arguments_preserved"]

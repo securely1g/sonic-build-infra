@@ -14,9 +14,11 @@ esac
 # GCC copies native -I arguments into COLLECT_GCC_OPTIONS before spawning cc1.
 # Large CcInfo include/library closures can exceed Linux's per-string limit even
 # when argv itself fits. Forward the native include group to the preprocessor;
-# keep its precedence before existing forwarded options and leave linker search
-# arguments unchanged. Materialize the launcher in this private configure tree
-# so consumers still need only this declared adapter as build data.
+# keep its precedence before existing forwarded options. Shorten absolute -L
+# directories relative to the physical working directory without changing their
+# order or forwarding them behind GCC's default library paths. Materialize the
+# launcher in this private configure tree so consumers still need only this
+# declared adapter as build data.
 sonic_driver="$PWD/.sonic-compiler-argv"
 cat > "$sonic_driver" <<'SONIC_COMPILER_ARGV'
 #!/bin/sh
@@ -28,6 +30,33 @@ shift
 for argument in "$@"; do
     case "$argument" in @*) exec "$compiler" "$@" ;; esac
 done
+compiler_cwd=$(pwd -P)
+short_library_path() {
+    library_path=$1
+    case "$library_path" in /*) ;; *) return ;; esac
+    # Preserve special double-slash roots and paths containing parent/current
+    # components. In particular, do not normalize '..' across a symlink.
+    case "/${library_path#/}/" in *//*|*/../*|*/./*) return ;; esac
+    library_base=$compiler_cwd
+    library_prefix=
+    while :; do
+        case "$library_path" in
+            "$library_base") library_relative=${library_prefix:-.}; break ;;
+            "$library_base"/*)
+                library_relative="$library_prefix${library_path#"$library_base"/}"; break ;;
+        esac
+        if test "$library_base" = /; then
+            library_relative="$library_prefix${library_path#/}"
+            break
+        fi
+        library_base=${library_base%/*}
+        test -n "$library_base" || library_base=/
+        library_prefix="../$library_prefix"
+    done
+    if test "${#library_relative}" -lt "${#library_path}"; then
+        library_path=$library_relative
+    fi
+}
 takes_operand() {
     case "$1" in
         -Xpreprocessor|-Xlinker|-Xassembler|-o|-x|-include|-imacros|-iquote|-isystem|\
@@ -65,10 +94,15 @@ for argument in "$@"; do
     case "$pending" in
         include) pending=; continue ;;
         operand) set -- "$@" "$argument"; pending=; continue ;;
+        library) short_library_path "$argument"
+                 set -- "$@" "$library_path"; pending=; continue ;;
     esac
     case "$argument" in
         -I) pending=include ;;
         -I?*) ;;
+        -L) set -- "$@" "$argument"; pending=library ;;
+        -L?*) short_library_path "${argument#-L}"
+              set -- "$@" "-L$library_path" ;;
         *) set -- "$@" "$argument"
            if takes_operand "$argument"; then pending=operand; fi ;;
     esac
