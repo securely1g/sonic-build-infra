@@ -194,6 +194,9 @@ only for explicit roots, and the kernel runs `dpkg-checkbuilddeps`. The six
 `_KERNEL_LINK_LIBRARIES` roots also expose the `:data` and `:control` labels used
 to install library ownership, shlibs and symbols metadata. These entries have
 direct metadata consumers; the other runtime libraries remain transitive.
+The architecture-qualified `gcc-arm-linux-gnueabihf:arm64` root supplies the
+compatibility vDSO compiler and linker only for the native ARM64 runtime; its
+execution binaries run on ARM64 and produce ARM32 code.
 
 The `sonic-linux-kernel` source-build rule selects this target with
 `attr.label(allow_single_file = True, cfg = "exec")`. It copies the tree to
@@ -214,11 +217,15 @@ shlibs and symbols metadata so `dpkg-shlibdeps` can calculate the source-built
 kernel tools' dependencies. The compiler's execution-side libc headers remain
 part of this runtime; they do not replace any consuming target's sysroot.
 
-AMD64 source CI runs `prepare_rootfs_test` for metadata, archive boundaries and
-directory/symlink preservation through a cache transport that drops empty directories,
+Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
+boundaries and directory/symlink preservation through a cache transport that drops
+empty directories,
 then `kernel_runtime_test` in the declared root. The latter imports packaging
 modules, compiles and executes a libelf/OpenSSL host program, and verifies its
-Debian shared-library dependencies. These tests produce no DEBs. Kernel package
-compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
-`sonic-buildimage` consumer. ARM64 kernel compilation is outside this change's
-validated scope.
+Debian shared-library dependencies. ARM64 also compiles and links an ARM ELF32
+shared object with the declared `gcc-arm-linux-gnueabihf` toolchain, needed by
+the kernel's 32-bit compatibility vDSO, and checks its source dependency metadata.
+The ARM32 output is inspected, not executed. These tests produce no DEBs. Kernel
+package compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
+`sonic-buildimage` consumer. This shared-runtime smoke test does not compile a
+full kernel.

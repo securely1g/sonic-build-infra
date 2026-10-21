@@ -67,7 +67,6 @@ py_test(
         "no-sandbox",
         "requires-root",
     ],
-    target_compatible_with = ["@platforms//cpu:x86_64"],
 )
 
 [

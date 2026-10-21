@@ -2,9 +2,11 @@
 
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -15,7 +17,8 @@ def main():
         raise SystemExit("kernel_runtime_test requires root in a disposable Docker worker with CAP_SYS_CHROOT and CAP_MKNOD")
     runtime = Path(sys.argv[1]).resolve()
     manifest = json.loads((runtime / "kernel-runtime.json").read_text())
-    assert manifest["architecture"] == "amd64"
+    architecture = {"x86_64": "amd64", "aarch64": "arm64"}[platform.machine()]
+    assert manifest["architecture"] == architecture
     assert manifest["kind"] == "debian-build-tools"
     with tempfile.TemporaryDirectory(prefix="kernel-runtime-check-") as temporary:
         root = Path(temporary) / "root"
@@ -56,12 +59,27 @@ def main():
         assert patch_input.read_text() == "before\n"
         run(["/usr/bin/gcc", "host-tools.c", "-lelf", "-lcrypto", "-o", "host-tools"])
         run(["./host-tools"])
+        native_elf = (work / "host-tools").read_bytes()
+        assert native_elf[:5] == b"\x7fELF\x02", "expected a native ELF64 executable"
+        assert struct.unpack_from("<H", native_elf, 18)[0] == {"amd64": 62, "arm64": 183}[architecture]
+        compatibility_vdso = None
+        if architecture == "arm64":
+            # Native ARM64 kernel builds also compile the 32-bit compatibility
+            # vDSO. Exercise that compiler and linker without executing ARM32 code.
+            run(["/usr/bin/dpkg-checkbuilddeps", "-d", "gcc-arm-linux-gnueabihf"])
+            (work / "compat-vdso.c").write_text("int compat_probe(void) { return 0; }\n")
+            run(["/usr/bin/arm-linux-gnueabihf-gcc", "-fPIC", "-mabi=aapcs-linux",
+                 "-mfloat-abi=soft", "-nostdlib", "-shared", "compat-vdso.c", "-o", "compat-vdso.so"])
+            compat_elf = (work / "compat-vdso.so").read_bytes()
+            assert compat_elf[:5] == b"\x7fELF\x01", "expected an ELF32 compatibility vDSO"
+            assert struct.unpack_from("<H", compat_elf, 18)[0] == 40, "expected ARM machine type"
+            compatibility_vdso = "ARM ELF32 compile/link passed"
         dependencies = run(["/usr/bin/dpkg-shlibdeps", "-O", "host-tools"])
         for package in ("libc6", "libelf1t64", "libssl3t64"):
             assert package in dependencies, dependencies
         run(["/usr/bin/dpkg-source", "--version"])
         run(["/usr/bin/dh_testdir"])
-        print(json.dumps({"result": "passed", "runtime_identity": manifest["identity_sha256"], "dependencies": dependencies.strip(), "quilt_patch": "push/pop passed", "vendor": "Debian"}, sort_keys=True))
+        print(json.dumps({"result": "passed", "architecture": architecture, "compatibility_vdso": compatibility_vdso, "runtime_identity": manifest["identity_sha256"], "dependencies": dependencies.strip(), "quilt_patch": "push/pop passed", "vendor": "Debian"}, sort_keys=True))
 
 
 if __name__ == "__main__":
