@@ -41,7 +41,7 @@ def _installed_packages_impl(ctx):
             fail("source package %s must provide one runtime TAR" % name)
         payloads.append(files[0])
         args.add("--source", name + "=" + files[0].path)
-        args.add("--source-label", name + "=" + str(target.label))
+        args.add("--source-label", name + "=" + ctx.attr.declared_sources[name])
     ctx.actions.run(
         executable = ctx.executable._tool,
         arguments = [args],
@@ -55,13 +55,14 @@ def _installed_packages_impl(ctx):
         OutputGroupInfo(metadata = depset([receipt])),
     ]
 
-installed_packages = rule(
+_installed_packages = rule(
     implementation = _installed_packages_impl,
     attrs = {
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "apt_receipt": attr.label(allow_single_file = True, mandatory = True),
         "base": attr.label(allow_single_file = True, mandatory = True),
         "controls": attr.label_list(allow_files = True),
+        "declared_sources": attr.string_dict(mandatory = True),
         "owner_metadata": attr.label_list(allow_files = [".json"]),
         "source_modules": attr.string_keyed_label_dict(allow_files = True),
         "source_receipt": attr.label(allow_single_file = [".json"]),
@@ -75,3 +76,14 @@ installed_packages = rule(
         "_tool": attr.label(default = Label("//oci:installed_packages"), executable = True, cfg = "exec"),
     },
 )
+
+def installed_packages(name, sources = {}, **kwargs):
+    """Bind owner metadata to public labels, including aliases to private TARs."""
+    _installed_packages(
+        name = name,
+        sources = sources,
+        # Target.label follows aliases. The owner declares the public target
+        # requested by this image, resolved in the caller's repository mapping.
+        declared_sources = {package: str(native.package_relative_label(target)) for package, target in sources.items()},
+        **kwargs
+    )

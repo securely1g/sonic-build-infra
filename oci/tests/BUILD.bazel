@@ -107,7 +107,14 @@ metadata_fixture(
     module = "metadata_owner.MODULE.bazel",
     owner = "metadata_owner.json",
     policy = "metadata_policy.json",
-    source = "metadata_source.tar",
+    source = "metadata_source_payload.tar",
+)
+
+# Source owners can publish an alias while the actual TAR lives in a helper
+# repository or target. The receipt must keep this requested public identity.
+alias(
+    name = "metadata_source.tar",
+    actual = ":metadata_source_payload.tar",
 )
 
 installed_packages(

@@ -77,3 +77,5 @@ installed paths, modes and ownership; the latter two are mutually exclusive.
 APT/base hashes, source payload hashes and independent contract identities must
 agree. The rule runs no package installation scripts and creates no DEB packages;
 it records installed contents rather than performing a package-manager transaction.
+
+Owner runtime targets may be aliases. The metadata macro records the requested public label using the calling package's repository mapping, while the receipt hashes the actual TAR provided by that target.
