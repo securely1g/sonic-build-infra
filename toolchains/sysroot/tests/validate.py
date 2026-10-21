@@ -208,6 +208,7 @@ def main():
     architecture = {"x86_64": "amd64", "aarch64": "arm64"}[cpu]
     triplet, machine, loader_name = ARCHITECTURES[architecture]
     sysroot_label = "@sonic_sysroot//root:sysroot"
+    launcher_test = "@sonic_build_infra//tools/build_tools:runtime_launcher_test"
     receipts = {}
     programs = {}
     sysroot_directories = set()
@@ -234,7 +235,7 @@ def main():
 
         # Audit before executing build actions. These probes produce executables
         # and static/shared libraries, never Debian packages.
-        graph_text = bazel("aquery", "--output=jsonproto", "deps(set(//:c_probe //:probe //:readelf //:objcopy //:native_position_independent_test))")
+        graph_text = bazel("aquery", "--output=jsonproto", "deps(set(//:c_probe //:probe //:readelf //:objcopy //:native_position_independent_test " + launcher_test + "))")
         (evidence / "actions.json").write_text(graph_text + "\n")
         actions, compiles, sysroot_path = audit_graph(graph_text, compiler, architecture)
         graph = json.loads(graph_text)
@@ -275,6 +276,19 @@ def main():
             assert header[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", header, 18)[0] == machine, destination
             binaries[name] = destination
             binary_hashes[name] = hashlib.sha256(destination.read_bytes()).hexdigest()
+        # Keep the C++ probes above: only the pure-C static launcher suppresses
+        # LLVM's default C++ runtime bundle. Test both compilers against the
+        # same pinned LLVM/sysroot profile used by downstream image builds.
+        launcher_events = evidence / "launcher-test-events.jsonl"
+        launcher_result = bazel(
+            "test", "--nocache_test_results", "--test_output=errors",
+            "--build_event_json_file=" + str(launcher_events), launcher_test,
+        )
+        (evidence / "launcher-test.log").write_text(launcher_result + "\n")
+        assert "Executed 1 out of 1 test: 1 test passes." in launcher_result, launcher_result
+        launcher = saved / "runtime_launcher"
+        shutil.copy2(output("@sonic_build_infra//tools/build_tools:runtime_launcher"), launcher)
+        binary_hashes[launcher.name] = hashlib.sha256(launcher.read_bytes()).hexdigest()
         c_binary = binaries["c_probe"]
         cpp_binary = binaries["probe"]
         shared_library = binaries["libshared_probe.so"]
@@ -315,6 +329,7 @@ def main():
             "link_arguments": [item["arguments"] for item in actions if item["mnemonic"] == "CppLink"],
             "loaded_libraries": loaded,
             "binary_sha256": binary_hashes,
+            "static_launcher_test": launcher_test,
             "archive_sha256": {archive.name: hashlib.sha256(archive.read_bytes()).hexdigest()},
             **tree_receipt,
         }
