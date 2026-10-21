@@ -278,8 +278,20 @@ from the declared GCC distribution
 and passes the target compiler's sysroot/include flags to the C and C++
 preprocessors. It rejects a linker outside Bazel's execution root.
 
+For large target dependency closures, GCC can exceed Linux's per-string process
+limit when it copies all include and library search options into
+`COLLECT_GCC_OPTIONS`. The adapter creates a private compiler launcher that
+forwards the native `-I` group through `-Xpreprocessor`. It preserves that group's
+precedence before already forwarded preprocessor options and leaves linker
+arguments and their order unchanged. Joined and split include options are
+supported. Invocations containing response files pass through unchanged because
+those files may contain additional native include options.
+
 The shared GCC flags use joined `-L<directory>` and `-B<directory>` arguments
 because Libtool rejects split `-L` and drops split `-B` options. Startup-object
 search paths apply to compiler probes as well as final links. `//tools/build_tools:libtool_test` bootstraps and builds a
 real C and C++ shared libraries and an installed consumer with these tools on native AMD64
 and ARM64.
+The same fixture also compiles and executes C/C++ probes with long search lists,
+first confirms the original GCC invocation fails with `Argument list too long`,
+and checks competing-header precedence and exact linker/output operands.
