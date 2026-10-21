@@ -1,0 +1,10 @@
+lib_LTLIBRARIES = libcprobe.la libprobe.la
+libcprobe_la_SOURCES = cprobe.c
+libcprobe_la_LDFLAGS = -version-info 0:0:0
+libprobe_la_SOURCES = probe.cc
+libprobe_la_LIBADD = libcprobe.la
+libprobe_la_LDFLAGS = -version-info 0:0:0
+bin_PROGRAMS = probe
+probe_SOURCES = main.cc
+probe_LDADD = libprobe.la
+include_HEADERS = probe.h

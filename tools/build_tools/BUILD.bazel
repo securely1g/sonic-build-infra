@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:select_file.bzl", "select_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
 load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
@@ -326,5 +327,44 @@ py_test(
 alias(
     name = "metadata_runtime",
     actual = ":runtime",
+    visibility = ["//visibility:public"],
+)
+
+exports_files(["configure_environment.sh"])
+
+filegroup(
+    name = "libtool_sources",
+    srcs = glob(["tests/libtool/*"]),
+)
+
+configure_make(
+    name = "libtool_fixture",
+    lib_source = ":libtool_sources",
+    configure_command = "configure.sh",
+    configure_prefix = "/bin/sh",
+    configure_in_place = True,
+    features = ["-sanitize_pwd"],
+    env = {
+        "PATH": "$(execpath :foreign_runtime)/bin:$$PATH",
+        "BAZEL_FOREIGN_TOOLS": "$(execpath :foreign_runtime)",
+        "BAZEL_CONFIGURE_ENV": "$(execpath :configure_environment.sh)",
+    },
+    build_data = [":foreign_runtime", ":configure_environment.sh"],
+    out_binaries = ["probe"],
+    out_shared_libs = ["libprobe.so.0", "libcprobe.so.0"],
+    out_data_files = ["config.log"],
+    postfix_script = "cp config.log $$INSTALLDIR/config.log",
+)
+
+select_file(name = "libtool_program", srcs = ":libtool_fixture", subpath = "libtool_fixture/bin/probe")
+select_file(name = "libtool_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libprobe.so.0")
+select_file(name = "libtool_c_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libcprobe.so.0")
+select_file(name = "libtool_config", srcs = ":libtool_fixture", subpath = "libtool_fixture/config.log")
+
+py_test(
+    name = "libtool_test",
+    srcs = ["libtool_test.py"],
+    args = ["$(location :libtool_program)", "$(location :libtool_library)", "$(location :libtool_c_library)", "$(location :libtool_config)"],
+    data = [":libtool_program", ":libtool_library", ":libtool_c_library", ":libtool_config"],
     visibility = ["//visibility:public"],
 )
