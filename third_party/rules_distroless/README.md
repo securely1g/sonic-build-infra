@@ -68,5 +68,23 @@ bazel test \
 
 Run on the native architecture being reported. Examining ARM64 archives on an
 AMD64 host is useful input validation, but does not establish native ARM64
-execution. The standard build-infra workflow checks its unchanged toolchain;
-feature-specific native results come from the matching registry PR.
+execution. The `Locked APT import (AMD64)` and `(ARM64)` source PR jobs run
+`ci/locked-import-ci.py`. They verify the pinned cumulative `.sonic.10` recipe
+from [registry #96](https://github.com/securely1g/sonic-bazel-registry/pull/96) at
+`c008092a96ed24dee2b20e303737c7488818d69e`, including the upstream archive and
+every patch/overlay digest, then apply this checkout's patch and copy this
+checkout's tests. A private consumer uses that patched module through a local
+path override. The normal root toolchain dependency remains unchanged.
+
+The driver requires matching host and Debian userspace architecture and runs all
+four targets above. It starts without a resolution lock and retains the generated
+`MODULE.bazel.lock`, source hashes, tested checkout, target platform, test results
+and logs in one evidence TAR. Source files must remain unchanged. These jobs test
+the source-owned Starlark feature and import existing Debian archives; they do
+not compile those packages or create DEBs. Registry CI remains separate consumer
+validation.
+
+The pinned #96 recipe is an unlanded validation prerequisite, so this PR remains
+Draft until that dependency lands and this source's native jobs pass. Replace
+the temporary pin with maintained registry resolution after landing; do not
+relabel registry-only success as a passing source job.
