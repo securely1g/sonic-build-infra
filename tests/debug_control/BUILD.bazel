@@ -1,0 +1,113 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//binary:assert_stripped.bzl", "assert_stripped")
+load("//binary:keep_debug_info.bzl", "keep_debug_info")
+load("//binary:strip_binary.bzl", "strip_binary")
+load("//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
+load(":graph_test.bzl", "debug_graph_test")
+
+cc_binary(
+    name = "probe",
+    srcs = ["//tests/testdata:hello.c"],
+)
+
+keep_debug_info(
+    name = "retained_probe",
+    src = ":probe",
+)
+
+# The omitted default and an explicit False must both use the caller's input
+# configuration. True creates exactly one debug transition, and an input already
+# wrapped by keep_debug_info needs no second transition.
+strip_binary(
+    name = "strip_default",
+    src = ":probe",
+)
+
+strip_binary(
+    name = "strip_false",
+    src = ":probe",
+    force_debug_build = False,
+)
+
+strip_binary(
+    name = "strip_true",
+    src = ":probe",
+    force_debug_build = True,
+)
+
+strip_binary(
+    name = "strip_retained",
+    src = ":retained_probe",
+    force_debug_build = False,
+)
+
+sonic_deploy_tar(
+    name = "tar_default",
+    binaries = {"usr/bin/probe uid=0 gid=0 mode=0755 type=file": ":probe"},
+)
+
+sonic_deploy_tar(
+    name = "tar_false",
+    binaries = {"usr/bin/probe uid=0 gid=0 mode=0755 type=file": ":probe"},
+    force_debug_build = False,
+)
+
+sonic_deploy_tar(
+    name = "tar_true",
+    binaries = {"usr/bin/probe uid=0 gid=0 mode=0755 type=file": ":probe"},
+    force_debug_build = True,
+)
+
+sonic_deploy_tar(
+    name = "tar_retained",
+    binaries = {"usr/bin/probe uid=0 gid=0 mode=0755 type=file": ":retained_probe"},
+    force_debug_build = False,
+)
+
+[
+    debug_graph_test(
+        name = family + "_" + name + "_graph_test",
+        expected_wrappers = count,
+        target_under_test = ":" + family + "_" + name,
+    )
+    for family in [
+        "strip",
+        "tar",
+    ]
+    for name, count in [
+        ("default", 0),
+        ("false", 0),
+        ("true", 1),
+        ("retained", 1),
+    ]
+]
+
+assert_stripped(
+    name = "explicit_true_symbols_test",
+    strip_target = ":strip_true",
+)
+
+assert_stripped(
+    name = "retained_symbols_test",
+    strip_target = ":strip_retained",
+)
+
+py_test(
+    name = "tar_symbols_test",
+    srcs = ["tar_symbols_test.py"],
+    args = [
+        "$(location //toolchains/binutils:readelf)",
+        "$(location :tar_true)",
+        "$(location :tar_true.debug_symbols)",
+        "$(location :tar_retained)",
+        "$(location :tar_retained.debug_symbols)",
+    ],
+    data = [
+        ":tar_retained",
+        ":tar_retained.debug_symbols",
+        ":tar_true",
+        ":tar_true.debug_symbols",
+        "//toolchains/binutils:readelf",
+    ],
+)

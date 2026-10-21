@@ -37,6 +37,7 @@ tests=(
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
+  //tests/debug_control:all
   //tests:cc_toolchain_supports_pic_test
   //tests:libgreet_build_test
   //tests:libgreet_pic_test

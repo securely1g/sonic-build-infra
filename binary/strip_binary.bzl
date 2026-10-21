@@ -113,6 +113,8 @@ strip_binary = macro(
     inherit_attrs = _strip_binary_rule,
     attrs = {
         "force_debug_build": attr.bool(
+            # This controls which targets the macro creates, before configuration.
+            configurable = False,
             doc = "Whether the binary should be rebuilt with debug information before stripping. This will override Bazel's regular CLI compilation instructions, like `--strip=never`",
             default = False,
         ),
