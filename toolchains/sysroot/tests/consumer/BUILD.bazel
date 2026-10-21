@@ -3,8 +3,14 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@sonic_build_infra//binary:assert_position_independent.bzl", "assert_position_independent")
 load("@sonic_build_infra//toolchains/binutils:binutils_toolchain.bzl", "binutils_binary")
+load(":nm_probe.bzl", "binutils_nm_probe")
 
 # Exercise the public executable interface, including each tool's runfiles.
+binutils_binary(
+    name = "nm",
+    tool = "nm",
+)
+
 binutils_binary(
     name = "readelf",
     tool = "readelf",
@@ -78,6 +84,18 @@ cc_binary(
     name = "cross_c_probe",
     srcs = ["c_probe.c"],
     deps = [":generated_value"],
+)
+
+binutils_nm_probe(
+    name = "native_nm_probe",
+    binary = ":c_probe",
+    nm = ":nm",
+)
+
+binutils_nm_probe(
+    name = "cross_nm_probe",
+    binary = ":cross_c_probe",
+    nm = ":nm",
 )
 
 cc_binary(

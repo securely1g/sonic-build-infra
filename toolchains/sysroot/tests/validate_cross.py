@@ -215,7 +215,8 @@ def build(args):
                 execution_architecture="amd64", target_architecture="arm64",
             )
             receipt["compilers"][compiler]["public_binutils"] = validate_public_binutils(
-                bazel, outputs / "cross_c_probe", 183, "//:cross_position_independent_test", evidence / "binutils",
+                bazel, outputs / "cross_c_probe", 183, "//:cross_position_independent_test",
+                "//:cross_nm_probe", evidence / "binutils",
             )
         shutil.copy2(consumer / "MODULE.bazel.lock", evidence / "MODULE.bazel.lock")
         print(f"{compiler}: AMD64 generator and ARM64 C/C++ outputs verified", flush=True)

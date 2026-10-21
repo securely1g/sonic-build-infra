@@ -3,6 +3,7 @@
 BINUTILS_TOOLCHAIN_TYPE = Label("//toolchains/binutils:toolchain_type")
 
 BINUTILS_TOOLS = [
+    "nm",
     "readelf",
     "objcopy",
     "objdump",

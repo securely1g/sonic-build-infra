@@ -324,7 +324,8 @@ def main():
                 execution_architecture=architecture, target_architecture=architecture,
             )
             receipts[compiler]["public_binutils"] = validate_public_binutils(
-                bazel, c_binary, machine, "//:native_position_independent_test", evidence / "binutils",
+                bazel, c_binary, machine, "//:native_position_independent_test",
+                "//:native_nm_probe", evidence / "binutils",
             )
         lockfile = consumer / "MODULE.bazel.lock"
         assert lockfile.is_file(), "Keep Bazel's generated module lockfile enabled for validation evidence"

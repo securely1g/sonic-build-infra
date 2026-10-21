@@ -169,7 +169,7 @@ def validate_debian_compiler(execution_root, compiler, graph, paths, evidence,
     return receipt
 
 
-def validate_public_binutils(bazel, binary, machine, position_independent_test, evidence):
+def validate_public_binutils(bazel, binary, machine, position_independent_test, nm_probe, evidence):
     """Exercise the public tool targets, whose runfiles must carry the runtime."""
     evidence.mkdir(exist_ok=True)
     version = bazel("run", "//:readelf", "--", "--version")
@@ -183,9 +183,13 @@ def validate_public_binutils(bazel, binary, machine, position_independent_test, 
     header = copied.read_bytes()[:20]
     assert header[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", header, 18)[0] == machine, copied
     bazel("test", "--test_output=errors", position_independent_test)
+    nm_result = bazel("build", nm_probe)
+    (evidence / "nm-build.txt").write_text(nm_result)
     return {
         "readelf_version": version,
         "objcopy_output_sha256": hashlib.sha256(copied.read_bytes()).hexdigest(),
         "elf_machine": machine,
         "position_independent_test": "passed",
+        "nm_probe": nm_probe,
+        "nm_probe_result": "passed with empty PATH and declared tool runtime",
     }

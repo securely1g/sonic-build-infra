@@ -19,7 +19,7 @@ def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = N
         tool_prefix: Distribution target triple; defaults to the native prefix.
     """
     tools = {}
-    for tool in ["objcopy", "objdump", "readelf"]:
+    for tool in ["nm", "objcopy", "objdump", "readelf"]:
         source = bin(cpu, version, tool, exec_cpu, tool_prefix)
         cc_tool(
             name = name + "_" + tool,
@@ -30,6 +30,7 @@ def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = N
         tools[tool] = source
     binutils_toolchain(
         name = name + "_binutils",
+        nm = tools["nm"],
         objcopy = tools["objcopy"],
         objdump = tools["objdump"],
         readelf = tools["readelf"],

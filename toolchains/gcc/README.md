@@ -90,6 +90,18 @@ list of pinned `data.tar.xz` package payload labels. The cross declaration sets
 constrain execution and target architectures separately; existing native
 toolchain target names remain unchanged.
 
+## Declared symbol inspection
+
+Use `@sonic-build-infra//toolchains/binutils:nm` to inspect symbols with the
+selected native or cross binutils distribution. Its executable carries the
+matching private loader and libraries. Foreign Make rules can list this target
+in `tools_deps` and set `NM` to its `$(execpath ...)`; no runner-installed `nm`
+is needed. Use the repository alias declared by the consuming module.
+
+The action-based GCC toolchain does not provide a usable legacy `$(NM)` path
+in Bazel 8.5.1. The public binutils target follows the same executable interface
+as `readelf`, `objcopy`, and `objdump`.
+
 ## Validation
 
 The shared-sysroot test directory contains two parts:
