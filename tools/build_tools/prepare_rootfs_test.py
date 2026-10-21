@@ -8,7 +8,7 @@ import tarfile
 import tempfile
 import unittest
 
-from prepare_rootfs import initialize_root, package_metadata, preserve_empty_directories, validate_links
+from prepare_rootfs import configure_xml_sax, initialize_root, package_metadata, preserve_empty_directories, remove_x11_alias, validate_links
 from prepare_runtime import extract_payload
 
 
@@ -34,6 +34,59 @@ class RootfsTest(unittest.TestCase):
         extract_payload(self.root, payload)
         self.assertEqual((self.root / "usr/bin/tool").read_bytes(), b"tool")
         self.assertEqual((self.root / "lib/library").read_bytes(), b"library")
+
+    def test_x11_recursive_alias_is_removed_without_losing_commands(self):
+        commands = self.root / "usr/bin"
+        commands.mkdir(exist_ok=True)
+        (commands / "dot").write_text("declared Graphviz")
+        (commands / "X11").symlink_to(".")
+
+        remove_x11_alias(self.root)
+
+        self.assertFalse((commands / "X11").is_symlink())
+        self.assertEqual((commands / "dot").read_text(), "declared Graphviz")
+        validate_links(self.root)
+
+    def test_x11_nonrecursive_directory_is_preserved(self):
+        directory = self.root / "usr/bin/X11"
+        directory.mkdir()
+        (directory / "tool").write_text("declared tool")
+        remove_x11_alias(self.root)
+        self.assertEqual((directory / "tool").read_text(), "declared tool")
+
+    def test_xml_sax_configuration_resolves_packaged_symlink(self):
+        module = self.root / "usr/share/perl5/XML/SAX.pm"
+        module.parent.mkdir(parents=True)
+        module.touch()
+        directory = module.parent / "SAX"
+        directory.mkdir()
+        (directory / "PurePerl.pm").touch()
+        link = directory / "ParserDetails.ini"
+        link.symlink_to("../../../../../etc/perl/XML/SAX/ParserDetails.ini")
+
+        configure_xml_sax(self.root)
+
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), self.root / "etc/perl/XML/SAX/ParserDetails.ini")
+        self.assertIn("[XML::SAX::PurePerl]\nhttp://xml.org/sax/features/namespaces = 1\n", link.read_text())
+        validate_links(self.root)
+
+    def test_xml_sax_configuration_is_absent_without_module(self):
+        configure_xml_sax(self.root)
+        self.assertFalse((self.root / "etc/perl/XML/SAX").exists())
+
+    def test_xml_sax_configuration_preserves_declared_config(self):
+        module = self.root / "usr/share/perl5/XML/SAX.pm"
+        module.parent.mkdir(parents=True)
+        module.touch()
+        config = self.root / "etc/perl/XML/SAX/ParserDetails.ini"
+        config.parent.mkdir(parents=True)
+        content = "# Declared package configuration\n[XML::SAX::PurePerl]\n"
+        config.write_text(content)
+
+        configure_xml_sax(self.root)
+
+        self.assertEqual(config.read_text(), content)
 
     def test_file_only_cache_roundtrip_preserves_empty_directory_links(self):
         # Model the cache downloader creating file/symlink parents but omitting

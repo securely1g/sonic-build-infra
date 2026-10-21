@@ -42,6 +42,15 @@ def main():
             return result.stdout
 
         run(["/usr/bin/python3", "-c", "import dacite; import jinja2"])
+        # Exercise the SAX registry and real XML parsing, not just module loading.
+        assert run([
+            "/usr/bin/perl", "-MXML::Simple", "-MXML::SAX::ParserFactory", "-e",
+            'my $factory = XML::SAX::ParserFactory->new(); '
+            '$factory->require_feature("http://xml.org/sax/features/namespaces"); '
+            '$factory->parser(); '
+            'my $data = XMLin(q{<root><value>declared &amp; parsed</value></root>}); '
+            'print $data->{value};',
+        ]) == "declared & parsed"
         assert run(["/usr/bin/dpkg-vendor", "--query", "Vendor"]).strip() == "Debian"
         for command in ("gcc", "make", "dpkg-source", "dh_testdir", "quilt", "bc", "bison", "flex", "pahole", "cpio", "kmod", "rsync", "lz4", "zstd"):
             run(["/bin/sh", "-c", 'command -v "$1"', "--", command])
