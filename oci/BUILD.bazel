@@ -1,2 +1,34 @@
 # Rules for assembling OCI images, specifically for SONiC.
 # For instance, we have special utilities to assemble debug images easily.
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "layout",
+    srcs = [
+        "sonic_oci/__init__.py",
+        "sonic_oci/files.py",
+        "sonic_oci/layout.py",
+    ],
+    imports = ["."],
+)
+
+py_library(
+    name = "accounts_lib",
+    srcs = ["accounts.py"],
+    imports = ["."],
+    deps = [":layout"],
+)
+
+py_binary(
+    name = "accounts",
+    srcs = ["accounts.py"],
+    deps = [":accounts_lib"],
+)
+
+alias(
+    name = "accounts_test",
+    testonly = True,
+    actual = "//oci/tests:accounts_test",
+)
