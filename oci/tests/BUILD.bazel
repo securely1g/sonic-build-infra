@@ -1,0 +1,68 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//oci:accounts.bzl", "account_layer")
+load(":base.bzl", "fixture_base")
+
+config_setting(
+    name = "arm64",
+    constraint_values = ["@platforms//cpu:arm64"],
+)
+
+_ARCH = select({
+    ":arm64": "arm64",
+    "//conditions:default": "amd64",
+})
+
+exports_files(["fixture.py"])
+
+py_binary(
+    name = "fixture",
+    srcs = ["fixture.py"],
+)
+
+fixture_base(
+    name = "base",
+    architecture = _ARCH,
+)
+
+account_layer(
+    name = "accounts",
+    testonly = True,
+    architecture = _ARCH,
+    base = ":base",
+    groups = [
+        {
+            "name": "redis",
+            "password": "x",
+            "gid": 101,
+        },
+        {
+            "name": "_ssh",
+            "password": "x",
+            "gid": 104,
+        },
+    ],
+    users = [{
+        "username": "redis",
+        "password": "x",
+        "uid": 100,
+        "gid": 101,
+        "home": "/var/lib/redis",
+        "shell": "/usr/sbin/nologin",
+    }],
+)
+
+py_test(
+    name = "account_layer_test",
+    srcs = ["account_layer_test.py"],
+    args = [
+        "$(location :accounts)",
+        "$(location :accounts.receipt)",
+    ] + select({
+        ":arm64": ["arm64"],
+        "//conditions:default": ["amd64"],
+    }),
+    data = [
+        ":accounts",
+        ":accounts.receipt",
+    ],
+)
