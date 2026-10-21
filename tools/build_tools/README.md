@@ -267,3 +267,19 @@ binutils (such as `nm`) in the selected C/C++ toolchain.
 The relocation test also checks both metadata wrappers and renders an SVG with
 Graphviz. Graphviz documents the plugin-directory override in its
 [command-line environment reference](https://www.graphviz.org/doc/info/command.html#GVBINDIR).
+
+## Autoconf and Libtool compiler environment
+
+Upstream configure adapters can invoke the exported `configure_environment.sh`
+with their configure command and arguments. Add the file to `build_data` and pass
+its `$(execpath)` in the environment, then run `/bin/sh "$BAZEL_CONFIGURE_ENV"
+./configure "$@"`. The adapter retains GCC search flags in the compiler commands, selects `ld`
+from the declared GCC distribution
+and passes the target compiler's sysroot/include flags to the C and C++
+preprocessors. It rejects a linker outside Bazel's execution root.
+
+The shared GCC flags use joined `-L<directory>` and `-B<directory>` arguments
+because Libtool rejects split `-L` and drops split `-B` options. Startup-object
+search paths apply to compiler probes as well as final links. `//tools/build_tools:libtool_test` bootstraps and builds a
+real C and C++ shared libraries and an installed consumer with these tools on native AMD64
+and ARM64.
