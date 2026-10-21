@@ -1,6 +1,8 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//oci:accounts.bzl", "account_layer")
+load("//oci:installed_packages.bzl", "installed_packages")
 load(":base.bzl", "fixture_base")
+load(":metadata_fixture.bzl", "metadata_fixture")
 
 config_setting(
     name = "arm64",
@@ -23,6 +25,18 @@ py_test(
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = ["//oci:accounts_lib"],
+)
+
+py_test(
+    name = "installed_packages_test",
+    srcs = ["installed_packages_test.py"],
+    deps = ["//oci:installed_packages_lib"],
+)
+
+py_test(
+    name = "owner_metadata_test",
+    srcs = ["owner_metadata_test.py"],
+    deps = ["//oci:package_metadata"],
 )
 
 py_binary(
@@ -72,5 +86,60 @@ py_test(
     data = [
         ":accounts",
         ":accounts.receipt",
+    ],
+)
+
+py_binary(
+    name = "metadata_fixture_tool",
+    srcs = [
+        "fixture.py",
+        "metadata_fixture.py",
+    ],
+    imports = ["."],
+    main = "metadata_fixture.py",
+    deps = ["//oci:installed_packages_lib"],
+)
+
+metadata_fixture(
+    name = "metadata_inputs",
+    apt = "metadata_apt.json",
+    architecture = _ARCH,
+    module = "metadata_owner.MODULE.bazel",
+    owner = "metadata_owner.json",
+    policy = "metadata_policy.json",
+    source = "metadata_source.tar",
+)
+
+installed_packages(
+    name = "installed_metadata",
+    testonly = True,
+    apt_receipt = ":metadata_apt.json",
+    architecture = _ARCH,
+    base = ":metadata_inputs",
+    owner_metadata = [":metadata_owner.json"],
+    source_modules = {"example": ":metadata_owner.MODULE.bazel"},
+    source_spec = ":metadata_policy.json",
+    sources = {"example": ":metadata_source.tar"},
+)
+
+filegroup(
+    name = "installed_metadata_receipt",
+    testonly = True,
+    srcs = [":installed_metadata"],
+    output_group = "metadata",
+)
+
+py_test(
+    name = "installed_packages_rule_test",
+    srcs = ["installed_packages_rule_test.py"],
+    args = [
+        "$(location :installed_metadata)",
+        "$(location :installed_metadata_receipt)",
+        "$(location :metadata_source.tar)",
+    ],
+    data = [
+        ":installed_metadata",
+        ":installed_metadata_receipt",
+        ":metadata_source.tar",
     ],
 )

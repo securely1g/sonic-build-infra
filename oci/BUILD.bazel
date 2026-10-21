@@ -15,6 +15,32 @@ py_library(
 )
 
 py_library(
+    name = "package_metadata",
+    srcs = [
+        "sonic_oci/owner_metadata.py",
+        "sonic_oci/paths.py",
+        "sonic_oci/receipts.py",
+    ],
+    deps = [":layout"],
+)
+
+py_library(
+    name = "installed_packages_lib",
+    srcs = ["installed_packages.py"],
+    imports = ["."],
+    deps = [
+        ":package_metadata",
+        "//apt:lib",
+    ],
+)
+
+py_binary(
+    name = "installed_packages",
+    srcs = ["installed_packages.py"],
+    deps = [":installed_packages_lib"],
+)
+
+py_library(
     name = "accounts_lib",
     srcs = ["accounts.py"],
     imports = ["."],
@@ -31,4 +57,9 @@ alias(
     name = "accounts_test",
     testonly = True,
     actual = "//oci/tests:accounts_test",
+)
+
+alias(
+    name = "metadata_lib",
+    actual = ":package_metadata",
 )
