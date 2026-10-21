@@ -38,4 +38,56 @@ New consumers can load `accounts` directly from
 `@rules_distroless//distroless:defs.bzl` with the same arguments and outputs.
 The infrastructure test builds the compatibility name and inspects its TAR and
 receipt. Generic account validation and OCI-layer tests live with Distroless;
-this repository does not carry another merger or its test suite.
+this repository does not carry another account merger or its test suite.
+## Record installed package identities
+
+The `//oci:package_metadata` library owns the OCI layout and selected-file
+readers used by the package inventory. They validate package inputs without
+depending on the account implementation.
+
+`installed_packages` builds dpkg status and a package receipt from the checked
+base, selected Debian controls and source-owned runtime TARs. Source repositories
+declare their own `runtime_packages.json`; images declare only required paths.
+For example, changing Common's package version changes the image inventory without
+editing a second copy of Common's controls in every container.
+
+```starlark
+load("@sonic_build_infra//oci:installed_packages.bzl", "installed_packages")
+
+installed_packages(
+    name = "installed_packages",
+    base = ":base",
+    architecture = "amd64",
+    apt_receipt = ":selected_apt_receipt",
+    controls = ["@image_apt//example:control"],
+    source_spec = "required_source_paths.json",
+    sources = {"libswsscommon": "@sonic_swss_common//dist:libswsscommon_pkg"},
+    owner_metadata = ["@sonic_swss_common//:runtime_packages.json"],
+    source_modules = {"sonic-swss-common": "@source_modules//:sonic-swss-common.MODULE.bazel"},
+)
+```
+
+The metadata schema is `{"schema":1,"module":"sonic-swss-common","packages":{
+"libswsscommon":{"runtime_target":"//dist:libswsscommon_pkg","control_fields":{
+"Package":"libswsscommon","Version":"1.0.0"}}}}`. Do not freeze Architecture,
+installed hashes, Status, Conffiles or Installed-Size there. The image policy is
+`{"schema":1,"packages":{"libswsscommon":{"required_paths":["usr/lib/{multiarch}/libswsscommon.so.0"]}}}`.
+For AMD64 this checks `usr/lib/x86_64-linux-gnu/libswsscommon.so.0`; for
+ARM64 it checks `usr/lib/aarch64-linux-gnu/libswsscommon.so.0`.
+
+The rule verifies the declared runtime target belongs to the same repository as
+its metadata. It reads the selected MODULE declaration for version/provenance,
+hashes actual TARs and rejects missing paths or unsatisfied Debian dependencies.
+`source_modules.bzl` exposes MODULE files that owners do not export themselves.
+An unversioned root `sonic-buildimage` module uses `workspace` provenance; its
+actual payload hash and the consumer CI revision identify that source checkout.
+
+The default output is a status file; output group `metadata` supplies the JSON
+receipt. Existing complete source contracts remain supported. Optional
+`normalization_receipt`, `source_receipt` and `retained_manifest` preserve checked
+installed paths, modes and ownership; the latter two are mutually exclusive.
+APT/base hashes, source payload hashes and independent contract identities must
+agree. The rule runs no package installation scripts and creates no DEB packages;
+it records installed contents rather than performing a package-manager transaction.
+
+Owner runtime targets may be aliases. The metadata macro records the requested public label using the calling package's repository mapping, while the receipt hashes the actual TAR provided by that target.

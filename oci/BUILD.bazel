@@ -1,2 +1,40 @@
 # Rules for assembling OCI images, specifically for SONiC.
-# For instance, we have special utilities to assemble debug images easily.
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# The package inventory owns its OCI reader. Account merging and its base
+# validation are provided independently by rules_distroless.
+py_library(
+    name = "package_metadata",
+    srcs = [
+        "sonic_oci/__init__.py",
+        "sonic_oci/files.py",
+        "sonic_oci/layout.py",
+        "sonic_oci/owner_metadata.py",
+        "sonic_oci/paths.py",
+        "sonic_oci/receipts.py",
+    ],
+    imports = ["."],
+)
+
+py_library(
+    name = "installed_packages_lib",
+    srcs = ["installed_packages.py"],
+    imports = ["."],
+    deps = [
+        ":package_metadata",
+        "//apt:lib",
+    ],
+)
+
+py_binary(
+    name = "installed_packages",
+    srcs = ["installed_packages.py"],
+    deps = [":installed_packages_lib"],
+)
+
+alias(
+    name = "metadata_lib",
+    actual = ":package_metadata",
+)
