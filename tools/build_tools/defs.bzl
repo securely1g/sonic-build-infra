@@ -21,12 +21,13 @@ def _runtime_impl(ctx):
     args.add("--out", output.path)
     args.add("--architecture", ctx.attr.architecture)
     args.add("--profile", ctx.attr.profile)
+    args.add("--launcher", ctx.executable._runtime_launcher.path)
     args.add_all(ctx.files.packages, before_each = "--tar")
     ctx.actions.run(
         executable = python.interpreter,
         arguments = [args],
         inputs = ctx.files.packages,
-        tools = depset([python.interpreter, ctx.file._prepare], transitive = [python.files]),
+        tools = depset([python.interpreter, ctx.file._prepare, ctx.executable._runtime_launcher], transitive = [python.files]),
         outputs = [output],
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
         mnemonic = "PrepareBuildTools",
@@ -42,6 +43,7 @@ build_tools_runtime = rule(
         "profile": attr.string(default = "documentation", values = ["documentation", "configure", "kerberos", "foreign"]),
         "_prepare": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
+        "_runtime_launcher": attr.label(default = Label(":runtime_launcher"), executable = True, cfg = "exec"),
     },
 )
 

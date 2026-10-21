@@ -137,6 +137,15 @@ Directory aliases in the tool packages are materialized before publishing the
 runtime tree. This lets Bazel restore every child from its disk cache without
 depending on the order in which directory symlinks are restored.
 
+The runtime's `bin` entrypoints also work through file symlinks, including
+foreign_cc's `ext_build_deps/bin/make`. A small static launcher, built with the
+declared execution-platform C compiler and sysroot, reads Linux's
+`/proc/self/exe` before invoking the adjacent shell wrapper. Keep the whole
+runtime tree, including hidden wrapper files, when relocating it. This adds no
+host `readlink` or dynamic-loader dependency; the existing `/bin/sh` bootstrap
+remains required. Make, Autoconf, Automake, Libtool and the other tools still come
+from their pinned Debian package payloads.
+
 The launchers preserve the working directory and arguments. Recursive Make and
 Perl calls use the same declared tools. Perl searches its packaged core modules
 and caller-declared `-I` paths; it does not search the host's built-in Perl
@@ -148,7 +157,10 @@ package database.
 
 Native AMD64 and ARM64 CI runs `configure_runtime_test` with an empty `PATH`,
 including Autoconf/header regeneration, parser/scanner generation, recursive calls,
-and native Perl module loading. It also compiles and
+and native Perl module loading. The tests relocate the actual runtime and invoke
+its tools through absolute and relative file symlinks, verify arguments and exit
+status, and protect existing package aliases when installing the launcher.
+They also compile and
 runs a small C program linked to a library built by `configure_make_test`, proving the registered
 toolchains work when foreign_cc stages their runtime tree into an action.
 CI then repeats the tool runtime test in a fresh Bazel output directory, with
