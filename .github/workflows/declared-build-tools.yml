@@ -83,6 +83,7 @@ jobs:
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
+            //tools/build_tools:runtime_launcher_test \
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \

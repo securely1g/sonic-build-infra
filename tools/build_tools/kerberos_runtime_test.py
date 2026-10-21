@@ -21,7 +21,9 @@ def main():
     with tempfile.TemporaryDirectory(dir=os.environ.get("TEST_TMPDIR")) as temporary:
         root = Path(temporary)
         bundle = root / "relocated-tools"
-        shutil.copytree(source, bundle, symlinks=True)
+        # Materialize sandbox input symlinks; otherwise an executable still
+        # belongs to the original output tree after this supposed relocation.
+        shutil.copytree(source, bundle)
         environment = {"PATH": "", "LC_ALL": "C", "LANG": "C", "HOME": str(root),
                        "LD_LIBRARY_PATH": "/nonexistent-host-libraries",
                        "_ET_DIR_OVERRIDE": "/nonexistent-host-error-tables",
