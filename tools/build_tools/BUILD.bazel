@@ -358,19 +358,20 @@ configure_make(
     build_data = [":foreign_runtime", ":configure_environment.sh"],
     out_binaries = ["probe"],
     out_shared_libs = ["libprobe.so.0", "libcprobe.so.0"],
-    out_data_files = ["config.log"],
-    postfix_script = "cp config.log $$INSTALLDIR/config.log",
+    out_data_files = ["config.log", "compiler-argv-validation.json"],
+    postfix_script = "cp config.log compiler-argv-validation.json $$INSTALLDIR/",
 )
 
 select_file(name = "libtool_program", srcs = ":libtool_fixture", subpath = "libtool_fixture/bin/probe")
 select_file(name = "libtool_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libprobe.so.0")
 select_file(name = "libtool_c_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libcprobe.so.0")
 select_file(name = "libtool_config", srcs = ":libtool_fixture", subpath = "libtool_fixture/config.log")
+select_file(name = "libtool_argv_validation", srcs = ":libtool_fixture", subpath = "libtool_fixture/compiler-argv-validation.json")
 
 py_test(
     name = "libtool_test",
     srcs = ["libtool_test.py"],
-    args = ["$(location :libtool_program)", "$(location :libtool_library)", "$(location :libtool_c_library)", "$(location :libtool_config)"],
-    data = [":libtool_program", ":libtool_library", ":libtool_c_library", ":libtool_config"],
+    args = ["$(location :libtool_program)", "$(location :libtool_library)", "$(location :libtool_c_library)", "$(location :libtool_config)", "$(location :libtool_argv_validation)"],
+    data = [":libtool_program", ":libtool_library", ":libtool_c_library", ":libtool_config", ":libtool_argv_validation"],
     visibility = ["//visibility:public"],
 )
