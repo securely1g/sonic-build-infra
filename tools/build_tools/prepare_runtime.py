@@ -9,6 +9,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 
@@ -97,7 +98,37 @@ def run_tool(command: list[str], *, environment: dict[str, str], data: bytes | N
     return result.stdout
 
 
-def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], *, foreign: bool = False) -> None:
+def validate_launcher(executable: Path, architecture: str) -> None:
+    """Reject a host-dynamic or wrong-architecture bootstrap executable."""
+    data = executable.read_bytes()
+    if len(data) < 64 or data[:6] != b"\x7fELF\x02\x01":
+        raise ValueError("runtime launcher must be a little-endian ELF64 executable")
+    if struct.unpack_from("<H", data, 18)[0] != {"amd64": 62, "arm64": 183}[architecture]:
+        raise ValueError("runtime launcher architecture does not match the tool runtime")
+    offset = struct.unpack_from("<Q", data, 32)[0]
+    entry_size, count = struct.unpack_from("<HH", data, 54)
+    if entry_size < 4 or offset + entry_size * count > len(data):
+        raise ValueError("invalid runtime launcher program headers")
+    if any(struct.unpack_from("<I", data, offset + index * entry_size)[0] == 3 for index in range(count)):
+        raise ValueError("runtime launcher must not require a host dynamic interpreter")
+
+
+def write_launcher(root: Path, name: str, script: str, executable: Path) -> None:
+    # The static executable resolves its own actual location even when a caller
+    # exposes the tool through a differently named or relative file symlink.
+    wrapper = root / "bin" / ("." + name + ".sh")
+    wrapper.write_text(script)
+    wrapper.chmod(0o755)
+    destination = root / "bin" / name
+    # Package aliases such as python3 -> python3.13 must not redirect the
+    # copy: the executable's actual basename selects its adjacent sidecar.
+    if destination.is_symlink() or destination.exists():
+        destination.unlink()
+    shutil.copyfile(executable, destination)
+    destination.chmod(0o755)
+
+
+def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path, *, foreign: bool = False) -> None:
     """Keep foreign_cc tools self-contained when it copies their tree artifact."""
     script_tools = ("autoconf", "autoheader", "autom4te")
     tools = {name: root / "usr/bin" / name for name in
@@ -275,9 +306,7 @@ fi
             script += 'exec "$root/bin/sh" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         else:
             script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
-        launcher = root / "bin" / name
-        launcher.write_text(script)
-        launcher.chmod(0o755)
+        write_launcher(root, name, script, executable)
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip()
                 for name in ("make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te") +
                 (("autoreconf", "automake", "aclocal", "libtoolize", "protoc", "python3") if foreign else ())}
@@ -310,7 +339,7 @@ fi
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def prepare_kerberos(root: Path, architecture: str, loader: Path, libraries: list[Path]) -> None:
+def prepare_kerberos(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path) -> None:
     """Relocate Debian's error/command table generators and their private tools."""
     scripts = {"compile_et": "et", "mk_cmds": "ss"}
     binaries = ("mawk", "sed", "grep", "basename", "cmp", "rm", "mv", "chmod")
@@ -358,9 +387,7 @@ unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
             launcher += 'exec /bin/sh "$root/usr/bin/' + name + '" "$@"\n'
         else:
             launcher += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/usr/bin/' + name + '" "$@"\n'
-        path = root / "bin" / name
-        path.write_text(launcher)
-        path.chmod(0o755)
+        write_launcher(root, name, launcher, executable)
     manifest = {
         "_generated": {"notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY.", "generator": "tools/build_tools/prepare_runtime.py"},
         "format_version": 1,
@@ -377,9 +404,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
+    parser.add_argument("--launcher", required=True, type=Path)
     parser.add_argument("--tar", action="append", default=[])
     parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign"), default="documentation")
     args = parser.parse_args()
+    validate_launcher(args.launcher, args.architecture)
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
     for payload in sorted(map(Path, args.tar)):
@@ -408,10 +437,10 @@ def main() -> None:
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
     if args.profile in ("configure", "foreign"):
-        prepare_configure(root, args.architecture, loader, libraries, foreign=args.profile == "foreign")
+        prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign")
         return
     if args.profile == "kerberos":
-        prepare_kerberos(root, args.architecture, loader, libraries)
+        prepare_kerberos(root, args.architecture, loader, libraries, args.launcher)
         return
     tools = {name: root / path for name, path in {
         "aspell": "usr/bin/aspell",
@@ -482,9 +511,7 @@ unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
         if name == "aspell":
             script += '--lang=en --data-dir="$root/' + str(data_dir.relative_to(root)) + '" --dict-dir="$root/' + str(dictionary_dir.relative_to(root)) + '" --add-filter-path="$root/' + str(filter_dir.relative_to(root)) + '" '
         script += '"$@"\n'
-        wrapper = root / "bin" / name
-        wrapper.write_text(script)
-        wrapper.chmod(0o755)
+        write_launcher(root, name, script, args.launcher)
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
