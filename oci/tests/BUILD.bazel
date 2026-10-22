@@ -1,0 +1,152 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//oci:accounts.bzl", "account_layer")
+load("//oci:installed_packages.bzl", "installed_packages")
+load(":base.bzl", "fixture_base")
+load(":metadata_fixture.bzl", "metadata_fixture")
+
+config_setting(
+    name = "arm64",
+    constraint_values = ["@platforms//cpu:arm64"],
+)
+
+_ARCH = select({
+    ":arm64": "arm64",
+    "//conditions:default": "amd64",
+})
+
+exports_files(["fixture.py"])
+
+py_test(
+    name = "accounts_test",
+    srcs = [
+        "accounts_test.py",
+        "fixture.py",
+    ],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = ["//oci:accounts_lib"],
+)
+
+py_test(
+    name = "installed_packages_test",
+    srcs = ["installed_packages_test.py"],
+    deps = ["//oci:installed_packages_lib"],
+)
+
+py_test(
+    name = "owner_metadata_test",
+    srcs = ["owner_metadata_test.py"],
+    deps = ["//oci:package_metadata"],
+)
+
+py_binary(
+    name = "fixture",
+    srcs = ["fixture.py"],
+)
+
+fixture_base(
+    name = "base",
+    architecture = _ARCH,
+)
+
+account_layer(
+    name = "accounts",
+    testonly = True,
+    architecture = _ARCH,
+    base = ":base",
+    groups = [
+        {
+            "name": "redis",
+            "password": "x",
+            "gid": 101,
+        },
+        {
+            "name": "_ssh",
+            "password": "x",
+            "gid": 104,
+        },
+    ],
+    users = [{
+        "username": "redis",
+        "password": "x",
+        "uid": 100,
+        "gid": 101,
+        "home": "/var/lib/redis",
+        "shell": "/usr/sbin/nologin",
+    }],
+)
+
+py_test(
+    name = "account_layer_test",
+    srcs = ["account_layer_test.py"],
+    args = [
+        "$(location :accounts)",
+        "$(location :accounts.receipt)",
+    ],
+    data = [
+        ":accounts",
+        ":accounts.receipt",
+    ],
+)
+
+py_binary(
+    name = "metadata_fixture_tool",
+    srcs = [
+        "fixture.py",
+        "metadata_fixture.py",
+    ],
+    imports = ["."],
+    main = "metadata_fixture.py",
+    deps = ["//oci:installed_packages_lib"],
+)
+
+metadata_fixture(
+    name = "metadata_inputs",
+    apt = "metadata_apt.json",
+    architecture = _ARCH,
+    module = "metadata_owner.MODULE.bazel",
+    owner = "metadata_owner.json",
+    policy = "metadata_policy.json",
+    source = "metadata_source_payload.tar",
+)
+
+# Source owners can publish an alias while the actual TAR lives in a helper
+# repository or target. The receipt must keep this requested public identity.
+alias(
+    name = "metadata_source.tar",
+    actual = ":metadata_source_payload.tar",
+)
+
+installed_packages(
+    name = "installed_metadata",
+    testonly = True,
+    apt_receipt = ":metadata_apt.json",
+    architecture = _ARCH,
+    base = ":metadata_inputs",
+    owner_metadata = [":metadata_owner.json"],
+    source_modules = {"example": ":metadata_owner.MODULE.bazel"},
+    source_spec = ":metadata_policy.json",
+    sources = {"example": ":metadata_source.tar"},
+)
+
+filegroup(
+    name = "installed_metadata_receipt",
+    testonly = True,
+    srcs = [":installed_metadata"],
+    output_group = "metadata",
+)
+
+py_test(
+    name = "installed_packages_rule_test",
+    srcs = ["installed_packages_rule_test.py"],
+    args = [
+        "$(location :installed_metadata)",
+        "$(location :installed_metadata_receipt)",
+        "$(location :metadata_source.tar)",
+    ],
+    data = [
+        ":installed_metadata",
+        ":installed_metadata_receipt",
+        ":metadata_source.tar",
+    ],
+)
