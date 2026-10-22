@@ -205,20 +205,38 @@ The architecture-qualified `gcc-arm-linux-gnueabihf:arm64` root supplies the
 compatibility vDSO compiler and linker only for the native ARM64 runtime; its
 execution binaries run on ARM64 and produce ARM32 code.
 
-The `sonic-linux-kernel` source-build rule selects this target with
-`attr.label(allow_single_file = True, cfg = "exec")`. It copies the tree to
-private scratch and enters it with `chroot`, allowing Debian's scripts to use
-their normal `/usr/bin`, Perl and Python paths without reading tools from the
-worker. This execution path requires root with `CAP_SYS_CHROOT` and `CAP_MKNOD`
-inside a disposable Linux worker. The cacheable runtime itself contains no
-device nodes and is prepared without root, network access or package maintainer
-script execution. Its `kernel-runtime.json` records the architecture, package
-versions, input hashes and a path-independent identity.
+The `sonic-linux-kernel` source-build rule selects this target in execution
+configuration. Its `bin` directory contains relocatable wrappers for the
+compiler, Debian packaging tools, interpreters and their child programs. Each
+ELF tool uses the declared loader and libraries; Perl, Python, Quilt, Debhelper
+and dpkg use the declared modules and data. These tools run as the ordinary
+build user without Docker, chroot or device creation. The runtime marker has
+`execution: "relocatable"` so consumers reject the older chroot-only interface.
+
+Consumers set `PATH` to the runtime's `bin` directory and select its `sh`/`bash`
+for Make recipes. Native `gcc` and `g++` produce ordinary deployment ELFs.
+`host-gcc` and `host-g++` additionally select the private ELF loader and RPATH
+for generated programs that must execute during a build. A consumer that later
+packages such a program must restore its deployment interpreter and remove
+private search paths before splitting debug information and producing packages.
+ARM64 retains its ARM32 compatibility-vDSO compiler and binutils.
+
+For shared-library dependency calculation, copy `var/lib/dpkg` into action-local
+scratch, prefix the library `.list` entries with the runtime's actual path, and
+set `DPKG_ADMINDIR` to that private database. The immutable input runtime must
+not be modified. The wrappers supply `DPKG_DATADIR`, `DPKG_ORIGINS_DIR` and the
+private Perl dpkg paths. Debian's supported `Rules-Requires-Root: no` behavior
+preserves package ownership metadata without requiring elevated privileges.
+
+The runtime is prepared without root, network access or package maintainer
+script execution. `kernel-runtime.json` records the architecture, package
+versions, input hashes and a path-independent identity. Adding or changing a
+relocation helper changes that declared runtime identity.
 
 Empty directories contain a zero-byte `.bazel-keep-directory` file so Bazel's
 remote-cache downloader preserves them, including targets of directory symlinks.
 
-The preparation action supplies Debian's merged `/usr` layout, explicit
+The preparation action retains Debian's library/sysroot layout, explicit
 build-command alternatives, and the PurePerl XML parser registration normally
 created by Debian's `libxml-sax-perl` installation script. It removes the legacy
 `/usr/bin/X11 -> .` alias brought in by Graphviz so Bazel can store the tree
@@ -230,7 +248,9 @@ part of this runtime; they do not replace any consuming target's sysroot.
 Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
 boundaries and directory/symlink preservation through a cache transport that drops
 empty directories,
-then `kernel_runtime_test` in the declared root. The latter parses XML through
+then `kernel_debian_test` for narrowly scoped packaging-tool relocation and
+`kernel_runtime_test` against a copied runtime at a different path. The latter
+runs without chroot, parses XML through
 the registered Perl parser, imports packaging modules, compiles and executes a libelf/OpenSSL host program, and verifies its
 Debian shared-library dependencies. ARM64 also compiles and links an ARM ELF32
 shared object with the declared `gcc-arm-linux-gnueabihf` toolchain, needed by

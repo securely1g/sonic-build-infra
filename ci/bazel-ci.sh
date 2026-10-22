@@ -64,7 +64,7 @@ if [[ -f tar/root_owned_tar.bzl ]]; then
   tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
-  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test)
+  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test)
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)

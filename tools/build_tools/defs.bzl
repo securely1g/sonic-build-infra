@@ -67,7 +67,7 @@ def _rootfs_impl(ctx):
         executable = python.interpreter,
         arguments = [args],
         inputs = ctx.files.packages + ctx.files.metadata_data + ctx.files.metadata_controls,
-        tools = depset([python.interpreter, ctx.file._prepare, ctx.file._extract], transitive = [python.files]),
+        tools = depset([python.interpreter, ctx.file._prepare, ctx.file._extract, ctx.file._relocate, ctx.file._debian], transitive = [python.files]),
         outputs = [output],
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
         mnemonic = "PrepareBuildToolsRootfs",
@@ -84,6 +84,8 @@ build_tools_rootfs = rule(
         "metadata_controls": attr.label_list(allow_files = True),
         "_prepare": attr.label(default = Label(":prepare_rootfs.py"), allow_single_file = True, cfg = "exec"),
         "_extract": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
+        "_relocate": attr.label(default = Label(":prepare_kernel.py"), allow_single_file = True, cfg = "exec"),
+        "_debian": attr.label(default = Label(":kernel_debian.py"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
     },
 )
