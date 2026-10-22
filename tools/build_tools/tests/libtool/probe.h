@@ -1,0 +1,1 @@
+int declared_answer();

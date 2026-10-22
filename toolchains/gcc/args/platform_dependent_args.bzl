@@ -84,16 +84,10 @@ _CPP_INCLUDES_ARGS = [
 ]
 
 _LINK_ARGS = [
-    # Select the target architecture's startup files and development libraries
-    # explicitly from the shared multiarch sysroot.
-    "-B",
-    "{{sysroot}}/usr/lib/{multiarch}/",
-    "-B",
-    "{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}/",
-    "-L",
-    "{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}",
-    "-L",
-    "{{sysroot}}/usr/lib/{multiarch}",
+    # Select development libraries from the shared multiarch sysroot.
+    # Libtool requires the directory in the same argument as -L.
+    "-L{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}",
+    "-L{{sysroot}}/usr/lib/{multiarch}",
 ]
 
 PLATFORM_DEPENDENT_ARGS = [
@@ -108,7 +102,14 @@ PLATFORM_DEPENDENT_ARGS = [
         # collect2 searches directories, even when the GCC driver accepts a
         # filename prefix. Declare the distribution's unprefixed aliases and
         # use their directory so both stages choose the downloaded programs.
-        args = ["-B", "{{gcc-programs}}/{gcc}/bin/"],
+        args = [
+            # Joined arguments survive Libtool's compiler-option filtering.
+            "-B{{gcc-programs}}/{gcc}/bin/",
+            # Libtool probes startup objects through the compiler before the
+            # final link, so compile actions need this same declared search.
+            "-B{{sysroot}}/usr/lib/{multiarch}/",
+            "-B{{sysroot}}/usr/lib/gcc/{multiarch}/{gcc_major}/",
+        ],
     ),
     struct(
         suffix = "_c_includes",
