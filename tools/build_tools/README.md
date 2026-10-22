@@ -176,7 +176,9 @@ native AMD64 and ARM64 jobs run this test.
 `@sonic_build_infra//tools/build_tools:kernel_runtime` produces one directory
 containing the shared `build_tools` package closure, including GCC 14, Debian
 packaging programs, Kbuild utilities and their libraries. The packages use the
-same dated APT snapshots and integrity checks as the generator tools. No kernel
+same dated APT snapshots and integrity checks as the generator tools. Kernel
+builds and source generators share one APT package set. Adding tools to that set
+also updates the kernel build filesystem and its cache identity. No kernel
 binary is downloaded or embedded in this runtime.
 
 Keep only the required top-level package roots in `MODULE.bazel`; the APT resolver
@@ -211,8 +213,11 @@ versions, input hashes and a path-independent identity.
 Empty directories contain a zero-byte `.bazel-keep-directory` file so Bazel's
 remote-cache downloader preserves them, including targets of directory symlinks.
 
-The preparation action supplies Debian's merged `/usr` layout and explicit
-build-command alternatives. It retains package status and library ownership,
+The preparation action supplies Debian's merged `/usr` layout, explicit
+build-command alternatives, and the PurePerl XML parser registration normally
+created by Debian's `libxml-sax-perl` installation script. It removes the legacy
+`/usr/bin/X11 -> .` alias brought in by Graphviz so Bazel can store the tree
+without following a directory cycle. It retains package status and library ownership,
 shlibs and symbols metadata so `dpkg-shlibdeps` can calculate the source-built
 kernel tools' dependencies. The compiler's execution-side libc headers remain
 part of this runtime; they do not replace any consuming target's sysroot.
@@ -220,8 +225,8 @@ part of this runtime; they do not replace any consuming target's sysroot.
 Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
 boundaries and directory/symlink preservation through a cache transport that drops
 empty directories,
-then `kernel_runtime_test` in the declared root. The latter imports packaging
-modules, compiles and executes a libelf/OpenSSL host program, and verifies its
+then `kernel_runtime_test` in the declared root. The latter parses XML through
+the registered Perl parser, imports packaging modules, compiles and executes a libelf/OpenSSL host program, and verifies its
 Debian shared-library dependencies. ARM64 also compiles and links an ARM ELF32
 shared object with the declared `gcc-arm-linux-gnueabihf` toolchain, needed by
 the kernel's 32-bit compatibility vDSO, and checks its source dependency metadata.
@@ -229,3 +234,41 @@ The ARM32 output is inspected, not executed. These tests produce no DEBs. Kernel
 package compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
 `sonic-buildimage` consumer. This shared-runtime smoke test does not compile a
 full kernel.
+
+## Autotools and interface generators
+
+`//tools/build_tools:foreign_runtime` supplies a private native execution bundle
+for upstream configure/Make builds: autoreconf, Automake/aclocal, Libtool,
+protobuf/gRPC and Thrift generators, Python, Perl (including XML::Simple), and
+their shell utilities, libraries and macro data. Use it in a `build_data` edge
+of `rules_foreign_cc`, or an explicit `cfg = "exec"` attribute. Its `bin` directory
+may be prepended to the action's PATH. Executable targets such as `:autoreconf`,
+`:protoc`, `:grpc_cpp_plugin` and `:thrift` are also public.
+
+The protoc bundle includes its matching well-known `.proto` definitions. Its
+wrapper appends the private schema directory after explicit caller include
+paths, and retains protoc's implicit current-directory lookup when no include
+paths were supplied (including through a response file).
+
+The PI and BMv2 source producers need these tools to bootstrap their upstream
+Autotools files and generate protocol interfaces. DASH's SAI metadata generation
+uses the same declared Perl runtime. Target protobuf, gRPC, Boost and other
+libraries remain separate target dependencies. This bundle neither builds Debian
+packages nor supplies project runtime files to images.
+
+`foreign_runtime_test` copies the bundle to another directory and bootstraps an
+Autotools/Libtool project, generates C++/Python/gRPC interfaces importing
+`google.protobuf.Any`/`Empty` and Thrift interfaces, and checks include precedence
+and private Python/Perl loading with an empty incoming PATH. Both native
+architectures run this test in the declared-build-tools workflow.
+
+`foreign_runtime/bin/dot` uses a private Graphviz plugin index and declared
+DejaVu fonts through `GVBINDIR` and a private Fontconfig configuration. Its Perl
+runtime includes XML::Simple, Data::Dumper and Getopt::Long for SAI metadata.
+Combine `foreign_runtime/bin` with the public `metadata_runtime/bin` to provide
+relocatable Doxygen and Aspell to upstream metadata Makefiles. Keep target-object
+binutils (such as `nm`) in the selected C/C++ toolchain.
+
+The relocation test also checks both metadata wrappers and renders an SVG with
+Graphviz. Graphviz documents the plugin-directory override in its
+[command-line environment reference](https://www.graphviz.org/doc/info/command.html#GVBINDIR).

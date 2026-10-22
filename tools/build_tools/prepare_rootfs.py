@@ -99,6 +99,33 @@ def install_alternatives(root: Path) -> None:
         target.symlink_to(os.path.relpath(source, target.parent))
 
 
+def remove_x11_alias(root: Path) -> None:
+    # Graphviz brings X11's legacy /usr/bin/X11 -> . alias. Bazel traverses
+    # tree outputs, so this unused compatibility path creates an endless loop.
+    alias = root / "usr/bin/X11"
+    if alias.is_symlink() and alias.resolve() == alias.parent:
+        alias.unlink()
+
+
+def configure_xml_sax(root: Path) -> None:
+    if not (root / "usr/share/perl5/XML/SAX.pm").is_file():
+        return
+    config = root / "etc/perl/XML/SAX/ParserDetails.ini"
+    if config.is_file():
+        return
+    if not (root / "usr/share/perl5/XML/SAX/PurePerl.pm").is_file():
+        raise RuntimeError("missing declared XML::SAX::PurePerl parser")
+    # Debian libxml-sax-perl's postinst registers PurePerl with priority 10.
+    # Supply that parser's metadata without running maintscripts or ucf.
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        "# AUTO-GENERATED. DO NOT EDIT MANUALLY.\n"
+        "# Generator: tools/build_tools/prepare_rootfs.py\n"
+        "[XML::SAX::PurePerl]\n"
+        "http://xml.org/sax/features/namespaces = 1\n\n"
+    )
+
+
 def validate_links(root: Path) -> None:
     for path in sorted(root.rglob("*")):
         if not path.is_symlink():
@@ -153,6 +180,8 @@ def main() -> None:
     for data, control in args.metadata:
         package_metadata(root, data, control)
     install_alternatives(root)
+    configure_xml_sax(root)
+    remove_x11_alias(root)
     loader_path(root, args.architecture)
     validate_links(root)
     status = root / "var/lib/dpkg/status"
