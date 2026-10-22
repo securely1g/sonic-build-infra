@@ -131,6 +131,8 @@ The binary will then be replaced with its stripped version behind the scenes. Mi
             configurable = False,
         ),
         "force_debug_build": attr.bool(
+            # This controls which targets the macro creates, before configuration.
+            configurable = False,
             doc = "Whether the binaries should be rebuilt with debug information before stripping. This will override Bazel's regular CLI compilation instructions, like `--strip=never`",
             default = False,
         ),
