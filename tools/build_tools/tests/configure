@@ -15,7 +15,9 @@ CC=$CC
 CFLAGS=$CFLAGS ${CPPFLAGS:-}
 AR=$AR
 prefix=$prefix
-all: libprobe.a
+all: tool-version libprobe.a
+tool-version:
+\tmake --version > make.version
 probe.o: probe.c config.h
 \t\$(CC) \$(CFLAGS) -c probe.c -o probe.o
 libprobe.a: probe.o

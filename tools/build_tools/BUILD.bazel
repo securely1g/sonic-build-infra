@@ -7,6 +7,35 @@ load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "ch
 
 python_runtime(name = "python_runtime")
 
+cc_binary(
+    name = "runtime_launcher",
+    srcs = ["runtime_launcher.c"],
+    # This C-only bootstrap must stay static when a foreign build selects Clang.
+    # Pinned toolchains_llvm 1.11.2 names its default stdlib feature from the
+    # generated local-<arch>-linux config; dynamic-stdc++-14 otherwise injects
+    # libstdc++.so even for C. Disable that bundle only on this target. GCC
+    # ignores these unknown disabled features; native GCC/Clang tests cover both.
+    features = [
+        "-local-aarch64-linux_nomsan_stdlib",
+        "-local-x86_64-linux_nomsan_stdlib",
+    ],
+    linkopts = ["-static"],
+    linkstatic = True,
+)
+
+py_test(
+    name = "runtime_launcher_test",
+    srcs = [
+        "prepare_runtime.py",
+        "runtime_launcher_test.py",
+    ],
+    args = ["$(location :runtime_launcher)"],
+    data = [":runtime_launcher"],
+    imports = ["."],
+    main = "runtime_launcher_test.py",
+    visibility = ["//visibility:public"],
+)
+
 # dpkg-shlibdeps needs the native runtime libraries' symbols/shlibs metadata and
 # file ownership lists when packaging the source-built linux-kbuild programs.
 _KERNEL_LINK_LIBRARIES = [
@@ -290,8 +319,32 @@ alias(
 py_test(
     name = "configure_runtime_test",
     srcs = ["configure_runtime_test.py"],
-    args = ["$(location :" + tool + ")" for tool in ["make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]],
-    data = [":make", ":m4", ":pkgconf", ":perl", ":bison", ":flex", ":autoconf", ":autoheader", ":autom4te"],
+    args = ["$(location :" + tool + ")" for tool in [
+        "make",
+        "m4",
+        "pkgconf",
+        "perl",
+        "bison",
+        "flex",
+        "autoconf",
+        "autoheader",
+        "autom4te",
+    ]] + [
+        "--runtime",
+        "$(location :configure_runtime)",
+    ],
+    data = [
+        ":autoconf",
+        ":autoheader",
+        ":autom4te",
+        ":bison",
+        ":configure_runtime",
+        ":flex",
+        ":m4",
+        ":make",
+        ":perl",
+        ":pkgconf",
+    ],
     visibility = ["//visibility:public"],
 )
 
