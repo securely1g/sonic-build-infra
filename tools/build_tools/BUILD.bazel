@@ -51,10 +51,20 @@ py_test(
         "prepare_rootfs.py",
         "prepare_rootfs_test.py",
         "prepare_runtime.py",
+        "prepare_kernel.py",
+        "kernel_debian.py",
     ],
     imports = ["."],
     main = "prepare_rootfs_test.py",
     python_version = "PY3",
+)
+
+py_test(
+    name = "kernel_debian_test",
+    srcs = ["kernel_debian.py", "kernel_debian_test.py"],
+    imports = ["."],
+    main = "kernel_debian_test.py",
+    visibility = ["//visibility:public"],
 )
 
 py_test(
@@ -63,11 +73,7 @@ py_test(
     args = ["$(location :kernel_runtime)"],
     data = [":kernel_runtime"],
     python_version = "PY3",
-    tags = [
-        "no-remote-exec",
-        "no-sandbox",
-        "requires-root",
-    ],
+    tags = ["no-remote-exec"],
 )
 
 [

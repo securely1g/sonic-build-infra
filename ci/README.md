@@ -51,9 +51,10 @@ registry URL and generated module lock for dependency inspection.
 
 Both architectures prepare the declared kernel build runtime and check its
 archive boundaries, compiler, Python packaging modules and Debian shared-library
-dependency calculation. The runtime check uses `chroot` in the disposable CI
-container and requires its default root, `CAP_SYS_CHROOT` and `CAP_MKNOD` access.
-It compiles a small native host program and, on ARM64, an ARM32 compatibility
+dependency calculation. The runtime check relocates the declared tools and
+uses their private loaders, interpreters and data without `chroot` or device
+creation. It compiles and runs native C/C++ host programs, checks the ordinary
+deployment interpreter, and, on ARM64, compiles an ARM32 compatibility
 vDSO probe. These checks create no DEB packages or kernel image.
 
 Each run retains test XML/logs, build events, native host metadata, revision,
