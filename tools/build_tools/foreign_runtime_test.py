@@ -14,7 +14,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="foreign-tools-") as tmp:
         root = Path(tmp)
         runtime = root / "relocated-runtime"
-        shutil.copytree(source, runtime, symlinks=True)
+        # Materialize Bazel's per-file sandbox input links before moving the
+        # runtime: executable symlinks would still refer to the original tree.
+        shutil.copytree(source, runtime)
         work = root / "source"
         work.mkdir()
         tools = runtime / "bin"
@@ -80,7 +82,7 @@ def main():
         graph = run("dot", ["-Tsvg"], data=b"digraph G { a -> b }\n")
         assert b"<svg" in graph and b"a" in graph
         metadata = root / "relocated-metadata"
-        shutil.copytree(Path(sys.argv[2]).resolve(), metadata, symlinks=True)
+        shutil.copytree(Path(sys.argv[2]).resolve(), metadata)
         subprocess.run([str(metadata / "bin/doxygen"), "--version"], env=env, capture_output=True, check=True)
         spelling = subprocess.run([str(metadata / "bin/aspell"), "list"], input=b"switch\n", env=env, capture_output=True, check=True)
         assert not spelling.stdout, spelling
