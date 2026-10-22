@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import tarfile
 
 from prepare_runtime import extract_payload, loader_path
+from prepare_kernel import prepare_kernel
 
 
 def control_fields(text: str) -> dict[str, str]:
@@ -184,6 +185,7 @@ def main() -> None:
     remove_x11_alias(root)
     loader_path(root, args.architecture)
     validate_links(root)
+    prepare_kernel(root, args.architecture)
     status = root / "var/lib/dpkg/status"
     packages = {}
     for record in status.read_text().split("\n\n"):
@@ -193,13 +195,16 @@ def main() -> None:
     # The identity is path-independent across standalone and consuming modules.
     # Bazel also hashes this declared tree as an input to the kernel action.
     inputs = set(args.tar) | {path for pair in args.metadata for path in pair}
-    inputs |= {Path(__file__), Path(__file__).with_name("prepare_runtime.py")}
+    inputs |= {Path(__file__).with_name(name) for name in (
+        "prepare_rootfs.py", "prepare_runtime.py", "prepare_kernel.py", "kernel_debian.py",
+    )}
     digests = sorted(input_digest(path) for path in inputs)
     identity = hashlib.sha256(json.dumps({"architecture": args.architecture, "inputs": digests}, sort_keys=True).encode()).hexdigest()
     manifest = {
         "schema_version": 1,
         "kind": "debian-build-tools",
         "architecture": args.architecture,
+        "execution": "relocatable",
         "identity_sha256": identity,
         "input_sha256": digests,
         "packages": packages,
