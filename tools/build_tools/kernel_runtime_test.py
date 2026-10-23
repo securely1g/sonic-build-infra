@@ -184,6 +184,19 @@ def main():
                 result.check_returncode()
             return result.stdout
 
+        # A restored Bazel tree can contain a real /lib directory instead of
+        # the merged-/usr symlink. Dpkg must choose the /usr/lib path recorded
+        # in Debian's package file lists, even when both spellings exist.
+        triple = {"amd64": "x86_64-linux-gnu", "arm64": "aarch64-linux-gnu"}[architecture]
+        canonical_library = root / "usr/lib" / triple / "libelf.so.1"
+        selected_library = run([
+            "/usr/bin/perl", "-MDpkg::Shlibs", "-MDpkg::Shlibs::Objdump", "-e",
+            'my $format = Dpkg::Shlibs::Objdump::get_format($ARGV[0]); '
+            'my @libraries = Dpkg::Shlibs::find_library("libelf.so.1", [], $format); '
+            'print $libraries[0];', str(canonical_library),
+        ])
+        assert selected_library == str(canonical_library), selected_library
+
         linker_inputs = check_linker_inputs(root, runtime, work, run, architecture)
         check_yacc(root, work, run)
         run(["/usr/bin/python3", "-c", "import dacite; import jinja2"])
