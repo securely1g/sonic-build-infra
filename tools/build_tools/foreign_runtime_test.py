@@ -30,6 +30,14 @@ def main():
                                             result.stderr.decode(errors="replace"))
             return result.stdout
 
+        # Merged-/usr package aliases such as sh -> dash must be replaced by
+        # wrappers without writing through to their original ELF executables.
+        # Both aliases must still work after relocating the prepared tree.
+        for name in ("dash", "mawk"):
+            assert (runtime / "usr/bin" / name).read_bytes().startswith(b"\x7fELF"), name
+        assert run("sh", ["-c", "printf declared-shell"]) == b"declared-shell"
+        assert run("awk", ["BEGIN { print 42 }"]) == b"42\n"
+
         (work / "configure.ac").write_text(
             "AC_INIT([foreign-probe],[1.0])\nAM_INIT_AUTOMAKE([foreign])\n"
             "AC_CONFIG_MACRO_DIRS([m4])\nAC_PROG_CC\nLT_INIT\n"
