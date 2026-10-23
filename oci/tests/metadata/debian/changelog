@@ -1,0 +1,5 @@
+metadata-example (2.0) unstable; urgency=medium
+
+  * Exercise metadata generation from the selected target binaries.
+
+ -- Example <example@example.org>  Thu, 01 Jan 2026 00:00:00 +0000

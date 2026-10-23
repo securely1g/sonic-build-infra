@@ -1,6 +1,11 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//oci:accounts.bzl", "account_layer")
+load("//oci:installed_packages.bzl", "installed_packages")
+load("//oci:runtime_packages.bzl", "runtime_packages", "runtime_packages_group")
+load("//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 load(":base.bzl", "fixture_base")
+load(":metadata_fixture.bzl", "metadata_fixture")
 
 config_setting(
     name = "arm64",
@@ -13,6 +18,18 @@ _ARCH = select({
 })
 
 exports_files(["fixture.py"])
+
+py_test(
+    name = "installed_packages_test",
+    srcs = ["installed_packages_test.py"],
+    deps = ["//oci:installed_packages_lib"],
+)
+
+py_test(
+    name = "owner_metadata_test",
+    srcs = ["owner_metadata_test.py"],
+    deps = ["//oci:package_metadata"],
+)
 
 py_binary(
     name = "fixture",
@@ -65,4 +82,179 @@ py_test(
         ":accounts",
         ":accounts.receipt",
     ],
+)
+
+py_binary(
+    name = "metadata_fixture_tool",
+    srcs = [
+        "fixture.py",
+        "metadata_fixture.py",
+    ],
+    imports = ["."],
+    main = "metadata_fixture.py",
+    deps = ["//oci:installed_packages_lib"],
+)
+
+metadata_fixture(
+    name = "metadata_inputs",
+    apt = "metadata_apt.json",
+    architecture = _ARCH,
+    changelog = "metadata_changelog",
+    control = "metadata_control",
+    module = "metadata_owner.MODULE.bazel",
+    policy = "metadata_policy.json",
+    source = "metadata_source_payload.tar",
+)
+
+# Source owners can publish an alias while the actual TAR lives in a helper
+# repository or target. The receipt must keep this requested public identity.
+alias(
+    name = "metadata_source.tar",
+    actual = ":metadata_source_payload.tar",
+)
+
+runtime_packages(
+    name = "metadata_owner.json",
+    testonly = True,
+    changelog = ":metadata_changelog",
+    control = ":metadata_control",
+    module_name = "example",
+    packages = {"example": ":metadata_source.tar"},
+)
+
+installed_packages(
+    name = "installed_metadata",
+    testonly = True,
+    apt_receipt = ":metadata_apt.json",
+    architecture = _ARCH,
+    base = ":metadata_inputs",
+    owner_metadata = [":metadata_owner.json"],
+    source_modules = {"example": ":metadata_owner.MODULE.bazel"},
+    source_spec = ":metadata_policy.json",
+    sources = {"example": ":metadata_source.tar"},
+)
+
+filegroup(
+    name = "installed_metadata_receipt",
+    testonly = True,
+    srcs = [":installed_metadata"],
+    output_group = "metadata",
+)
+
+py_test(
+    name = "installed_packages_rule_test",
+    srcs = ["installed_packages_rule_test.py"],
+    args = [
+        "$(location :installed_metadata)",
+        "$(location :installed_metadata_receipt)",
+        "$(location :metadata_source.tar)",
+    ],
+    data = [
+        ":installed_metadata",
+        ":installed_metadata_receipt",
+        ":metadata_source.tar",
+    ],
+)
+
+py_test(
+    name = "runtime_packages_test",
+    srcs = ["runtime_packages_test.py"],
+    deps = ["//oci:runtime_packages_lib"],
+)
+
+# Real target ELFs exercise shared-library dependency generation. The metadata
+# action executes Debian tools for the build host and only inspects target code.
+cc_binary(
+    name = "libmetadata-fixture.so.1",
+    srcs = ["metadata/library.c"],
+    linkopts = ["-Wl,-soname,libmetadata-fixture.so.1"],
+    linkshared = True,
+)
+
+cc_import(
+    name = "metadata_library",
+    shared_library = ":libmetadata-fixture.so.1",
+)
+
+cc_binary(
+    name = "metadata_cli",
+    srcs = ["metadata/cli.c"],
+    deps = [":metadata_library"],
+)
+
+sonic_deploy_tar(
+    name = "metadata_library_tar",
+    binaries = {"usr/lib/libmetadata-fixture.so.1 type=file mode=0555": ":libmetadata-fixture.so.1"},
+)
+
+sonic_deploy_tar(
+    name = "metadata_cli_tar",
+    binaries = {"usr/bin/metadata-cli type=file mode=0555": ":metadata_cli"},
+)
+
+runtime_packages(
+    name = "metadata_library.json",
+    testonly = True,
+    apt_packages = {"@sysroot//libc6:data": "@sysroot//libc6:control"},
+    changelog = "metadata/debian/changelog",
+    control = "metadata/debian/control",
+    packages = {"metadata-library": ":metadata_library_tar"},
+)
+
+runtime_packages(
+    name = "metadata_cli.json",
+    testonly = True,
+    changelog = "metadata/debian/changelog",
+    control = "metadata/debian/control",
+    dependencies = [":metadata_library.json"],
+    packages = {"metadata-cli": ":metadata_cli_tar"},
+)
+
+runtime_packages_group(
+    name = "metadata_combined.json",
+    testonly = True,
+    packages = [
+        ":metadata_cli.json",
+        ":metadata_library.json",
+    ],
+)
+
+py_test(
+    name = "runtime_packages_rule_test",
+    srcs = ["runtime_packages_rule_test.py"],
+    args = [
+        "$(location :metadata_combined.json)",
+        "$(location :metadata_library_tar)",
+        "$(location :metadata_cli_tar)",
+        "$(location //oci:runtime_packages)",
+        "$(location //tools/build_tools:kernel_runtime)",
+    ] + select({
+        ":arm64": ["$(location @bsd_tar_toolchains_linux_arm64//:tar)"],
+        "//conditions:default": ["$(location @bsd_tar_toolchains_linux_amd64//:tar)"],
+    }) + [
+        "$(location metadata/debian/control)",
+        "$(location metadata/debian/changelog)",
+    ] + select({
+        ":arm64": ["arm64"],
+        "//conditions:default": ["amd64"],
+    }) + [
+        "$(location @patchelf//:patchelf)",
+        "$(location @sysroot//libc6:data)",
+        "$(location @sysroot//libc6:control)",
+    ],
+    data = [
+        "metadata/debian/changelog",
+        "metadata/debian/control",
+        ":metadata_cli_tar",
+        ":metadata_combined.json",
+        ":metadata_library_tar",
+        "//oci:runtime_packages",
+        "//tools/build_tools:kernel_runtime",
+        "@patchelf",
+        "@sysroot//libc6:control",
+        "@sysroot//libc6:data",
+    ] + select({
+        ":arm64": ["@bsd_tar_toolchains_linux_arm64//:tar"],
+        "//conditions:default": ["@bsd_tar_toolchains_linux_amd64//:tar"],
+    }),
 )

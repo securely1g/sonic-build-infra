@@ -1,0 +1,15 @@
+Source: metadata-example
+Maintainer: Example <example@example.org>
+Section: libs
+Priority: optional
+
+Package: metadata-library
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Description: A source-built shared library used to verify generated package metadata.
+
+Package: metadata-cli
+Architecture: any
+Section: utils
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: A source-built consumer of the test library.

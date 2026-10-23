@@ -90,8 +90,13 @@ apt.sources_list(
 apt.install(
     dependency_set = "sysroot",
     packages = [
+        # Expose the target ABI controls as well as the compiler headers.
+        # Runtime metadata must inspect target libraries, never build-tool copies.
+        "libc6",
         "libc6-dev",
+        "libgcc-s1",
         "libgcc-14-dev",
+        "libstdc++6",
         "libstdc++-14-dev",
         "linux-libc-dev",
     ],

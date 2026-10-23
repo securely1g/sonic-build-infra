@@ -150,7 +150,7 @@ def prepare_debian(root: Path) -> None:
         "sub setup_library_paths {\n"
         "    @custom_librarypaths = ();\n"
         "    @system_librarypaths = ();\n"
-        "    if (my $root = $ENV{SONIC_BUILD_TOOLS_ROOT}) {\n"
+        "    if (my $root = $ENV{SONIC_DPKG_SHLIBS_ROOT} // $ENV{SONIC_BUILD_TOOLS_ROOT}) {\n"
         "        my $multiarch = debarch_to_multiarch(get_host_arch());\n"
         '        @system_librarypaths = map { "$root$_" } (\n'
         '            "/lib/$multiarch", "/usr/lib/$multiarch",\n'
@@ -158,6 +158,23 @@ def prepare_debian(root: Path) -> None:
         "        $librarypaths_init = 1;\n"
         "        return;\n"
         "    }",
+    )
+    # An ELF's RPATH may be absolute. The OCI metadata action supplies its
+    # actual target package trees so that even RPATH lookup cannot select the
+    # build host or an execution tool's private library by accident.
+    _replace(
+        root / "usr/share/perl5/Dpkg/Shlibs.pm",
+        '\tmy $checkdir = "$root$dir";\n',
+        '\tmy $checkdir = "$root$dir";\n'
+        '        if (my $declared = $ENV{SONIC_DPKG_TARGET_ROOTS}) {\n'
+        '            require Cwd;\n'
+        '            my $candidate = Cwd::abs_path("$checkdir/$lib");\n'
+        '            next unless defined $candidate;\n'
+        '            next unless grep {\n'
+        '                my $allowed = Cwd::abs_path($_);\n'
+        '                defined($allowed) && index($candidate, "$allowed/") == 0\n'
+        '            } split(/\\n/, $declared);\n'
+        '        }\n',
     )
     _replace(
         root / "usr/share/perl5/Debian/Debhelper/Dh_Lib.pm",
