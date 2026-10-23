@@ -1,0 +1,52 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_python//python:defs.bzl", "py_test")
+load("//cc:runtime_test.bzl", "native_runtime_binary", "native_runtime_test")
+
+cc_binary(name = "program", srcs = ["program.c"])
+
+native_runtime_binary(
+    name = "wrapped",
+    binary = ":program",
+    runtime_payloads = ["@build_tools//libc6:data"],
+)
+
+native_runtime_test(
+    name = "native_test",
+    binary = ":program",
+    runtime_payloads = ["@build_tools//libc6:data"],
+    args = ["native-test", "0"],
+)
+
+py_test(
+    name = "contract_test",
+    srcs = ["contract_test.py"],
+    args = ["$(location :wrapped)", "$(location :missing_runtime)", "$(location :exec_tool_output)", "$(location :instrumented)", "$(location :memchecked)"],
+    data = [":wrapped", ":missing_runtime", ":exec_tool_output", ":instrumented", ":memchecked"],
+)
+
+native_runtime_binary(name = "missing_runtime", binary = ":program", runtime_payloads = [])
+
+genrule(
+    name = "exec_tool_output",
+    tools = [":wrapped"],
+    outs = ["exec-tool.txt"],
+    cmd = "$(location :wrapped) 'exec tool' 0 > $@",
+)
+
+native_runtime_binary(
+    name = "instrumented",
+    binary = ":program",
+    runtime_payloads = ["@build_tools//libc6:data", "@build_tools//libc6-dbg:data"],
+    instrument = "//tools/build_tools:valgrind",
+    instrument_args = ["--quiet", "--error-exitcode=86", "--leak-check=full"],
+)
+
+cc_binary(name = "memory_access", srcs = ["memory_access.c"])
+
+native_runtime_binary(
+    name = "memchecked",
+    binary = ":memory_access",
+    runtime_payloads = ["@build_tools//libc6:data", "@build_tools//libc6-dbg:data"],
+    instrument = "//tools/build_tools:valgrind",
+    instrument_args = ["--quiet", "--error-exitcode=86", "--leak-check=full"],
+)

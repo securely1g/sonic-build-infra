@@ -1,1 +1,1 @@
-exports_files(["shared_library.bzl"])
+exports_files(["preprocess.bzl", "shared_library.bzl", "runtime_test.bzl", "runtime_test.py", "direct_linker_inputs.bzl"])

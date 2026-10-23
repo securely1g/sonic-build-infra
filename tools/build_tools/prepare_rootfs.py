@@ -144,6 +144,9 @@ def validate_links(root: Path) -> None:
         # contract: system CAs, Quilt's mail helper, and documentation targets.
         optional = str(path.relative_to(root)) in (
             "usr/lib/ssl/cert.pem", "usr/share/quilt/compat/sendmail",
+            # tex-common creates this TeX search cache in its postinst. The
+            # offline kernel compiler/packager does not invoke TeX.
+            "usr/share/texmf/ls-R",
         ) or any(path.is_relative_to(root / part) for part in ("usr/share/man", "usr/share/doc"))
         if not destination.exists() and optional:
             path.unlink()

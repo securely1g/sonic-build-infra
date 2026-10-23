@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 
+from python.runfiles import runfiles
+
 
 def main():
     source = Path(sys.argv[1]).resolve()
@@ -82,6 +84,37 @@ def main():
         (work / "probe.thrift").write_text("struct Request { 1: string name }\nservice Echo { Request send(1: Request request) }\n")
         run("thrift", ["--gen", "cpp", "probe.thrift"])
         assert (work / "gen-cpp/Echo.cpp").is_file()
+        executable = Path(run("python3", ["-c", "import sys; print(sys.executable)"]).decode().strip())
+        assert executable == tools / "python3", executable
+        (work / "test_declared_runtime.py").write_text("def test_declared_runtime():\n    assert 6 * 7 == 42\n")
+        pytest_result = run("python3", ["-m", "pytest", "-q", "-p", "no:cacheprovider", "test_declared_runtime.py"])
+        assert b"1 passed" in pytest_result, pytest_result
+        sphinx_source = work / "sphinx-source"
+        sphinx_source.mkdir()
+        (sphinx_source / "conf.py").write_text('project = "Declared Sphinx"\n')
+        (sphinx_source / "index.rst").write_text('Declared Sphinx\n===============\n\nPrivate runtime documentation.\n')
+        run("sphinx-build", ["-q", "-b", "html", str(sphinx_source), str(work / "sphinx-html")])
+        assert b"Private runtime documentation" in (work / "sphinx-html/index.html").read_bytes()
+        # Public tools must also run through standard merged runfiles, even
+        # when a manifest locates the executable outside any runfiles tree.
+        resolver = runfiles.Create()
+        public_tool = resolver.Rlocation("sonic-build-infra/tools/build_tools/sphinx-build")
+        standalone_tool = root / "sphinx-build"
+        standalone_tool.symlink_to(Path(public_tool).absolute())
+        manifest = root / "tools.manifest"
+        manifest.write_text("probe/sphinx-build " + str(standalone_tool) + "\n")
+        manifest_resolver = runfiles.CreateManifestBased(str(manifest))
+        public_env = dict(env, **resolver.EnvVars())
+        public_output = work / "public-sphinx-html"
+        result = subprocess.run([
+            manifest_resolver.Rlocation("probe/sphinx-build"), "-q", "-b", "html",
+            str(sphinx_source), str(public_output),
+        ], cwd=work, env=public_env, capture_output=True)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert b"Private runtime documentation" in (public_output / "index.html").read_bytes()
+        (work / "probe.texi").write_text('\\input texinfo\n@setfilename probe.info\n@node Top\n@top Declared Texinfo\n\nPrivate runtime manual.\n@bye\n')
+        run("makeinfo", ["--no-split", "--output=probe.info", "probe.texi"])
+        assert b"Private runtime manual" in (work / "probe.info").read_bytes()
         python = json.loads(run("python3", ["-c", "import json,sys;print(json.dumps(sys.path))"]))
         assert all(not p.startswith(("/usr/", "/lib/")) for p in python), python
         perl = json.loads(run("perl", ["-MJSON::PP", "-MXML::Simple", "-MData::Dumper", "-MGetopt::Long", "-e", 'print encode_json(\\%INC)']))

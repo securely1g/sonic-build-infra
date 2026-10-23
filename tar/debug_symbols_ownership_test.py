@@ -12,6 +12,11 @@ with tarfile.open(sys.argv[1]) as archive:
     assert len(symbols) == 1, symbols
     assert symbols[0].name.endswith("/usr/lib/debug/.build-id/ab/fixture.debug"), symbols[0].name
     assert archive.extractfile(symbols[0]).read() == b"fixture symbols\n"
+    links = [member for member in members if member.issym()]
+    assert len(links) == 1, links
+    assert links[0].name == "./usr/share/doc/fixture-dbgsym"
+    assert links[0].linkname == "fixture"
+    assert links[0].mode == 0o777
     for member in members:
         assert member.uid == member.gid == 0, (member.name, member.uid, member.gid)
         assert member.uname == member.gname == "", (member.name, member.uname, member.gname)

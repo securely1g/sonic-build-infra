@@ -128,17 +128,20 @@ def write_launcher(root: Path, name: str, script: str, executable: Path) -> None
     destination.chmod(0o755)
 
 
-def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path, *, foreign: bool = False) -> None:
+def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path, *, foreign: bool = False, perl_only: bool = False) -> None:
     """Keep foreign_cc tools self-contained when it copies their tree artifact."""
     script_tools = ("autoconf", "autoheader", "autom4te")
     tools = {name: root / "usr/bin" / name for name in
              ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep", *script_tools)}
     shell_tools = ()
+    if perl_only:
+        script_tools = ()
+        tools = {"perl": root / "usr/bin/perl"}
     if foreign:
-        script_tools += ("autoreconf", "automake", "aclocal")
+        script_tools += ("autoreconf", "automake", "aclocal", "makeinfo")
         shell_tools = ("libtoolize", "which")
         for name in ("autoreconf", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin",
-                     "thrift", "python3", "dot", "bash", "dash", "sed", "mawk", "find", "xargs",
+                     "thrift", "python3", "sphinx-build", "makeinfo", "dot", "bash", "dash", "sed", "mawk", "find", "xargs",
                      "basename", "cat", "chmod", "cp", "cut", "dirname", "echo", "expr", "head", "install",
                      "ln", "mkdir", "mv", "od", "printf", "readlink", "realpath", "rm", "rmdir",
                      "sleep", "sort", "tail", "test", "touch", "tr", "uname", "wc", "cmp", "diff"):
@@ -156,24 +159,54 @@ def prepare_configure(root: Path, architecture: str, loader: Path, libraries: li
                 raise RuntimeError("unexpected libtoolize data-directory configuration")
             text = text.replace(assignment, '="$SONIC_BUILD_TOOLS_ROOT' + directory + '"')
         libtoolize.write_text(text)
+        # Texinfo's fallback relocation depends on whether the host happens to
+        # have /usr/share/texinfo. Bind its installed data and XS directories to
+        # the same declared runtime unconditionally.
+        makeinfo = tools["makeinfo"].resolve()
+        text = makeinfo.read_text()
+        for original, relocated in [
+            ("\n  my $datadir = '/usr/share';\n", '\n  my $datadir = "$ENV{SONIC_BUILD_TOOLS_ROOT}/usr/share";\n'),
+            ("\n  my $xsdir = '/usr/lib/texinfo';\n", '\n  my $xsdir = "$ENV{SONIC_BUILD_TOOLS_ROOT}/usr/lib/texinfo";\n'),
+        ]:
+            if text.count(original) != 1:
+                raise RuntimeError("unexpected Texinfo installed directory configuration")
+            text = text.replace(original, relocated)
+        for directory in ("/usr/share", "/usr/etc"):
+            text = text.replace("eval '\"" + directory + "\"'", "eval '\"$ENV{SONIC_BUILD_TOOLS_ROOT}" + directory + "\"'")
+        makeinfo.write_text(text)
+        # Debian splits documentation templates into /usr/share packages.
+        # Module-relative upstream lookups are replaced by those absolute
+        # prefixes, so relocate the two package data entry points as well.
+        for relative, original, replacement in [
+            ("docutils/__init__.py", "datadir = os.path.join('/usr/share/docutils/', suffix)",
+             "datadir = os.path.join(os.environ['SONIC_BUILD_TOOLS_ROOT'], 'usr/share/docutils', suffix)"),
+            ("sphinx/__init__.py", "package_dir = '/usr/share/sphinx'",
+             "package_dir = os.path.join(os.environ['SONIC_BUILD_TOOLS_ROOT'], 'usr/share/sphinx')"),
+        ]:
+            module = root / "usr/lib/python3/dist-packages" / relative
+            content = module.read_text()
+            if content.count(original) != 1:
+                raise RuntimeError("unexpected Debian documentation data path: " + relative)
+            module.write_text(content.replace(original, replacement))
         tools["which"] = root / "usr/bin/which.debianutils"
         tools["awk"] = tools["mawk"]
         tools["sh"] = tools["dash"]
     for name, path in tools.items():
         if not path.is_file():
             raise RuntimeError(f"configure packages contain no {name}")
-    # Replace the package's compiled-in macro-directory options with one
-    # launcher-provided path. Keep every language/macro definition unchanged.
-    config = root / "usr/share/autoconf/autom4te.cfg"
-    lines = config.read_text().splitlines(keepends=True)
-    directory_option = "args: --prepend-include '/usr/share/autoconf'"
-    if sum(line.strip() == directory_option for line in lines) != 4:
-        raise RuntimeError("unexpected Autoconf macro-directory configuration")
-    config.write_text("".join(line for line in lines if line.strip() != directory_option))
+    if not perl_only:
+        # Replace the package's compiled-in macro-directory options with one
+        # launcher-provided path. Keep every language/macro definition unchanged.
+        config = root / "usr/share/autoconf/autom4te.cfg"
+        lines = config.read_text().splitlines(keepends=True)
+        directory_option = "args: --prepend-include '/usr/share/autoconf'"
+        if sum(line.strip() == directory_option for line in lines) != 4:
+            raise RuntimeError("unexpected Autoconf macro-directory configuration")
+        config.write_text("".join(line for line in lines if line.strip() != directory_option))
     environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
     plugin_files = list(root.glob("usr/lib/*/graphviz/*.so*")) if foreign else []
-    for binary in [path for name, path in tools.items() if name not in script_tools + shell_tools] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")) + plugin_files:
+    for binary in [path for name, path in tools.items() if name not in script_tools + shell_tools + ("sphinx-build",)] + list(root.glob("usr/lib/*/perl*/*/auto/**/*.so")) + plugin_files:
         if not binary.is_file():
             raise RuntimeError(f"configure packages contain no tool: {binary}")
         listing = run_tool(prefix + ["--list", str(binary)], environment=environment).decode()
@@ -266,7 +299,7 @@ export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
         if name == "make":
             script += 'MAKE="$root/bin/make"\nexport MAKE\n'
         if name == "perl":
-            script += 'PERL5LIB="' + perl_path + '"\nPERL5OPT="-MSonic::BuildTools"\nexport PERL5LIB PERL5OPT\n'
+            script += 'PERL5LIB="' + perl_path + '"\ncase " ${PERL5OPT:-} " in *" -MSonic::BuildTools "*) ;; *) PERL5OPT="-MSonic::BuildTools${PERL5OPT:+ $PERL5OPT}" ;; esac\nexport PERL5LIB PERL5OPT\n'
         if name == "pkgconf":
             # No host /usr/lib/pkgconfig fallback; foreign_cc supplies explicit
             # PKG_CONFIG_LIBDIR/PATH for its declared target dependencies.
@@ -301,15 +334,19 @@ fi
             if name == "aclocal":
                 script += '--system-acdir "$root/usr/share/aclocal" '
             script += '"$@"\n'
+        elif name == "sphinx-build":
+            script += 'PYTHONPATH="$root/usr/lib/python3/dist-packages${PYTHONPATH:+:$PYTHONPATH}"\nexport PYTHONPATH\n'
+            script += 'exec "$root/bin/python3" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         elif name in shell_tools:
             script += 'pkgdatadir="$root/usr/share/libtool"\naclocaldir="$root/usr/share/aclocal"\nexport pkgdatadir aclocaldir\n'
             script += 'exec "$root/bin/sh" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         else:
-            script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
+            argv0 = ' --argv0 "$root/bin/python3"' if name == "python3" else ""
+            script += 'exec "$root/' + str(loader.relative_to(root)) + '"' + argv0 + ' --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         write_launcher(root, name, script, executable)
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip()
-                for name in ("make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te") +
-                (("autoreconf", "automake", "aclocal", "libtoolize", "protoc", "python3") if foreign else ())}
+                for name in (("perl",) if perl_only else ("make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te")) +
+                (("autoreconf", "automake", "aclocal", "libtoolize", "protoc", "python3", "sphinx-build", "makeinfo") if foreign else ())}
     if foreign:
         # Debian generates this plugin index in postinst. Reproduce it with the
         # declared executable, and keep relative plugin names for relocation.
@@ -320,7 +357,7 @@ fi
         os.utime(indexes[0], (0, 0))
     manifest = {
         "format_version": 1,
-        "profile": "foreign" if foreign else "configure",
+        "profile": "perl" if perl_only else ("foreign" if foreign else "configure"),
         "architecture": architecture,
         "loader": str(loader.relative_to(root)),
         "library_directories": [str(path.relative_to(root)) for path in libraries],
@@ -328,7 +365,7 @@ fi
         "perl_directories": [str(path.relative_to(root)) for path in perl_directories],
         "versions": versions,
     }
-    if foreign:
+    if foreign or perl_only:
         # Optional Debian alternatives (for example /etc/rmt) can point at
         # packages outside the selected closure. They are not executable
         # inputs, and dangling links are invalid inside Bazel tree outputs.
@@ -406,7 +443,7 @@ def main() -> None:
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--launcher", required=True, type=Path)
     parser.add_argument("--tar", action="append", default=[])
-    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign"), default="documentation")
+    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign", "tests", "perl"), default="documentation")
     args = parser.parse_args()
     validate_launcher(args.launcher, args.architecture)
     root = Path(args.out).resolve()
@@ -414,7 +451,7 @@ def main() -> None:
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
-    if args.profile in ("configure", "foreign"):
+    if args.profile in ("configure", "foreign", "tests", "perl"):
         # Bazel caches files inside tree outputs. Materialize directory aliases
         # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
         # a child through a directory symlink before its target is populated.
@@ -436,8 +473,12 @@ def main() -> None:
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
-    if args.profile in ("configure", "foreign"):
-        prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign")
+    if args.profile in ("configure", "foreign", "perl"):
+        prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign", perl_only=args.profile == "perl")
+        return
+    if args.profile == "tests":
+        from test_runtime import prepare_tests
+        prepare_tests(root, args.architecture, loader, libraries)
         return
     if args.profile == "kerberos":
         prepare_kerberos(root, args.architecture, loader, libraries, args.launcher)

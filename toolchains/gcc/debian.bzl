@@ -32,7 +32,7 @@ COMPILER_PATH="$root/{triple}/bin"
 GCC_EXEC_PREFIX="$root/usr/lib/{gcc_directory}/"
 export COMPILER_PATH GCC_EXEC_PREFIX
 exec "$root/{loader}" \
-    --inhibit-cache --library-path "$root/{library_directory}" \
+    --inhibit-cache --library-path "{library_paths}" \
     "$root/{executable}" {options}"$@"
 """.format(
         notice = _NOTICE,
@@ -42,8 +42,8 @@ exec "$root/{loader}" \
         triple = layout.triple,
         gcc_directory = layout.gcc_directory,
         loader = layout.loader,
-        library_directory = layout.library_directory,
-        options = ('-B "$root/' + layout.triple + '/bin/" ' if driver else '-B "$root/' + layout.libexec + '/" ' if archiver else ""),
+        library_paths = ":".join(["$root/" + path for path in layout.library_paths]),
+        options = ('-ffile-prefix-map="$PWD"=. -B "$root/' + layout.triple + '/bin/" ' if driver else '-B "$root/' + layout.libexec + '/" ' if archiver else ""),
     )
     ctx.file(path, script, executable = True)
 
@@ -52,23 +52,26 @@ def _debian_gcc_impl(ctx):
     if ctx.os.name.lower() != "linux" or not host_arch:
         fail("Debian compiler assembly requires a Linux AMD64 or ARM64 host")
     tar = ctx.path(getattr(ctx.attr, "_tar_" + host_arch))
-    collisions = extract_archives(ctx, tar, ctx.attr.packages, ".")
+    collisions = extract_archives(ctx, tar, ctx.attr.packages, ".", relocate_root_symlinks = ctx.attr.suite == "bookworm")
 
     target = GCC_METADATA[ctx.attr.target_arch]
     execution = GCC_METADATA[ctx.attr.exec_arch]
     gcc_directory = "gcc" if ctx.attr.target_arch == ctx.attr.exec_arch else "gcc-cross"
+    major = ctx.attr.gcc_major
+    old_layout = ctx.attr.suite == "bookworm"
     layout = struct(
         triple = target.multiarch,
         gcc_directory = gcc_directory,
-        libexec = "usr/libexec/{}/{}/14".format(gcc_directory, target.multiarch),
-        loader = "usr/lib/{}/{}".format(execution.multiarch, execution.dynamic_linker.split("/")[-1]),
+        libexec = "usr/{}/{}/{}/{}".format("lib" if old_layout else "libexec", gcc_directory, target.multiarch, major),
+        loader = "{}/{}/{}".format("lib" if old_layout else "usr/lib", execution.multiarch, execution.dynamic_linker.split("/")[-1]),
         library_directory = "usr/lib/" + execution.multiarch,
+        library_paths = ["usr/lib/" + execution.multiarch] + (["lib/" + execution.multiarch] if old_layout else []),
     )
 
     tools = {
-        "gcc": "usr/bin/" + layout.triple + "-gcc-14",
-        "g++": "usr/bin/" + layout.triple + "-g++-14",
-        "gcc-ar": "usr/bin/" + layout.triple + "-gcc-ar-14",
+        "gcc": "usr/bin/" + layout.triple + "-gcc-" + major,
+        "g++": "usr/bin/" + layout.triple + "-g++-" + major,
+        "gcc-ar": "usr/bin/" + layout.triple + "-gcc-ar-" + major,
     }
     for tool in ["ar", "as", "ld", "nm", "objcopy", "objdump", "ranlib", "readelf", "strip"]:
         tools[tool] = "usr/bin/" + layout.triple + "-" + tool
@@ -94,7 +97,9 @@ def _debian_gcc_impl(ctx):
         "packages": [{"archive": str(label)} for label in ctx.attr.packages],
         "tools": tools,
         "loader": layout.loader,
-        "library_directories": [layout.library_directory],
+        "library_directories": layout.library_paths,
+        "suite": ctx.attr.suite,
+        "gcc_major": major,
         "collision_check": collisions,
     }) + "\n", executable = False)
     ctx.template(
@@ -107,6 +112,8 @@ def _debian_gcc_impl(ctx):
 debian_gcc = repository_rule(
     implementation = _debian_gcc_impl,
     attrs = {
+        "suite": attr.string(default = "trixie", values = ["trixie", "bookworm"]),
+        "gcc_major": attr.string(default = "14"),
         "packages": attr.label_list(mandatory = True, allow_files = [".xz"]),
         "target_arch": attr.string(mandatory = True, values = sorted(GCC_METADATA)),
         "exec_arch": attr.string(mandatory = True, values = sorted(GCC_METADATA)),

@@ -1,0 +1,30 @@
+load("@bazel_lib//lib:copy_file.bzl", "copy_file")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_shared_library")
+load("@rules_python//python:defs.bzl", "py_test")
+load("//cc:shared_library.bzl", "shared_library_cc_info")
+
+package(default_testonly = True)
+
+cc_binary(name = "arbitrary_payload.so", srcs = ["leaf.c"], linkshared = True, linkopts = ["-Wl,-soname,libindirect.so.7"])
+# The fixture ELF declares this SONAME. Make that name a declared linker input.
+copy_file(name = "runtime_soname", src = ":arbitrary_payload.so", out = "libindirect.so.7", allow_symlink = True)
+copy_file(name = "script", src = "script.ld", out = "libscript.so", allow_symlink = True)
+# Keep the precompiled library and its search flags in one linker input.
+_REPOSITORY = repository_name().lstrip("@")
+_FIXTURE_OUTPUT_DIR = "$(BINDIR)/" + ("external/" + _REPOSITORY + "/" if _REPOSITORY else "") + "cc/tests/runtime_context"
+
+cc_library(name = "dependency", srcs = [":script"])
+cc_library(
+    name = "middle_objects",
+    srcs = ["middle.c"],
+    deps = [":dependency"],
+    additional_linker_inputs = [":script", ":runtime_soname"],
+    data = [":runtime_soname"],
+    linkopts = ["-L" + _FIXTURE_OUTPUT_DIR, "-Wl,-rpath-link," + _FIXTURE_OUTPUT_DIR],
+    alwayslink = True,
+)
+
+cc_shared_library(name = "middle", deps = [":middle_objects"], shared_lib_name = "libnative_context_middle.so.0", user_link_flags = ["-Wl,-soname,libnative_context_middle.so.0"])
+shared_library_cc_info(name = "middle_link", shared_library = ":middle", runtime_deps = [":middle_objects"])
+cc_binary(name = "consumer", srcs = ["main.c"], deps = [":middle_link"], linkstatic = False)
+py_test(name = "layout_test", srcs = ["layout_test.py"], args = ["$(location :consumer)", "$(location :middle)"], data = [":consumer", ":middle"], deps = ["//deb:elf_metadata"])

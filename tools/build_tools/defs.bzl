@@ -6,7 +6,13 @@ def _python_runtime_impl(ctx):
     runtime = ctx.toolchains["@rules_python//python:toolchain_type"].py3_runtime
     if runtime == None or runtime.interpreter == None:
         fail("Build tools require a declared Python 3 interpreter")
-    return [PythonRuntimeInfo(interpreter = runtime.interpreter, files = runtime.files)]
+    return [
+        PythonRuntimeInfo(interpreter = runtime.interpreter, files = runtime.files),
+        DefaultInfo(
+            files = depset([runtime.interpreter]),
+            runfiles = ctx.runfiles(files = [runtime.interpreter], transitive_files = runtime.files),
+        ),
+    ]
 
 python_runtime = rule(
     implementation = _python_runtime_impl,
@@ -23,13 +29,17 @@ def _runtime_impl(ctx):
     args.add("--profile", ctx.attr.profile)
     args.add("--launcher", ctx.executable._runtime_launcher.path)
     args.add_all(ctx.files.packages, before_each = "--tar")
+    support = ctx.files._test_support if ctx.attr.profile == "tests" else []
+    environment = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"}
+    if support:
+        environment["PYTHONPATH"] = ":".join(depset([file.dirname for file in support]).to_list())
     ctx.actions.run(
         executable = python.interpreter,
         arguments = [args],
         inputs = ctx.files.packages,
-        tools = depset([python.interpreter, ctx.file._prepare, ctx.executable._runtime_launcher], transitive = [python.files]),
+        tools = depset([python.interpreter, ctx.file._prepare, ctx.executable._runtime_launcher] + support, transitive = [python.files]),
         outputs = [output],
-        env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
+        env = environment,
         mnemonic = "PrepareBuildTools",
         progress_message = "Preparing pinned build-tools runtime",
     )
@@ -40,8 +50,9 @@ build_tools_runtime = rule(
     attrs = {
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "packages": attr.label_list(allow_files = True, mandatory = True),
-        "profile": attr.string(default = "documentation", values = ["documentation", "configure", "kerberos", "foreign"]),
+        "profile": attr.string(default = "documentation", values = ["documentation", "configure", "kerberos", "foreign", "tests", "perl"]),
         "_prepare": attr.label(default = Label(":prepare_runtime.py"), allow_single_file = True, cfg = "exec"),
+        "_test_support": attr.label_list(default = [Label(":test_runtime.py"), Label("//deb:elf_metadata.py")], allow_files = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
         "_runtime_launcher": attr.label(default = Label(":runtime_launcher"), executable = True, cfg = "exec"),
     },
@@ -124,6 +135,9 @@ set -eu
 self=$0
 case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
 runfiles="$self.runfiles"
+if [ ! -d "$runfiles" ] && [ -n "${RUNFILES_DIR:-}" ] && [ -d "$RUNFILES_DIR" ]; then
+    runfiles=$RUNFILES_DIR
+fi
 if [ ! -d "$runfiles" ]; then
     runfiles=$self
     while :; do
@@ -149,7 +163,7 @@ build_tool = rule(
     implementation = _executable_impl,
     executable = True,
     attrs = {
-        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "dot"]),
+        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot", "valgrind", "tclsh", "po2debconf", "msgcat"]),
         "_launcher": attr.label(default = Label(":launcher.py"), allow_single_file = True, cfg = "exec"),
         "runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),

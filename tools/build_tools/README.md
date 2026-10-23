@@ -422,3 +422,8 @@ architecture, hard-float ARMHF user-space and freestanding softfp NEON,
 declared library paths, and Debian dependency metadata. The native
 `kernel_runtime_test` checks the same tree for AMD64 regressions. Complete
 kernel source and package validation belongs to `sonic-linux-kernel`.
+
+The shared execution runtime also exports `sphinx-build` and `makeinfo` for
+native documentation generation actions. Their Python/Perl modules, Texinfo XS
+modules, Sphinx themes and native libraries come from the same pinned
+execution-architecture package set.

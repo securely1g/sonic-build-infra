@@ -38,7 +38,7 @@ def _strip_binary_rule_impl(ctx):
         env = {
             # If the base image is Make-built, it already has a /etc/ld.so.cache to look up installed binaries,
             # and rpaths could mess resolution order (since they have precedence over LD_LIBRARY_PATH).
-            "STRIP_RPATH": "true" if ctx.attr._make_built_base[BuildSettingInfo].value else "false",
+            "STRIP_RPATH": "true" if ctx.attr._make_built_base[BuildSettingInfo].value and not ctx.attr.preserve_install_rpath else "false",
         },
         tools = [
             binutils.readelf,
@@ -63,6 +63,10 @@ _strip_binary_rule = rule(
     doc = "Takes a single compiled ELF target and produces (a) a stripped version with debug " +
           "info removed, and (b) the extracted debug symbols as a <build-id>.debug file. ",
     attrs = {
+        "preserve_install_rpath": attr.bool(
+            default = False,
+            doc = "Keep intentional installation RPATH/RUNPATH entries while filtering Bazel solib/runfiles paths, including with a Make-built base.",
+        ),
         "src": attr.label(
             mandatory = True,
             allow_single_file = True,

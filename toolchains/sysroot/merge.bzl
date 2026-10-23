@@ -1,6 +1,6 @@
 """Combine pinned package payloads only when their overlapping files agree."""
 
-def _inventory(ctx, tar, archive):
+def _inventory(ctx, tar, archive, relocate_root_symlinks):
     # libarchive owns archive decoding. Request flat mtree metadata, without
     # timestamps: Debian multiarch packages may have different build times.
     result = ctx.execute([
@@ -15,6 +15,7 @@ def _inventory(ctx, tar, archive):
     if result.return_code:
         fail("Cannot inspect sysroot archive {}: {}".format(archive, result.stderr))
     entries = {}
+    absolute_links = {}
     for line in result.stdout.splitlines():
         if not line or line.startswith("#"):
             continue
@@ -43,6 +44,13 @@ def _inventory(ctx, tar, archive):
         if metadata["type"] == "link":
             target = metadata.get("link", "")
             depth = len(path.split("/")) - 1
+            if target.startswith("/") and relocate_root_symlinks:
+                parts = target[1:].split("/")
+                if any([part in ["", ".", ".."] for part in parts]):
+                    fail("Unsafe absolute sysroot symlink: " + line)
+                target = "../" * depth + target[1:]
+                metadata["link"] = target
+                absolute_links[path] = target
             if not target or target.startswith("/"):
                 fail("Non-relative sysroot symlink: " + line)
             for part in target.split("/"):
@@ -52,9 +60,29 @@ def _inventory(ctx, tar, archive):
         if path in entries:
             fail("Repeated path within sysroot archive {}: {}".format(archive, path))
         entries[path] = metadata
-    return entries
+    return entries, absolute_links
 
-def extract_archives(ctx, tar, archives, output):
+def _extract(ctx, tar, archive, output, absolute_links):
+    if not absolute_links:
+        ctx.extract(archive, output = output)
+        return
+
+    # Bookworm libc has an absolute loader alias. Keep its root-relative
+    # semantics inside the declared repository instead of linking the host.
+    ctx.file(output + "/.declared-extract", "")
+    result = ctx.execute([str(tar), "--extract", "--no-same-owner", "--file", str(archive), "--directory", str(ctx.path(output))] + ["--exclude=./" + path for path in absolute_links])
+    if result.return_code:
+        fail("Cannot extract declared root: " + result.stderr)
+    ctx.delete(output + "/.declared-extract")
+    ctx.file("_root_links.mtree", "#mtree\n" + "\n".join(["./{} type=link link={} uid=0 gid=0 mode=0777 time=0".format(path, target) for path, target in absolute_links.items()]) + "\n")
+    result = ctx.execute([str(tar), "--create", "--format=ustar", "--file", str(ctx.path("_root_links.tar")), "@" + str(ctx.path("_root_links.mtree"))])
+    if result.return_code:
+        fail("Cannot relocate declared root links: " + result.stderr)
+    ctx.extract("_root_links.tar", output = output)
+    ctx.delete("_root_links.tar")
+    ctx.delete("_root_links.mtree")
+
+def extract_archives(ctx, tar, archives, output, relocate_root_symlinks = False):
     """Check shared metadata and exact file bytes before overlaying archives.
 
     Args:
@@ -62,6 +90,7 @@ def extract_archives(ctx, tar, archives, output):
         tar: Existing pinned BSD tar executable, used only for metadata.
         archives: Labels of existing Distroless data.tar.xz source files.
         output: Relative directory for the combined payload.
+        relocate_root_symlinks: Convert absolute root-internal package aliases to relative links.
 
     Returns:
         Counts of the paths and identical overlaps verified during assembly.
@@ -73,7 +102,7 @@ def extract_archives(ctx, tar, archives, output):
         archive = ctx.path(label)
         if not archive.exists or archive.is_dir or archive.basename != "data.tar.xz":
             fail("Expected pinned Distroless repository source archive: {}".format(label))
-        entries = _inventory(ctx, tar, archive)
+        entries, absolute_links = _inventory(ctx, tar, archive, relocate_root_symlinks)
         for path, metadata in entries.items():
             if path in owners:
                 previous, previous_metadata = owners[path]
@@ -88,7 +117,7 @@ def extract_archives(ctx, tar, archives, output):
                 shared[path] = metadata["type"]
             else:
                 owners[path] = (str(label), metadata)
-        inventories.append((archive, entries))
+        inventories.append((archive, entries, absolute_links))
 
     # A symlink or regular file must never become a parent directory during
     # extraction, even when its children come from a different package.
@@ -101,10 +130,10 @@ def extract_archives(ctx, tar, archives, output):
 
     extracted_files = {}
     comparisons = 0
-    for archive, entries in inventories:
+    for archive, entries, absolute_links in inventories:
         duplicates = [path for path, metadata in entries.items() if metadata["type"] == "file" and path in extracted_files]
         if duplicates:
-            ctx.extract(archive, output = "_sysroot_staging")
+            _extract(ctx, tar, archive, "_sysroot_staging", absolute_links)
             for path in duplicates:
                 # Bazel 8.5.1 read() preserves bytes using ISO-8859-1, including
                 # binary and compressed files. Do not substitute mtree checksums:
@@ -117,7 +146,7 @@ def extract_archives(ctx, tar, archives, output):
                     ))
                 comparisons += 1
             ctx.delete("_sysroot_staging")
-        ctx.extract(archive, output = output)
+        _extract(ctx, tar, archive, output, absolute_links)
         for path, metadata in entries.items():
             if metadata["type"] == "file":
                 extracted_files[path] = str(archive)

@@ -33,7 +33,7 @@ _runtime_tar = rule(
     },
 )
 
-def _sonic_deploy_tar_impl(name, force_debug_build, binaries = {}, srcs = [], mtree = [], **kwargs):
+def _sonic_deploy_tar_impl(name, force_debug_build, preserve_install_rpath, binaries = {}, srcs = [], mtree = [], debug_symlinks = {}, **kwargs):
     # We strip each binary and generate its mtree line pointing at the stripped ELF
     stripped_targets = []
     debug_targets = []
@@ -45,6 +45,7 @@ def _sonic_deploy_tar_impl(name, force_debug_build, binaries = {}, srcs = [], mt
             name = stripped_name,
             src = binary,
             force_debug_build = force_debug_build,
+            preserve_install_rpath = preserve_install_rpath,
             **propagate_common_rule_attributes(kwargs)
         )
         debug_symbol_targets.append(":" + stripped_name)
@@ -94,6 +95,7 @@ def _sonic_deploy_tar_impl(name, force_debug_build, binaries = {}, srcs = [], mt
     debug_symbols_tar(
         name = name + ".debug_symbols",
         srcs = debug_targets,
+        symlinks = debug_symlinks,
         visibility = kwargs["visibility"],
     )
 
@@ -107,6 +109,8 @@ It produces two targets:
     implementation = _sonic_deploy_tar_impl,
     inherit_attrs = tar_rule,
     attrs = {
+        "preserve_install_rpath": attr.bool(default = False, configurable = False, doc = "Retain installation RPATH/RUNPATH entries and remove Bazel build paths during ELF splitting."),
+        "debug_symlinks": attr.string_dict(configurable = False, doc = "Installation symlinks added only to the debug-symbol tar."),
         "srcs": attr.label_list(
             default = [],
             allow_files = True,
