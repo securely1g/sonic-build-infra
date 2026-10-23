@@ -70,6 +70,7 @@ jobs:
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
+                 '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
           bazel --ignore_all_rc_files build "${flags[@]}" \
             --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
@@ -87,7 +88,9 @@ jobs:
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
-            //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
+            //tools/build_tools:configure_make_test \
+            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
           test -s MODULE.bazel.lock
@@ -96,22 +99,29 @@ jobs:
             test "${flags[@]}" --nocache_test_results --test_output=errors \
             --build_event_json_file="$PWD/ci-artifacts/cache-test-events.jsonl" \
             --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
-            //tools/build_tools:configure_runtime_test 2>&1 | tee ci-artifacts/cache-test.log
+            --execution_log_sort=false \
+            //tools/build_tools:configure_runtime_test //tools/build_tools:foreign_runtime_test \
+            //tools/build_tools:kernel_runtime_test \
+            2>&1 | tee ci-artifacts/cache-test.log
           python3 - <<'PYTHON'
           import json
+          import os
           from pathlib import Path
           data = Path("ci-artifacts/cache-spawns.json").read_text()
           decoder = json.JSONDecoder()
           offset, runtimes = 0, []
           while offset < len(data):
               record, offset = decoder.raw_decode(data, offset)
-              if record.get("mnemonic") == "PrepareBuildTools":
+              if record.get("mnemonic") in ("PrepareBuildTools", "PrepareBuildToolsRootfs"):
                   runtimes.append({key: record.get(key) for key in ("mnemonic", "targetLabel", "listedOutputs", "runner", "cacheHit")})
               while offset < len(data) and data[offset].isspace():
                   offset += 1
-          # A compiled execution tool can require target and exec runtimes.
-          # Every required runtime must be restored; do not assume one config.
-          assert runtimes, "No declared build-tool runtime action was recorded"
+          # Compiled tools may need multiple target/exec runtime configurations.
+          # Both runtime kinds must be restored for every required config.
+          assert {row["mnemonic"] for row in runtimes} == {"PrepareBuildTools", "PrepareBuildToolsRootfs"}, runtimes
+          kernel_label = "//tools/build_tools:kernel_runtime_" + os.environ["ARCHITECTURE"]
+          assert any(row["mnemonic"] == "PrepareBuildToolsRootfs"
+                     and str(row["targetLabel"]).endswith(kernel_label) for row in runtimes), runtimes
           assert all(item["cacheHit"] and item["runner"] == "disk cache hit"
                      for item in runtimes), runtimes
           Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")

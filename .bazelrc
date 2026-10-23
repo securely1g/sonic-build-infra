@@ -9,4 +9,8 @@ common --registry=https://bcr.bazel.build/
 common --platforms=//platforms:x86_64_trixie
 common:aarch64 --platforms=//platforms:aarch64_trixie
 
+# Materialize the declared kernel/metadata tool tree when restoring cached
+# outputs. Consumers must also select this policy in their own root config.
+build --remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$
+
 test --test_output=errors
