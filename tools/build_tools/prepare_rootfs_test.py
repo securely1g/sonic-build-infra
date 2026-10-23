@@ -1,4 +1,4 @@
-"""Check package metadata and archive boundaries without creating DEBs."""
+"""Check package metadata, cached runtime trees and archive boundaries."""
 
 import io
 import os
@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from prepare_rootfs import add_target_packages, merge_target_payload, configure_xml_sax, initialize_root, package_metadata, preserve_empty_directories, remove_x11_alias, validate_links
-from prepare_runtime import extract_payload
+from prepare_runtime import extract_payload, materialize_directory_aliases
 
 
 def write_tar(path, records):
@@ -87,6 +87,84 @@ class RootfsTest(unittest.TestCase):
         configure_xml_sax(self.root)
 
         self.assertEqual(config.read_text(), content)
+
+    def test_cached_perl_alias_children_restore_before_versioned_directory(self):
+        # Reproduce Sairedis ARM64's second build: the cache restores children
+        # under Perl's 5.40 alias before its real 5.40.1 directory is present.
+        # Empty-directory markers alone cannot make the alias traversable.
+        perl = self.root / "usr/lib/aarch64-linux-gnu/perl"
+        versioned = perl / "5.40.1"
+        (versioned / "bits/linux").mkdir(parents=True)
+        (versioned / "Config.pm").write_text("declared Perl configuration")
+        alias = perl / "5.40"
+        alias.symlink_to("5.40.1")
+        preserve_empty_directories(self.root)
+
+        def restore_alias_first(destination):
+            copied = destination / alias.relative_to(self.root)
+            copied.parent.mkdir(parents=True)
+            if alias.is_symlink():
+                copied.symlink_to(alias.readlink())
+            else:
+                copied.mkdir()
+            # Materializing a child must not depend on another DirectoryNode
+            # having been restored earlier by the cache downloader.
+            for source in sorted(alias.rglob("*")):
+                target = copied / source.relative_to(alias)
+                if source.is_dir():
+                    target.mkdir()
+                else:
+                    shutil.copyfile(source, target)
+            shutil.copytree(versioned, copied.parent / versioned.name)
+            return copied
+
+        with self.assertRaises(OSError):
+            restore_alias_first(self.directory / "unprepared")
+
+        materialize_directory_aliases(self.root, preserve_root_aliases=True)
+        copied = restore_alias_first(self.directory / "restored")
+        self.assertFalse(alias.is_symlink())
+        self.assertTrue((copied / "bits/linux/.bazel-keep-directory").is_file())
+        self.assertEqual((copied / "Config.pm").read_text(), "declared Perl configuration")
+        self.assertEqual((copied.parent / "5.40.1/Config.pm").read_bytes(),
+                         (copied / "Config.pm").read_bytes())
+        # Kernel linkers and package tools still use the merged-/usr paths.
+        for name in ("bin", "sbin", "lib", "lib32", "lib64", "libx32"):
+            self.assertEqual((self.root / name).readlink(), Path("usr") / name)
+        validate_links(self.root)
+
+    def test_materialized_alias_preserves_relative_child_link_destination(self):
+        # Moving a directory to a different depth must not redirect its file
+        # links to a similarly named host or runtime path.
+        target = self.root / "source/package"
+        target.mkdir(parents=True)
+        original = self.root / "etc/config.ini"
+        original.write_text("declared configuration")
+        (target / "config.ini").symlink_to("../../etc/config.ini")
+        alias = self.root / "usr/lib/package"
+        alias.symlink_to("../../source/package")
+
+        materialize_directory_aliases(self.root, preserve_root_aliases=True)
+
+        copied = alias / "config.ini"
+        self.assertFalse(alias.is_symlink())
+        self.assertTrue(copied.is_symlink())
+        self.assertEqual(copied.resolve(), original)
+        self.assertEqual(copied.read_text(), "declared configuration")
+        validate_links(self.root)
+
+    def test_materialized_alias_rejects_ancestor_and_outside_directories(self):
+        # Cycles cannot produce a finite tree artifact, and declared runtimes
+        # must never copy directories outside their own extracted root.
+        alias = self.root / "usr/lib/invalid"
+        outside = self.directory / "outside"
+        outside.mkdir()
+        for target in ("..", str(outside)):
+            with self.subTest(target=target):
+                alias.symlink_to(target)
+                with self.assertRaisesRegex(ValueError, "invalid runtime directory alias"):
+                    materialize_directory_aliases(self.root, preserve_root_aliases=True)
+                alias.unlink()
 
     def test_file_only_cache_roundtrip_preserves_empty_directory_links(self):
         # Model the cache downloader creating file/symlink parents but omitting

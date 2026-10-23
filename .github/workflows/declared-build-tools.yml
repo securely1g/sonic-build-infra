@@ -86,7 +86,9 @@ jobs:
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
-            //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
+            //tools/build_tools:configure_make_test \
+            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
           test -s MODULE.bazel.lock
@@ -95,7 +97,8 @@ jobs:
             test "${flags[@]}" --nocache_test_results --test_output=errors \
             --build_event_json_file="$PWD/ci-artifacts/cache-test-events.jsonl" \
             --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
-            //tools/build_tools:configure_runtime_test 2>&1 | tee ci-artifacts/cache-test.log
+            //tools/build_tools:configure_runtime_test //tools/build_tools:kernel_runtime_test \
+            2>&1 | tee ci-artifacts/cache-test.log
           python3 - <<'PYTHON'
           import json
           from pathlib import Path
@@ -104,12 +107,13 @@ jobs:
           offset, runtimes = 0, []
           while offset < len(data):
               record, offset = decoder.raw_decode(data, offset)
-              if record.get("mnemonic") == "PrepareBuildTools":
+              if record.get("mnemonic") in ("PrepareBuildTools", "PrepareBuildToolsRootfs"):
                   runtimes.append({key: record.get(key) for key in ("mnemonic", "runner", "cacheHit")})
               while offset < len(data) and data[offset].isspace():
                   offset += 1
-          assert len(runtimes) == 1 and runtimes[0]["cacheHit"], runtimes
-          assert runtimes[0]["runner"] == "disk cache hit", runtimes
+          assert {row["mnemonic"] for row in runtimes} == {"PrepareBuildTools", "PrepareBuildToolsRootfs"}, runtimes
+          assert len(runtimes) == 2 and all(row["cacheHit"] for row in runtimes), runtimes
+          assert all(row["runner"] == "disk cache hit" for row in runtimes), runtimes
           Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")
           PYTHON
       - name: Collect resolution and test evidence

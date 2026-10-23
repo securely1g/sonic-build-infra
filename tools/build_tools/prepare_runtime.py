@@ -276,6 +276,10 @@ fi
         else:
             script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         launcher = root / "bin" / name
+        # A copied merged-/usr alias (for example sh -> ../usr/bin/dash)
+        # still points at the packaged executable. Replace the alias itself;
+        # writing through it would corrupt the executable our wrapper invokes.
+        launcher.unlink(missing_ok=True)
         launcher.write_text(script)
         launcher.chmod(0o755)
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip()
@@ -373,6 +377,50 @@ unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def materialize_directory_aliases(root: Path, *, preserve_root_aliases: bool = False) -> None:
+    """Keep cached tree children independent of directory-symlink restore order.
+
+    File symlinks keep pointing to their original declared targets, including
+    when an alias copies a directory to a different depth in the runtime.
+    Kernel tools retain their intentional root-level merged-/usr entrypoints.
+    """
+    root = root.resolve()
+    while True:
+        aliases = []
+        for path in sorted(root.rglob("*")):
+            if not path.is_symlink() or not path.is_dir():
+                continue
+            if (preserve_root_aliases and path.parent == root
+                    and path.name in ("bin", "sbin", "lib", "lib32", "lib64", "libx32")
+                    and path.readlink() == Path("usr") / path.name):
+                continue
+            aliases.append(path)
+        if not aliases:
+            return
+        for path in aliases:
+            if not path.is_symlink():
+                continue
+            target = path.resolve(strict=True)
+            if not target.is_relative_to(root) or path.is_relative_to(target):
+                raise ValueError(f"invalid runtime directory alias: {path.relative_to(root)}")
+            # Copying literal relative links can change their destination when
+            # the directory alias and its target have different parents.
+            links = []
+            for source in target.rglob("*"):
+                if not source.is_symlink():
+                    continue
+                destination = source.resolve(strict=False)
+                if not destination.is_relative_to(root):
+                    raise ValueError(f"runtime symlink escapes output: {source.relative_to(root)}")
+                links.append((source.relative_to(target), destination))
+            path.unlink()
+            shutil.copytree(target, path, symlinks=True)
+            for relative, destination in links:
+                copied = path / relative
+                copied.unlink()
+                copied.symlink_to(os.path.relpath(destination, copied.parent))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
@@ -386,24 +434,12 @@ def main() -> None:
         extract_payload(root, payload)
 
     if args.profile in ("configure", "foreign"):
-        # Bazel caches files inside tree outputs. Materialize directory aliases
-        # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
-        # a child through a directory symlink before its target is populated.
-        while True:
-            links = [path for path in root.rglob("*") if path.is_symlink() and path.is_dir()]
-            if not links:
-                break
-            for path in links:
-                target = path.resolve(strict=True)
-                # X11 packages keep a compatibility alias /usr/bin/X11 -> .;
-                # none of the declared tools uses this recursive directory.
-                if args.profile == "foreign" and path in (root / "usr/bin/X11", root / "bin/X11") and target == path.parent:
+        # X11's unused compatibility alias points back to its own parent.
+        if args.profile == "foreign":
+            for path in (root / "usr/bin/X11", root / "bin/X11"):
+                if path.is_symlink() and path.resolve() == path.parent:
                     path.unlink()
-                    continue
-                if not target.is_relative_to(root) or path.is_relative_to(target):
-                    raise ValueError(f"invalid runtime directory alias: {path}")
-                path.unlink()
-                shutil.copytree(target, path, symlinks=True)
+        materialize_directory_aliases(root)
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]

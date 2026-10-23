@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path, PurePosixPath
 import tarfile
 
-from prepare_runtime import extract_payload, loader_path
+from prepare_runtime import extract_payload, loader_path, materialize_directory_aliases
 from prepare_kernel import prepare_kernel
 
 
@@ -285,6 +285,8 @@ def main() -> None:
     # Account lookup and temporary files work without inheriting host /etc.
     (root / "etc/passwd").write_text("root:x:0:0:root:/root:/bin/sh\n")
     (root / "etc/group").write_text("root:x:0:\n")
+    materialize_directory_aliases(root, preserve_root_aliases=True)
+    validate_links(root)
     preserve_empty_directories(root)
     (root / "tmp").chmod(0o1777)
     for path in root.rglob("*"):
