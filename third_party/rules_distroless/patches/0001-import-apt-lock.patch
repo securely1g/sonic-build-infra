@@ -1,0 +1,498 @@
+From cf23759d1df47a7a3e6c8eaf97fe90642c93d753 Mon Sep 17 00:00:00 2001
+From: Guohan Lu <securely1g@gmail.com>
+Date: Wed, 21 Oct 2026 09:02:54 +0000
+Subject: [PATCH] Import reviewed APT locks without repeating package
+ declarations
+
+Add apt.import_lock to consume exact package URLs, SHA256 digests and dependency graphs from a version-2 lock. Image consumers can keep one reviewed lock instead of another generated MODULE list of every package version.
+
+Reuse deb_import, deb_postfix and the dependency-set generator for independent data/control archives and complete package closures. Keep C++ discovery on apt.install, whose Contents indexes are absent from runtime locks. Validate package identity, architecture, hashes and graph completeness before creating repositories.
+
+Origin: SONiC-maintained extension for sonic-buildimage PRs #30 and #13. Upstream apt/extensions.bzl at blob c82b0edb1fa57184c78d4d0ac8967aed00e7cbdf has no lock-import tag. This patch is maintained in securely1g/sonic-build-infra and applied after the existing rules_distroless 0.9.4.sonic.10 patch set.
+
+Add regressions for transitive closures, cycles, architecture-independent packages, set selection and malformed lock inputs.
+
+Signed-off-by: Guohan Lu <securely1g@gmail.com>
+---
+ apt/extensions.bzl                       |  33 ++++-
+ apt/private/deb_import.bzl               |  19 ++-
+ apt/private/locked_import.bzl            | 153 +++++++++++++++++++++++
+ apt/private/translate_dependency_set.bzl |  14 ++-
+ apt/tests/BUILD.bazel                    |   3 +
+ apt/tests/locked_import_test.bzl         |  97 ++++++++++++++
+ 6 files changed, 309 insertions(+), 10 deletions(-)
+ create mode 100644 apt/private/locked_import.bzl
+ create mode 100644 apt/tests/locked_import_test.bzl
+
+diff --git a/apt/extensions.bzl b/apt/extensions.bzl
+index 0f9bb39..d110abb 100644
+--- a/apt/extensions.bzl
++++ b/apt/extensions.bzl
+@@ -5,6 +5,7 @@ load("//apt/private:apt_deb_repository.bzl", "deb_repository")
+ load("//apt/private:apt_dep_resolver.bzl", "dependency_resolver")
+ load("//apt/private:deb_filemap.bzl", "deb_filemap")
+ load("//apt/private:deb_import.bzl", "deb_import")
++load("//apt/private:locked_import.bzl", "declare_locked_imports")
+ load("//apt/private:lockfile.bzl", "lockfile")
+ load("//apt/private:translate_dependency_set.bzl", "translate_dependency_set")
+ load("//apt/private:util.bzl", "util")
+@@ -386,7 +387,7 @@ def _distroless_extension(mctx):
+             )
+ 
+         # Key every package by the architecture we are resolving for, not by the
+-        # package's own `Architecture` field. 
++        # package's own `Architecture` field.
+         # For arch-specific packages these are the same.
+         # For `Architecture: all` packages this "expands" them into one entry per target architecture,
+         # so each carries its own arch-specific dependency closure instead of a single frozen one shared across arches.
+@@ -464,6 +465,10 @@ def _distroless_extension(mctx):
+             package_name = package["name"],
+         )
+ 
++    # Locked runtime inputs use the same package importer and hub generator.
++    # They do not participate in package-index resolution or rewrite their locks.
++    declare_locked_imports(mctx, dependency_sets.keys())
++
+     if not use_facts:
+         for mod in mctx.modules:
+             if not mod.is_root:
+@@ -494,6 +499,24 @@ def _distroless_extension(mctx):
+ _doc = """
+ Module extension to create Debian repositories.
+ 
++For a reviewed version-2 runtime lock, use `apt.import_lock` instead of repeating
++its package versions in `apt.install` declarations. This reads exact archive
++URLs and SHA256 digests from the lock and does not resolve package indexes or
++rewrite the lock:
++
++```starlark
++apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
++apt.import_lock(lock = "//image:apt.lock.json")
++use_repo(apt, "image_packages")  # dependency-set name recorded in the lock
++```
++
++Every root and transitive package has independent `:data` and `:control` targets
++(e.g. `@image_packages//libc6:data`), plus its normal package-closure target.
++`dependency_sets = ["image_packages"]` can limit imports from a shared lock.
++The existing importer and deb_postfix rule still prepare the archives.
++Native C++ header/library exports continue to use `apt.install`: the runtime
++lock does not contain the Debian Contents-index data needed for those exports.
++
+ Create Debian repositories with packages "installed" in them and available
+ to use in Bazel.
+ 
+@@ -603,6 +626,13 @@ install = tag_class(
+     },
+ )
+ 
++import_lock = tag_class(
++    attrs = {
++        "lock": attr.label(mandatory = True, doc = "Reviewed version-2 APT lock to import without resolving packages."),
++        "dependency_sets": attr.string_list(doc = "Named sets to expose; empty imports every set in the lock."),
++    },
++)
++
+ lock = tag_class(
+     attrs = {
+         "into": attr.label(
+@@ -616,6 +646,7 @@ apt = module_extension(
+     implementation = _distroless_extension,
+     tag_classes = {
+         "install": install,
++        "import_lock": import_lock,
+         "sources_list": sources_list,
+         "lock": lock,
+     },
+diff --git a/apt/private/deb_import.bzl b/apt/private/deb_import.bzl
+index 99eeaf0..eac9abb 100644
+--- a/apt/private/deb_import.bzl
++++ b/apt/private/deb_import.bzl
+@@ -1,14 +1,14 @@
+ "deb_import"
+ 
+ load("//apt/private:headers.bzl", "is_include_fragment")
+-load(":lockfile.bzl", "lockfile")
+ load(":linker_script.bzl", "linker_script")
+-load(":pkgconfig.bzl", "pkgconfig")
++load(":lockfile.bzl", "lockfile")
+ load(":multiarch.bzl", "default_include_dirs")
++load(":pkgconfig.bzl", "pkgconfig")
+ load(":util.bzl", "util")
+ 
+ # BUILD.bazel template
+-_DEB_IMPORT_BUILD_TMPL = '''
++_DEB_ARCHIVES_BUILD_TMPL = '''
+ load("@rules_distroless//apt/private:deb_postfix.bzl", "deb_postfix")
+ load("@rules_distroless//apt/private:deb_export.bzl", "deb_export")
+ load("@rules_distroless//apt/private:so_library.bzl", "so_library")
+@@ -37,6 +37,9 @@ filegroup(
+     visibility = ["//visibility:public"],
+ )
+ 
++'''
++
++_DEB_IMPORT_BUILD_TMPL = _DEB_ARCHIVES_BUILD_TMPL + '''
+ 
+ deb_export(
+     name = "export",
+@@ -458,6 +461,14 @@ def _deb_import_impl(rctx):
+         sha256 = rctx.attr.sha256,
+     )
+ 
++    if rctx.attr.payload_only:
++        rctx.file("BUILD.bazel", _DEB_ARCHIVES_BUILD_TMPL.format(
++            mergedusr = rctx.attr.mergedusr,
++            depends_on = ["@" + rctx.attr.repo_prefix + util.sanitize(dep_key) + "//:data" for dep_key in rctx.attr.depends_on],
++            target_name = rctx.attr.target_name,
++        ) + '\nfilegroup(name = "pkgconfig", visibility = ["//visibility:public"])\n')
++        return
++
+     # Rebuild the {file: canonical_name(dependency_repo)} index from each dependency's own filemap.
+     # The first dependency that provides a path wins.
+     provided_by = {}
+@@ -500,6 +511,8 @@ def _deb_import_impl(rctx):
+ deb_import = repository_rule(
+     implementation = _deb_import_impl,
+     attrs = {
++        "payload_only": attr.bool(doc = "Import runtime/control archives without C++ discovery or index filemaps."),
++        "repo_prefix": attr.string(doc = "Internal namespace for locked package repositories."),
+         "urls": attr.string_list(mandatory = True, allow_empty = False),
+         "sha256": attr.string(),
+         "depends_on": attr.string_list(doc = "Names of packages this package depends on"),
+diff --git a/apt/private/locked_import.bzl b/apt/private/locked_import.bzl
+new file mode 100644
+index 0000000..a917d81
+--- /dev/null
++++ b/apt/private/locked_import.bzl
+@@ -0,0 +1,153 @@
++"""Import reviewed runtime package graphs through the existing APT repositories."""
++
++load(":deb_import.bzl", "deb_import")
++load(":translate_dependency_set.bzl", "translate_dependency_set")
++load(":util.bzl", "util")
++
++def validation_error(document, requested = []):
++    """Return a useful error before any repository is declared or downloaded."""
++    if type(document) != "dict" or document.get("version") != 2:
++        return "apt.import_lock requires a version-2 lock"
++    for field in ["sources", "packages", "dependency_sets"]:
++        if type(document.get(field)) != "dict":
++            return "APT lock lacks " + field
++    groups = requested or document["dependency_sets"].keys()
++    if not groups or len(groups) != len({name: True for name in groups}):
++        return "APT lock needs distinct dependency sets"
++    for group in groups:
++        if not group or any([character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-" for character in group.elems()]):
++            return "invalid APT dependency set: " + group
++        if group not in document["dependency_sets"]:
++            return "APT lock lacks dependency set: " + group
++        definition = document["dependency_sets"][group]
++        if type(definition) != "dict" or type(definition.get("sets")) != "dict" or not definition["sets"]:
++            return "APT dependency set lacks architectures: " + group
++        for architecture, roots in definition["sets"].items():
++            if architecture == "all" or not architecture or type(roots) != "dict" or not roots:
++                return "invalid APT architecture or roots: " + group
++            if any([type(key) != "string" or type(version) != "string" or not version for key, version in roots.items()]):
++                return "invalid locked APT root identity: " + group
++            pending = [key + "=" + version for key, version in roots.items()]
++            seen = {}
++            names = {}
++            for _ in range(len(document["packages"]) + 1):
++                if not pending:
++                    break
++                following = []
++                for key in pending:
++                    if key in seen:
++                        continue
++                    if key not in document["packages"]:
++                        return "APT dependency is missing from the lock: " + key
++                    package = document["packages"][key]
++                    if type(package) != "dict":
++                        return "invalid locked APT package: " + key
++                    for field in ["name", "version", "architecture", "sha256", "filename", "suite"]:
++                        if type(package.get(field)) != "string" or not package[field]:
++                            return "locked APT package lacks " + field + ": " + key
++                    if type(package.get("depends_on")) != "list" or any([type(dependency) != "string" for dependency in package["depends_on"]]):
++                        return "locked APT package lacks dependency graph: " + key
++                    if any([character not in "abcdefghijklmnopqrstuvwxyz0123456789+.-" for character in package["name"].elems()]) or package["name"] in [".", ".."]:
++                        return "invalid locked APT package name: " + key
++                    if key not in ["/" + package["suite"] + "/" + package["name"] + ":" + arch + "=" + package["version"] for arch in [architecture, "all"]]:
++                        return "APT package key has the wrong identity or architecture: " + key
++                    if package["architecture"] not in [architecture, "all"] or (":all=" in key and package["architecture"] != "all"):
++                        return "APT package has a foreign architecture: " + key
++                    digest = package["sha256"]
++                    if len(digest) != 64 or any([character not in "0123456789abcdef" for character in digest.elems()]):
++                        return "APT package lacks a SHA256 digest: " + key
++                    filename = package["filename"]
++                    if filename.startswith("/") or ".." in filename.split("/"):
++                        return "unsafe APT package filename: " + key
++                    source = document["sources"].get(package["suite"], {})
++                    if type(source) != "dict" or type(source.get("uris")) != "list" or not source["uris"] or any([type(uri) != "string" or not uri for uri in source["uris"]]):
++                        return "APT package lacks source URLs: " + key
++                    if package["name"] in names and names[package["name"]] != key:
++                        return "APT dependency set contains two versions of " + package["name"]
++                    names[package["name"]] = key
++                    seen[key] = True
++                    following.extend(package["depends_on"])
++                pending = following
++    return ""
++
++def reachable_packages(packages, roots):
++    """Find the complete closure of a validated graph, including cyclic edges."""
++    pending = roots
++    seen = {}
++    for _ in range(len(packages) + 1):
++        if not pending:
++            break
++        following = []
++        for key in pending:
++            if key not in seen:
++                seen[key] = True
++                following.extend(packages[key]["depends_on"])
++        pending = following
++    return sorted(seen)
++
++def expanded_sets(document, requested = []):
++    """Expose every locked dependency independently, preserving target architectures."""
++    error = validation_error(document, requested)
++    if error:
++        fail(error)
++    result = {}
++    for group in requested or document["dependency_sets"].keys():
++        architectures = {}
++        for architecture, roots in document["dependency_sets"][group]["sets"].items():
++            pending = [key + "=" + version for key, version in roots.items()]
++            seen = reachable_packages(document["packages"], pending)
++            architectures[architecture] = {key.rsplit("=", 1)[0]: document["packages"][key]["version"] for key in sorted(seen)}
++        result[group] = {"sets": architectures}
++    return result
++
++def declare_locked_imports(mctx, existing_sets):
++    """Reuse deb_import/deb_postfix and the hub generator without index resolution.
++
++    Runtime imports intentionally do not publish C++ compilation targets: a
++    version-2 lock contains archive identities, not Debian Contents-index maps.
++    Ordinary apt.install keeps its existing compiler/header exports.
++    """
++    declared = {name: True for name in existing_sets}
++    for module in mctx.modules:
++        for tag in module.tags.import_lock:
++            document = json.decode(mctx.read(tag.lock))
++            for group, definition in expanded_sets(document, tag.dependency_sets).items():
++                if group in declared:
++                    fail("APT dependency set is already declared: " + group)
++                declared[group] = True
++                prefix = "locked_import_" + group + "_"
++                selected = {key + "=" + version: True for roots in definition["sets"].values() for key, version in roots.items()}
++                imported_packages = {
++                    key: dict(document["packages"][key], depends_on = [
++                        dependency
++                        for dependency in reachable_packages(document["packages"], [key])
++                        if dependency != key
++                    ])
++                    for key in selected
++                }
++                package_repositories = {}
++                for key in selected:
++                    name = prefix + util.sanitize(key)
++                    if name in package_repositories:
++                        fail("locked APT package repository names collide: " + key)
++                    package_repositories[name] = True
++                    package = imported_packages[key]
++                    deb_import(
++                        name = name,
++                        target_name = name,
++                        urls = [uri.rstrip("/") + "/" + package["filename"] for uri in document["sources"][package["suite"]]["uris"]],
++                        sha256 = package["sha256"],
++                        package_name = package["name"],
++                        depends_on = package["depends_on"],
++                        repo_prefix = prefix,
++                        payload_only = True,
++                        mergedusr = False,
++                    )
++                locked = dict(document, packages = imported_packages, dependency_sets = {group: definition})
++                translate_dependency_set(
++                    name = group,
++                    depset_name = group,
++                    lock_content = json.encode(locked),
++                    repo_prefix = prefix,
++                    payload_only = True,
++                )
+diff --git a/apt/private/translate_dependency_set.bzl b/apt/private/translate_dependency_set.bzl
+index 77490a3..fb622d3 100644
+--- a/apt/private/translate_dependency_set.bzl
++++ b/apt/private/translate_dependency_set.bzl
+@@ -157,9 +157,9 @@ alias(
+ # this scoping, a package's `depends_on` (which spans every architecture the
+ # lockfile knows about) would leak foreign-architecture deps into a single
+ # architecture's target, causing file duplication that confuses `flatten`.
+-def package_deps_for_architecture(packages, package, architecture, target = "data"):
++def package_deps_for_architecture(packages, package, architecture, target = "data", repo_prefix = ""):
+     return [
+-        "@" + util.sanitize(dep_key) + "//:" + target
++        "@" + repo_prefix + util.sanitize(dep_key) + "//:" + target
+         for dep_key in package["depends_on"]
+         if packages[dep_key]["architecture"] in [architecture, "all"]
+     ]
+@@ -190,7 +190,7 @@ def _translate_dependency_set_impl(rctx):
+ 
+         for (short_key, version) in dependency_set["sets"][architecture].items():
+             package_key = short_key + "=" + version
+-            repo_name = util.sanitize(package_key)
++            repo_name = rctx.attr.repo_prefix + util.sanitize(package_key)
+             package = packages[package_key]
+             package_name = package["name"]
+ 
+@@ -224,8 +224,8 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+                     data_targets = '"@%s//:data"' % repo_name,
+                     control_targets = '"@%s//:control"' % repo_name,
+                     src = '"@%s//:data"' % repo_name,
+-                    deps = package_deps_for_architecture(packages, package, architecture),
+-                    pkgconfig_deps = package_deps_for_architecture(packages, package, architecture, "pkgconfig"),
++                    deps = package_deps_for_architecture(packages, package, architecture, repo_prefix = rctx.attr.repo_prefix),
++                    pkgconfig_deps = package_deps_for_architecture(packages, package, architecture, "pkgconfig", repo_prefix = rctx.attr.repo_prefix),
+                     urls = [
+                         uri + "/" + package["filename"]
+                         for uri in sources[package["suite"]]["uris"]
+@@ -243,7 +243,7 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+         architectures = info.architectures.keys()
+ 
+         extra = ""
+-        if package_name.endswith("-dev"):
++        if package_name.endswith("-dev") and not rctx.attr.payload_only:
+             target_name = package_name.removesuffix("-dev")
+             extra = _DEB_CC_IMPORT.format(
+                 target_name = target_name,
+@@ -290,6 +290,8 @@ Please unify the versions manually, or use separate `apt.install` calls (with di
+ translate_dependency_set = repository_rule(
+     implementation = _translate_dependency_set_impl,
+     attrs = {
++        "payload_only": attr.bool(doc = "Expose archive inputs without native C++ targets."),
++        "repo_prefix": attr.string(doc = "Internal namespace for locked package repositories."),
+         "depset_name": attr.string(doc = "INTERNAL: DO NOT USE"),
+         "lock_content": attr.string(doc = "INTERNAL: DO NOT USE"),
+         "package_template": attr.label(default = "//apt/private:package.BUILD.tmpl"),
+diff --git a/apt/tests/BUILD.bazel b/apt/tests/BUILD.bazel
+index bae631e..e0965f8 100644
+--- a/apt/tests/BUILD.bazel
++++ b/apt/tests/BUILD.bazel
+@@ -3,6 +3,7 @@ load(":dpkg_status_test.bzl", "dpkg_status_tests")
+ load(":dpkg_statusd_test.bzl", "dpkg_statusd_tests")
+ load(":facts_test.bzl", "facts_tests")
+ load(":linker_script_test.bzl", "linker_script_tests")
++load(":locked_import_test.bzl", "locked_import_tests")
+ load(":lockfile_test.bzl", "lockfile_tests")
+ load(":resolution_test.bzl", "resolution_tests")
+ load(":translate_dependency_set_test.bzl", "translate_dependency_set_tests")
+@@ -25,3 +26,5 @@ linker_script_tests()
+ lockfile_tests()
+ 
+ translate_dependency_set_tests()
++
++locked_import_tests()
+diff --git a/apt/tests/locked_import_test.bzl b/apt/tests/locked_import_test.bzl
+new file mode 100644
+index 0000000..70bf9ea
+--- /dev/null
++++ b/apt/tests/locked_import_test.bzl
+@@ -0,0 +1,97 @@
++"""Test locked runtime imports before network access or repository declarations."""
++
++load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
++load("//apt/private:locked_import.bzl", "expanded_sets", "reachable_packages", "validation_error")
++
++_ROOT = "/trixie/app:amd64=1.0"
++_DEP = "/trixie/lib:amd64=2.0"
++_ALL = "/trixie/data:all=3.0"
++
++def _package(name, version, arch = "amd64", dependencies = []):
++    return {
++        "name": name,
++        "version": version,
++        "architecture": arch,
++        "suite": "trixie",
++        "sha256": "a" * 64,
++        "filename": "pool/" + name + ".deb",
++        "depends_on": dependencies,
++    }
++
++def _fixture():
++    return {
++        "version": 2,
++        "sources": {"trixie": {"uris": ["https://example.invalid/archive"]}},
++        "dependency_sets": {"image": {"sets": {"amd64": {"/trixie/app:amd64": "1.0"}}}},
++        "packages": {
++            _ROOT: _package("app", "1.0", dependencies = [_DEP]),
++            _DEP: _package("lib", "2.0", dependencies = [_ALL, _ROOT]),
++            _ALL: _package("data", "3.0", arch = "all"),
++        },
++    }
++
++def _closure_test(ctx):
++    env = unittest.begin(ctx)
++    document = _fixture()
++
++    # Includes an indirect architecture-independent dependency and a cycle.
++    asserts.equals(env, "", validation_error(document))
++    asserts.equals(env, {
++        "image": {"sets": {"amd64": {
++            "/trixie/app:amd64": "1.0",
++            "/trixie/lib:amd64": "2.0",
++            "/trixie/data:all": "3.0",
++        }}},
++    }, expanded_sets(document))
++    asserts.equals(env, sorted([_ROOT, _DEP, _ALL]), reachable_packages(document["packages"], [_ROOT]))
++    asserts.equals(env, [_DEP], document["packages"][_ROOT]["depends_on"])
++    return unittest.end(env)
++
++closure_test = unittest.make(_closure_test)
++
++def _invalid_lock_test(ctx):
++    env = unittest.begin(ctx)
++    document = _fixture()
++    document["version"] = 1
++    asserts.true(env, "version-2" in validation_error(document))
++    document = _fixture()
++    document["packages"].pop(_DEP)
++    asserts.true(env, "missing" in validation_error(document))
++    document = _fixture()
++    document["packages"][_DEP]["version"] = "9.0"
++    asserts.true(env, "identity" in validation_error(document))
++    document = _fixture()
++    document["packages"][_DEP]["architecture"] = "arm64"
++    asserts.true(env, "foreign architecture" in validation_error(document))
++    document = _fixture()
++    document["packages"][_DEP]["sha256"] = "not-a-checksum"
++    asserts.true(env, "SHA256" in validation_error(document))
++    document = _fixture()
++    document["packages"][_DEP]["filename"] = "../outside.deb"
++    asserts.true(env, "unsafe" in validation_error(document))
++    document = _fixture()
++    document["sources"] = {}
++    asserts.true(env, "source URLs" in validation_error(document))
++    return unittest.end(env)
++
++invalid_lock_test = unittest.make(_invalid_lock_test)
++
++def _selection_test(ctx):
++    env = unittest.begin(ctx)
++    document = _fixture()
++    document["dependency_sets"]["other"] = {"sets": {"arm64": {"/trixie/data:all": "3.0"}}}
++    asserts.equals(env, ["other"], expanded_sets(document, ["other"]).keys())
++    asserts.equals(env, {"/trixie/data:all": "3.0"}, expanded_sets(document, ["other"])["other"]["sets"]["arm64"])
++    asserts.true(env, "lacks dependency set" in validation_error(document, ["absent"]))
++    asserts.true(env, "distinct" in validation_error(document, ["image", "image"]))
++    document["packages"]["/trixie/lib:amd64=4.0"] = _package("lib", "4.0")
++    document["packages"][_ROOT]["depends_on"].append("/trixie/lib:amd64=4.0")
++    asserts.true(env, "two versions" in validation_error(document))
++    return unittest.end(env)
++
++selection_test = unittest.make(_selection_test)
++
++def locked_import_tests():
++    closure_test(name = "locked_import/closure")
++    invalid_lock_test(name = "locked_import/invalid_lock")
++    selection_test(name = "locked_import/selection")
+-- 
+2.55.0.openai.911.g06873a30d2f3
+
