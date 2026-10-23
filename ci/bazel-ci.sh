@@ -65,6 +65,9 @@ if [[ -f tar/root_owned_tar.bzl ]]; then
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test)
+  if [[ "$debian_arch" == amd64 ]]; then
+    tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
+  fi
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)

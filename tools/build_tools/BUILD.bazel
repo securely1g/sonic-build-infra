@@ -18,10 +18,45 @@ _KERNEL_LINK_LIBRARIES = [
     "zlib1g",
 ]
 
+# One AMD64 runtime carries native tools and both target ABIs. Explicit
+# architecture labels keep each library in its Debian multiarch directory.
+_KERNEL_CROSS_SYSROOT = [
+    "libc6",
+    "libc6-dev",
+    "libgcc-s1",
+    "libcrypt1",
+    "libcrypt-dev",
+    "linux-libc-dev",
+]
+
+_KERNEL_CROSS_LIBRARIES = [
+    "libelf-dev",
+    "libelf1t64",
+    "libssl-dev",
+    "libssl3t64",
+    "libzstd-dev",
+    "libzstd1",
+    "zlib1g-dev",
+    "zlib1g",
+]
+
+_KERNEL_CROSS_ARCHITECTURES = ["arm64", "armhf"]
+
+_KERNEL_CROSS_PACKAGES = [
+    "@sysroot//" + name + "/" + architecture
+    for architecture in _KERNEL_CROSS_ARCHITECTURES
+    for name in _KERNEL_CROSS_SYSROOT
+] + [
+    "@build_tools//" + name + "/" + architecture
+    for architecture in _KERNEL_CROSS_ARCHITECTURES
+    for name in _KERNEL_CROSS_LIBRARIES
+]
+
 [
     build_tools_rootfs(
         name = "kernel_runtime_" + architecture,
         architecture = architecture,
+        cross_architectures = _KERNEL_CROSS_ARCHITECTURES if architecture == "amd64" else [],
         exec_compatible_with = [
             "@platforms//os:linux",
             "@platforms//cpu:" + cpu,
@@ -29,6 +64,8 @@ _KERNEL_LINK_LIBRARIES = [
         metadata_controls = ["@build_tools//" + name + ":control" for name in _KERNEL_LINK_LIBRARIES],
         metadata_data = ["@build_tools//" + name + ":data" for name in _KERNEL_LINK_LIBRARIES],
         packages = ["@build_tools"],
+        target_controls = [label + ":control" for label in _KERNEL_CROSS_PACKAGES] if architecture == "amd64" else [],
+        target_data = [label + ":data" for label in _KERNEL_CROSS_PACKAGES] if architecture == "amd64" else [],
     )
     for architecture, cpu in [
         ("amd64", "x86_64"),
@@ -44,6 +81,49 @@ alias(
     }),
     visibility = ["//visibility:public"],
 )
+
+# Compatibility names resolve to the same tree; they do not assemble another
+# runtime or choose a target architecture inside that tree.
+[
+    alias(
+        name = "kernel_cross_runtime_" + architecture,
+        actual = ":kernel_runtime_amd64",
+        visibility = ["//visibility:public"],
+    )
+    for architecture in _KERNEL_CROSS_ARCHITECTURES
+]
+
+alias(
+    name = "kernel_build_tools_arm64",
+    actual = ":kernel_runtime",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "kernel_build_tools_armhf",
+    actual = ":kernel_runtime_amd64",
+    visibility = ["//visibility:public"],
+)
+
+[
+    py_test(
+        name = "kernel_cross_runtime_" + architecture + "_test",
+        srcs = ["kernel_cross_runtime_test.py"],
+        args = [
+            "$(location :kernel_runtime_amd64)",
+            architecture,
+        ],
+        data = [":kernel_runtime_amd64"],
+        main = "kernel_cross_runtime_test.py",
+        tags = ["no-remote-exec"],
+        target_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:x86_64",
+        ],
+    )
+    for architecture in _KERNEL_CROSS_ARCHITECTURES
+]
+
 
 py_test(
     name = "prepare_rootfs_test",

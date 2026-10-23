@@ -8,7 +8,7 @@ import tarfile
 import tempfile
 import unittest
 
-from prepare_rootfs import configure_xml_sax, initialize_root, package_metadata, preserve_empty_directories, remove_x11_alias, validate_links
+from prepare_rootfs import add_target_packages, merge_target_payload, configure_xml_sax, initialize_root, package_metadata, preserve_empty_directories, remove_x11_alias, validate_links
 from prepare_runtime import extract_payload
 
 
@@ -148,6 +148,62 @@ class RootfsTest(unittest.TestCase):
         self.assertEqual((info / "libsample:amd64.list").read_text(), "/usr/lib/libsample.so.1\n")
         self.assertEqual((info / "libsample:amd64.shlibs").read_text(), "libsample 1 libsample (>= 1.2)\n")
         self.assertFalse((info / "libsample:amd64.postinst").exists())
+
+    def test_cross_target_metadata_preserves_native_status(self):
+        status = self.root / "var/lib/dpkg/status"
+        native = "Package: libsample\nVersion: 1.2\nArchitecture: amd64\nStatus: install ok installed\n"
+        status.write_text(native)
+        packages = []
+        for architecture, triple in (("arm64", "aarch64-linux-gnu"), ("armhf", "arm-linux-gnueabihf")):
+            payload = self.directory / (architecture + ".tar")
+            control = self.directory / (architecture + "-control.tar")
+            write_tar(payload, {"usr/lib/" + triple + "/libsample.so.1": architecture.encode()})
+            write_tar(control, {"control": ("Package: libsample\nVersion: 1.2\nArchitecture: " + architecture + "\nMulti-Arch: same\n").encode(), "shlibs": b"libsample 1 libsample (>= 1.2)\n"})
+            packages.append((payload, control))
+        add_target_packages(self.root, packages, ["arm64", "armhf"])
+        self.assertTrue(status.read_text().startswith(native))
+        self.assertEqual(status.read_text().count("Package: libsample"), 3)
+        for architecture in ("arm64", "armhf"):
+            self.assertIn("Architecture: " + architecture, status.read_text())
+            self.assertTrue((self.root / ("var/lib/dpkg/info/libsample:" + architecture + ".shlibs")).is_file())
+        self.assertEqual((self.root / "var/lib/dpkg/arch").read_text(), "amd64\narm64\narmhf\n")
+
+    def test_architecture_independent_status_is_not_duplicated(self):
+        status = self.root / "var/lib/dpkg/status"
+        status.write_text("Package: shared-headers\nVersion: 1.2\nArchitecture: all\nStatus: install ok installed\n")
+        payload = self.directory / "target.tar"
+        control = self.directory / "target-control.tar"
+        write_tar(payload, {"usr/include/shared.h": b"header"})
+        write_tar(control, {"control": b"Package: shared-headers\nVersion: 1.2\nArchitecture: all\n"})
+        add_target_packages(self.root, [(payload, control), (payload, control)], ["arm64", "armhf"])
+        self.assertEqual(status.read_text().count("Package: shared-headers"), 1)
+
+    def test_target_cannot_replace_native_executable(self):
+        (self.root / "usr/bin/tool").write_bytes(b"native")
+        payload = self.directory / "target.tar"
+        write_tar(payload, {"usr/bin/tool": b"foreign"})
+        with self.assertRaisesRegex(ValueError, "replaces an execution input"):
+            merge_target_payload(self.root, payload)
+        self.assertEqual((self.root / "usr/bin/tool").read_bytes(), b"native")
+
+    def test_matching_multiarch_headers_are_shared(self):
+        (self.root / "usr/include").mkdir()
+        (self.root / "usr/include/shared.h").write_bytes(b"shared")
+        payload = self.directory / "target.tar"
+        write_tar(payload, {"usr/include/shared.h": b"shared", "usr/lib/arm-linux-gnueabihf/target.so": b"target"})
+        merge_target_payload(self.root, payload)
+        self.assertEqual((self.root / "usr/include/shared.h").read_bytes(), b"shared")
+        self.assertEqual((self.root / "usr/lib/arm-linux-gnueabihf/target.so").read_bytes(), b"target")
+
+    def test_target_overlays_cannot_replace_another_targets_header(self):
+        first = self.directory / "arm64.tar"
+        second = self.directory / "armhf.tar"
+        write_tar(first, {"usr/include/shared.h": b"first target"})
+        write_tar(second, {"usr/include/shared.h": b"second target"})
+        merge_target_payload(self.root, first)
+        with self.assertRaisesRegex(ValueError, "replaces an execution input"):
+            merge_target_payload(self.root, second)
+        self.assertEqual((self.root / "usr/include/shared.h").read_bytes(), b"first target")
 
     def test_archive_path_escape_is_rejected(self):
         payload = self.directory / "bad.tar"

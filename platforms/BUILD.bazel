@@ -34,3 +34,14 @@ platform(
     ],
     visibility = ["//visibility:public"],
 )
+
+# Debian ARMHF uses the ARMv7 hard-float ABI. Execution remains AMD64 for kernel builds.
+platform(
+    name = "armv7_trixie",
+    constraint_values = [
+        "@platforms//cpu:armv7e-mf",
+        "@platforms//os:linux",
+        ":trixie",
+    ],
+    visibility = ["//visibility:public"],
+)
