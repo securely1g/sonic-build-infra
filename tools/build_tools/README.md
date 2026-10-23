@@ -165,7 +165,8 @@ runs a small C program linked to a library built by `configure_make_test`, provi
 toolchains work when foreign_cc stages their runtime tree into an action.
 CI then repeats the tool runtime test in a fresh Bazel output directory, with
 compilation results shared only through the disk cache. It checks the execution
-log reports `PrepareBuildTools` as a disk-cache hit and retains that receipt.
+log reports `PrepareBuildTools` and the kernel runtime’s `PrepareBuildToolsRootfs`
+as disk-cache hits and retains that receipt.
 
 ## Kerberos error and command table generators
 
@@ -246,7 +247,13 @@ versions, input hashes and a path-independent identity. Adding or changing a
 relocation helper changes that declared runtime identity.
 
 Empty directories contain a zero-byte `.bazel-keep-directory` file so Bazel's
-remote-cache downloader preserves them, including targets of directory symlinks.
+cache downloader preserves them. Internal directory aliases such as Perl's
+`5.40 -> 5.40.1` are materialized, so restoring `5.40/bits/linux` does not depend
+on first restoring another directory. Copied relative file links still resolve
+to their original declared targets. Root merged-/usr aliases such as
+`lib -> usr/lib` retain the layout needed by the kernel compiler and packager.
+Dependency lookup prefers canonical `/usr/lib` paths recorded in Debian package
+file lists, including when a cache restores `/lib` as a real directory.
 
 The preparation action retains Debian's library/sysroot layout, explicit
 build-command alternatives, and the PurePerl XML parser registration normally
@@ -259,8 +266,8 @@ part of this runtime; they do not replace any consuming target's sysroot.
 
 Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
 boundaries and directory/symlink preservation through a cache transport that drops
-empty directories,
-then `kernel_debian_test` for narrowly scoped packaging-tool relocation and
+empty directories or restores alias children before their versioned directory.
+They run `kernel_debian_test` for narrowly scoped packaging-tool relocation and
 `kernel_runtime_test` against a copied runtime at a different path. The latter
 runs without chroot, parses XML through
 the registered Perl parser, imports packaging modules, compiles and executes a libelf/OpenSSL host program, and verifies its
@@ -271,7 +278,8 @@ the resulting archives. ARM64 also compiles and links an ARM ELF32
 shared object with the declared `gcc-arm-linux-gnueabihf` toolchain, needed by
 the kernel's 32-bit compatibility vDSO, and checks its source dependency metadata.
 The ARM32 output is inspected, not executed. Fixture packages are discarded when
-the test ends. Kernel
+the test ends. CI repeats `kernel_runtime_test` in a fresh Bazel output directory
+and requires its runtime to be restored from the disk cache. Kernel
 package compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
 `sonic-buildimage` consumer. This shared-runtime smoke test does not compile a
 full kernel.
