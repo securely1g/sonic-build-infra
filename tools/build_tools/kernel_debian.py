@@ -142,6 +142,8 @@ def prepare_debian(root: Path) -> None:
     )
     # Never search the build host's libraries or ld.so configuration. Explicit
     # package build directories and -l options retain their upstream semantics.
+    # Prefer Debian's canonical merged-/usr package paths: cached tree outputs
+    # can materialize /lib as a directory rather than preserving its symlink.
     _replace(
         root / "usr/share/perl5/Dpkg/Shlibs.pm",
         "sub setup_library_paths {\n"
@@ -153,7 +155,7 @@ def prepare_debian(root: Path) -> None:
         "    if (my $root = $ENV{SONIC_BUILD_TOOLS_ROOT}) {\n"
         "        my $multiarch = debarch_to_multiarch(get_host_arch());\n"
         '        @system_librarypaths = map { "$root$_" } (\n'
-        '            "/lib/$multiarch", "/usr/lib/$multiarch",\n'
+        '            "/usr/lib/$multiarch", "/lib/$multiarch",\n'
         "            DEFAULT_LIBRARY_PATH, DEFAULT_MULTILIB_PATH);\n"
         "        $librarypaths_init = 1;\n"
         "        return;\n"
