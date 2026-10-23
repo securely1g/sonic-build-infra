@@ -52,10 +52,14 @@ use_repo(sysroots, "sonic_sysroot")
 gcc = use_extension("//toolchains/gcc:extensions.bzl", "gcc")
 use_repo(gcc, "gcc_toolchains")
 
-ARCHITECTURES = [
+# Architectures with native build tools and general C/C++ toolchain setup.
+NATIVE_ARCHITECTURES = [
     "amd64",
     "arm64",
 ]
+
+# Kernel builds also target ARMHF using the AMD64 cross tools.
+KERNEL_TARGET_ARCHITECTURES = NATIVE_ARCHITECTURES + ["armhf"]
 
 # Every toolchain the gcc.debian_toolchain() tags below declare,
 # one cc and one binutils toolchain per tag.
@@ -65,7 +69,7 @@ DEBIAN_SNAPSHOT = "https://snapshot.debian.org/archive/debian/20260727T143429Z"
 
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.sources_list(
-    architectures = ARCHITECTURES,
+    architectures = KERNEL_TARGET_ARCHITECTURES,
     components = ["main"],
     suites = [
         "trixie",
@@ -74,7 +78,7 @@ apt.sources_list(
     uris = [DEBIAN_SNAPSHOT],
 )
 apt.sources_list(
-    architectures = ARCHITECTURES,
+    architectures = KERNEL_TARGET_ARCHITECTURES,
     components = ["main"],
     suites = ["trixie-security"],
     uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
@@ -106,67 +110,130 @@ apt.install(
 apt.install(
     dependency_set = "build_tools",
     packages = [
-        "aspell",
-        "aspell-en",
-        "autoconf",
-        "automake",
-        "bash",
-        "bc",
-        "bison",
-        "build-essential",
-        "comerr-dev",
-        "coreutils",
-        "cpio",
-        "dash",
-        "debhelper",
-        "debianutils",
-        "dh-python",
-        "diffutils",
-        "doxygen",
-        "findutils",
-        "flex",
-        "fonts-dejavu-core",
-        "gcc-14",
-        # The ARM64 kernel builds a 32-bit compatibility vDSO with this compiler.
-        "gcc-arm-linux-gnueabihf:arm64",
-        "graphviz",
-        "grep",
-        "gzip",
-        "kernel-wedge",
-        "kmod",
-        "libc-bin",
-        "libc6",
-        "libelf-dev",
-        "libelf1t64",
-        "libgcc-s1",
-        "libprotobuf-dev",
-        "libssl-dev",
-        "libssl3t64",
-        "libtool",
-        "libtool-bin",
-        "libxml-simple-perl",
-        "libzstd1",
-        "lz4",
-        "m4",
-        "mawk",
-        "openssl",
-        "pahole",
-        "perl",
-        "pkgconf",
-        "protobuf-compiler",
-        "protobuf-compiler-grpc",
-        "python3",
-        "python3-dacite",
-        "python3-jinja2",
-        "quilt",
-        "rsync",
-        "sed",
-        "ss-dev",
-        "thrift-compiler",
-        "util-linux",
-        "xz-utils",
-        "zlib1g",
-        "zstd",
+        name if ":" in name else name + ":" + architecture
+        for name in [
+            "aspell",
+            "aspell-en",
+            "autoconf",
+            "automake",
+            "bash",
+            "bc",
+            "bison",
+            "build-essential",
+            "comerr-dev",
+            "coreutils",
+            "cpio",
+            "dash",
+            "debhelper",
+            "debianutils",
+            "dh-python",
+            "diffutils",
+            "doxygen",
+            "findutils",
+            "flex",
+            "fonts-dejavu-core",
+            "gcc-14",
+            # The ARM64 kernel builds a 32-bit compatibility vDSO with this compiler.
+            "gcc-arm-linux-gnueabihf:arm64",
+            "graphviz",
+            "grep",
+            "gzip",
+            "kernel-wedge",
+            "kmod",
+            "libc-bin",
+            "libc6",
+            "libelf-dev",
+            "libelf1t64",
+            "libgcc-s1",
+            "libprotobuf-dev",
+            "libssl-dev",
+            "libssl3t64",
+            "libtool",
+            "libtool-bin",
+            "libxml-simple-perl",
+            "libzstd1",
+            "lz4",
+            "m4",
+            "mawk",
+            "openssl",
+            "pahole",
+            "perl",
+            "pkgconf",
+            "protobuf-compiler",
+            "protobuf-compiler-grpc",
+            "python3",
+            "python3-dacite",
+            "python3-jinja2",
+            "quilt",
+            "rsync",
+            "sed",
+            "ss-dev",
+            "thrift-compiler",
+            "util-linux",
+            "xz-utils",
+            "zlib1g",
+            "zstd",
+        ]
+        for architecture in NATIVE_ARCHITECTURES
+        if ":" not in name or name.endswith(":" + architecture)
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+
+# The kernel's AMD64 execution tools also compile ARM64 and ARMHF targets.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        "gcc-14-aarch64-linux-gnu:amd64",
+        "gcc-14-arm-linux-gnueabihf:amd64",
+        "gcc-aarch64-linux-gnu:amd64",
+        "gcc-arm-linux-gnueabihf:amd64",
+    ] + [
+        name + ":" + architecture
+        for name in [
+            "libelf-dev",
+            "libelf1t64",
+            "libssl-dev",
+            "libssl3t64",
+            "libzstd-dev",
+            "libzstd1",
+            "zlib1g-dev",
+            "zlib1g",
+        ]
+        for architecture in [
+            "arm64",
+            "armhf",
+        ]
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+
+# Expose individual ABI package payloads and metadata to kernel cross builds.
+apt.install(
+    dependency_set = "sysroot",
+    packages = [
+        name + ":" + architecture
+        for name in [
+            "libc6",
+            "libc6-dev",
+            "libgcc-s1",
+            "libgcc-14-dev",
+            "libcrypt1",
+            "libcrypt-dev",
+            "linux-libc-dev",
+        ]
+        for architecture in [
+            "arm64",
+            "armhf",
+        ]
     ],
     suites = [
         "trixie",
@@ -177,41 +244,46 @@ apt.install(
 apt.install(
     dependency_set = "trixie",
     packages = [
-        # do not sort
-        # debug utilities
-        "gdb",
-        "gdbserver",
-        # Needed for vim, though vim itself is fetched from the main buildimage,
-        # because we can't resolve the right virtual package from rules_distroless yet.
-        "libgpm2",
-        "strace",
-        "sshpass",
-        "openssh-client",
-        # openssh-client's shared libraries.
-        # The FIPS OpenSSH deb ships without deps, so we fetch these from apt.
-        "libedit2",
-        "libfido2-1",
+        name if ":" in name else name + ":" + architecture
+        for name in [
+            # do not sort
+            # debug utilities
+            "gdb",
+            "gdbserver",
+            # Needed for vim, though vim itself is fetched from the main buildimage,
+            # because we can't resolve the right virtual package from rules_distroless yet.
+            "libgpm2",
+            "strace",
+            "sshpass",
+            "openssh-client",
+            # openssh-client's shared libraries.
+            # The FIPS OpenSSH deb ships without deps, so we fetch these from apt.
+            "libedit2",
+            "libfido2-1",
 
-        # for sonic-swss-common
-        # trixie ships libyang 3, so the -dev package lost its soversion suffix.
-        "nlohmann-json3-dev",
-        "libhiredis-dev",
-        "libboost-dev",
-        "libboost-serialization-dev",
-        "uuid-dev",
-        "libzmq3-dev",
-        "libyang-dev",
-        "swig",
-        "python3-dev",
+            # for sonic-swss-common
+            # trixie ships libyang 3, so the -dev package lost its soversion suffix.
+            "nlohmann-json3-dev",
+            "libhiredis-dev",
+            "libboost-dev",
+            "libboost-serialization-dev",
+            "uuid-dev",
+            "libzmq3-dev",
+            "libyang-dev",
+            "swig",
+            "python3-dev",
 
-        # for docker-sysmgr
-        "libdbus-1-3",
-        "libdbus-c++-1-0v5",
-        "libprotobuf32t64",
+            # for docker-sysmgr
+            "libdbus-1-3",
+            "libdbus-c++-1-0v5",
+            "libprotobuf32t64",
 
-        # for sonic-sysmgr
-        "libdbus-c++-bin",
-        "libdbus-c++-dev",
+            # for sonic-sysmgr
+            "libdbus-c++-bin",
+            "libdbus-c++-dev",
+        ]
+        for architecture in NATIVE_ARCHITECTURES
+        if ":" not in name or name.endswith(":" + architecture)
     ],
     suites = [
         "trixie",
@@ -310,7 +382,7 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
         use_repo(apt, repo_template.format(arch = arch))
         for repo_template in SYSROOT_PACKAGE_REPO_TEMPLATES
     ]
-    for arch in ARCHITECTURES
+    for arch in NATIVE_ARCHITECTURES
 ]
 
 use_repo(apt, "trixie_libquadmath0-amd64_14.2.0-19")
@@ -340,7 +412,7 @@ apt.install(
     include_transitive = False,
     packages = [
         name + ":" + arch + " (= " + version + ")"
-        for arch in ARCHITECTURES
+        for arch in NATIVE_ARCHITECTURES
         for name, version in GCC_RUNTIME_PACKAGES.items()
     ],
     suites = ["trixie"],
@@ -351,7 +423,7 @@ GCC_RUNTIME_REPOS = {
         name: "trixie_" + name.replace("+", "-") + "-" + arch + "_" + version.replace("+", "-").replace(":", "-")
         for name, version in GCC_RUNTIME_PACKAGES.items()
     }
-    for arch in ARCHITECTURES
+    for arch in NATIVE_ARCHITECTURES
 }
 
 [

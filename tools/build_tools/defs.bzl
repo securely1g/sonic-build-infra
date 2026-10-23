@@ -53,6 +53,17 @@ def _rootfs_impl(ctx):
     args.add("--out", output.path)
     args.add("--architecture", ctx.attr.architecture)
     args.add_all(ctx.files.packages, before_each = "--tar")
+    args.add_all(ctx.attr.cross_architectures, before_each = "--cross-architecture")
+    if len(ctx.attr.target_data) != len(ctx.attr.target_controls):
+        fail("target_data and target_controls must contain matching package pairs")
+    for data, control in zip(ctx.attr.target_data, ctx.attr.target_controls):
+        data_files = data[DefaultInfo].files.to_list()
+        control_files = control[DefaultInfo].files.to_list()
+        if len(data_files) != 1 or len(control_files) != 1:
+            fail("Each target package requires exactly one data and control tar")
+        args.add("--target-package")
+        args.add(data_files[0].path)
+        args.add(control_files[0].path)
     if len(ctx.attr.metadata_data) != len(ctx.attr.metadata_controls):
         fail("metadata_data and metadata_controls must contain matching package pairs")
     for data, control in zip(ctx.attr.metadata_data, ctx.attr.metadata_controls):
@@ -66,7 +77,7 @@ def _rootfs_impl(ctx):
     ctx.actions.run(
         executable = python.interpreter,
         arguments = [args],
-        inputs = ctx.files.packages + ctx.files.metadata_data + ctx.files.metadata_controls,
+        inputs = ctx.files.packages + ctx.files.metadata_data + ctx.files.metadata_controls + ctx.files.target_data + ctx.files.target_controls,
         tools = depset([python.interpreter, ctx.file._prepare, ctx.file._extract, ctx.file._relocate, ctx.file._debian], transitive = [python.files]),
         outputs = [output],
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
@@ -80,6 +91,9 @@ build_tools_rootfs = rule(
     attrs = {
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "packages": attr.label_list(allow_files = True, mandatory = True),
+        "cross_architectures": attr.string_list(),
+        "target_data": attr.label_list(allow_files = True),
+        "target_controls": attr.label_list(allow_files = True),
         "metadata_data": attr.label_list(allow_files = True),
         "metadata_controls": attr.label_list(allow_files = True),
         "_prepare": attr.label(default = Label(":prepare_rootfs.py"), allow_single_file = True, cfg = "exec"),

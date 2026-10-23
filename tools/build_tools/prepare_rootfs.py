@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path, PurePosixPath
 import tarfile
 
@@ -25,7 +27,7 @@ def control_fields(text: str) -> dict[str, str]:
     return fields
 
 
-def package_metadata(root: Path, data: Path, control: Path) -> None:
+def package_metadata(root: Path, data: Path, control: Path) -> dict[str, str]:
     """Install dpkg's library ownership and dependency metadata, not maintscripts."""
     records = {}
     with tarfile.open(control, "r:*") as archive:
@@ -41,7 +43,7 @@ def package_metadata(root: Path, data: Path, control: Path) -> None:
     architecture = fields["Architecture"]
     if not name or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789+.-" for c in name):
         raise ValueError("invalid Debian package name")
-    if architecture not in ("amd64", "arm64", "all"):
+    if architecture not in ("amd64", "arm64", "armhf", "all"):
         raise ValueError("unsupported package metadata architecture")
     qualified = name + (":" + architecture if fields.get("Multi-Arch") == "same" else "")
     info = root / "var/lib/dpkg/info"
@@ -61,6 +63,7 @@ def package_metadata(root: Path, data: Path, control: Path) -> None:
         if kind in records:
             (info / (qualified + "." + kind)).write_bytes(records[kind])
 
+    return fields
 
 def initialize_root(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
@@ -167,11 +170,68 @@ def preserve_empty_directories(root: Path) -> None:
             (path / ".bazel-keep-directory").touch()
 
 
+def merge_target_payload(root: Path, payload: Path) -> None:
+    """Merge target libraries without replacing an execution-side tool or header."""
+    with tempfile.TemporaryDirectory(prefix="kernel-target-") as temporary:
+        target_root = Path(temporary)
+        extract_payload(target_root, payload)
+        for source in sorted(target_root.rglob("*")):
+            relative = source.relative_to(target_root)
+            destination = root / relative
+            if source.is_dir() and not source.is_symlink():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() or destination.is_symlink():
+                equal = (source.is_symlink() and destination.is_symlink()
+                         and source.readlink() == destination.readlink())
+                if source.is_file() and destination.is_file() and not source.is_symlink() and not destination.is_symlink():
+                    equal = source.read_bytes() == destination.read_bytes()
+                if not equal:
+                    raise ValueError("target package replaces an execution input: " + str(relative))
+                continue
+            if source.is_symlink():
+                destination.symlink_to(source.readlink())
+            else:
+                shutil.copy2(source, destination)
+
+
+def add_target_packages(root: Path, packages, architectures: list[str]) -> None:
+    """Add only declared target payloads and their real Debian metadata."""
+    status = root / "var/lib/dpkg/status"
+    existing = status.read_text()
+    installed = {}
+    for paragraph in existing.split("\n\n"):
+        fields = control_fields(paragraph)
+        if fields.get("Package"):
+            installed[(fields["Package"], fields.get("Architecture"))] = fields["Version"]
+    additions = []
+    for data, control in packages:
+        fields = package_metadata(root, data, control)
+        if fields["Architecture"] not in [*architectures, "all"]:
+            raise ValueError("target package has the wrong architecture: " + fields["Package"])
+        # Target libraries use Debian's multiarch paths. Common headers and
+        # documentation belong to the same pinned versions as native inputs.
+        merge_target_payload(root, data)
+        key = (fields["Package"], fields["Architecture"])
+        if key in installed:
+            if installed[key] != fields["Version"]:
+                raise ValueError("target package version differs from execution input: " + fields["Package"])
+            continue
+        installed[key] = fields["Version"]
+        fields["Status"] = "install ok installed"
+        additions.append("\n".join(key + ": " + value for key, value in fields.items()))
+    status.write_text(existing.rstrip() + "\n\n" + "\n\n".join(additions) + "\n")
+    (root / "var/lib/dpkg/arch").write_text("amd64\n" + "\n".join(architectures) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--tar", type=Path, action="append", default=[])
+    parser.add_argument("--cross-architecture", choices=("arm64", "armhf"), action="append", default=[])
+    parser.add_argument("--target-package", type=Path, nargs=2, action="append", default=[])
     parser.add_argument("--metadata", type=Path, nargs=2, action="append", default=[])
     args = parser.parse_args()
     root = args.out.resolve()
@@ -180,21 +240,31 @@ def main() -> None:
         extract_payload(root, payload)
     for data, control in args.metadata:
         package_metadata(root, data, control)
+    cross_architectures = sorted(set(args.cross_architecture))
+    if cross_architectures:
+        if args.architecture != "amd64" or not args.target_package:
+            raise ValueError("kernel cross tools require AMD64 execution and target packages")
+        add_target_packages(root, args.target_package, cross_architectures)
+    elif args.target_package:
+        raise ValueError("target packages require cross architectures")
     install_alternatives(root)
     configure_xml_sax(root)
     remove_x11_alias(root)
     loader_path(root, args.architecture)
     validate_links(root)
-    prepare_kernel(root, args.architecture)
+    prepare_kernel(root, args.architecture, cross_architectures=cross_architectures)
     status = root / "var/lib/dpkg/status"
     packages = {}
     for record in status.read_text().split("\n\n"):
         fields = control_fields(record)
         if fields.get("Package"):
-            packages[fields["Package"]] = fields["Version"]
+            key = fields["Package"]
+            if fields.get("Architecture") not in (args.architecture, "all"):
+                key += ":" + fields["Architecture"]
+            packages[key] = fields["Version"]
     # The identity is path-independent across standalone and consuming modules.
     # Bazel also hashes this declared tree as an input to the kernel action.
-    inputs = set(args.tar) | {path for pair in args.metadata for path in pair}
+    inputs = set(args.tar) | {path for pair in args.metadata + args.target_package for path in pair}
     inputs |= {Path(__file__).with_name(name) for name in (
         "prepare_rootfs.py", "prepare_runtime.py", "prepare_kernel.py", "kernel_debian.py",
     )}
@@ -209,6 +279,8 @@ def main() -> None:
         "input_sha256": digests,
         "packages": packages,
     }
+    if cross_architectures:
+        manifest["cross_architectures"] = cross_architectures
     (root / "kernel-runtime.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     # Account lookup and temporary files work without inheriting host /etc.
     (root / "etc/passwd").write_text("root:x:0:0:root:/root:/bin/sh\n")

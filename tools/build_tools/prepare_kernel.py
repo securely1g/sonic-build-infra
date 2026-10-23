@@ -50,7 +50,12 @@ def _relocate_linker_scripts(root: Path, triple: str) -> None:
     # from resolving the script's libc/libm references against the build host.
     for name in ("libc.so", "libm.so", "libm.a"):
         script = root / "usr/lib" / triple / name
-        original = script.read_text()
+        data = script.read_bytes()
+        # ARMHF has no vector-math companion archive: libm.a is a real archive
+        # and libm.so is a shared-object alias, rather than GNU ld scripts.
+        if data.startswith((b"!<arch>\n", b"\x7fELF")):
+            continue
+        original = data.decode()
         paths = [token for token in original.split()
                  if token.startswith(("/lib/", "/lib64/", "/usr/lib/"))]
         if not paths:
@@ -63,10 +68,17 @@ def _relocate_linker_scripts(root: Path, triple: str) -> None:
         script.write_text(updated)
 
 
-def prepare_kernel(root: Path, architecture: str) -> None:
+def prepare_kernel(root: Path, architecture: str, cross_architectures: list[str] | None = None) -> None:
     """Add relocatable executable wrappers to an already extracted tool tree."""
     triple, machine = ARCHITECTURES[architecture]
     _relocate_linker_scripts(root, triple)
+    cross_triples = []
+    for target in cross_architectures or []:
+        target_triple = {"arm64": "aarch64-linux-gnu", "armhf": "arm-linux-gnueabihf"}.get(target)
+        if architecture != "amd64" or not target_triple:
+            raise ValueError("kernel cross compilation requires AMD64 to ARM64 or ARMHF")
+        _relocate_linker_scripts(root, target_triple)
+        cross_triples.append(target_triple)
     loader = loader_path(root, architecture)
     libraries = _native_libraries(root, machine)
     environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
@@ -130,6 +142,10 @@ export SONIC_BUILD_TOOLS_ROOT PATH SHELL CONFIG_SHELL DPKG_DATADIR DPKG_ORIGINS_
     tools.update({"sh": root / "usr/bin/dash", "awk": root / "usr/bin/mawk", "cc": root / "usr/bin/gcc", "c++": root / "usr/bin/g++"})
     tools["host-gcc"] = tools["gcc"]
     tools["host-g++"] = tools["g++"]
+    for target_triple in cross_triples:
+        tools[target_triple + "-pkg-config"] = tools["pkgconf"]
+    pkg_config_triples = {target_triple + "-pkg-config": target_triple for target_triple in cross_triples}
+    pkg_config_triples.update({"pkgconf": triple, "pkg-config": triple})
 
     # GCC executes its compiler passes and binutils as child programs. Give
     # every pass the same loader/library contract rather than leaking LD_* to
@@ -161,7 +177,12 @@ export SONIC_BUILD_TOOLS_ROOT PATH SHELL CONFIG_SHELL DPKG_DATADIR DPKG_ORIGINS_
         script = preamble(destination)
         resolved_name = binary.resolve().name
         driver = re.fullmatch(r"(.+)-(gcc|g\+\+|cpp)(?:-[0-9]+)?", resolved_name)
-        if header[:4] == b"\x7fELF":
+        if name == "yacc":
+            # Debian's bison.yacc shell script hard-codes /usr/bin/bison.
+            # Keep yacc compatibility while routing through the declared ELF,
+            # skeletons and m4 instead of the execution host's installation.
+            script += 'exec "$root/bin/bison" -y "$@"\n'
+        elif header[:4] == b"\x7fELF":
             if struct.unpack_from("<H", header, 18)[0] != machine:
                 continue
             if name.startswith("python3"):
@@ -174,13 +195,18 @@ export SONIC_BUILD_TOOLS_ROOT PATH SHELL CONFIG_SHELL DPKG_DATADIR DPKG_ORIGINS_
                 script += 'MAKE="$root/bin/make"\nexport MAKE\n'
             if name == "file":
                 script += 'MAGIC="$root/usr/share/misc/magic.mgc"\nexport MAGIC\n'
-            if name in ("pkgconf", "pkg-config"):
-                script += 'PKG_CONFIG_SYSROOT_DIR="$root"\nPKG_CONFIG_LIBDIR="$root/usr/lib/' + triple + '/pkgconfig:$root/usr/share/pkgconfig"\nexport PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_LIBDIR\n'
+            if name in pkg_config_triples:
+                pkg_triple = pkg_config_triples[name]
+                script += 'PKG_CONFIG_SYSROOT_DIR="$root"\nPKG_CONFIG_LIBDIR="$root/usr/lib/' + pkg_triple + '/pkgconfig:$root/usr/share/pkgconfig"\nexport PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_LIBDIR\n'
             if driver and driver[1] in compiler_directories:
                 compiler_triple = driver[1]
                 layout = compiler_directories[compiler_triple]
                 script += 'GCC_EXEC_PREFIX="$root/usr/lib/' + layout + '/"\nCOMPILER_PATH="$root/tools/' + compiler_triple + '"\nexport GCC_EXEC_PREFIX COMPILER_PATH\n'
                 script += elf_command(binary) + '-B "$root/tools/' + compiler_triple + '/" --sysroot="$root" '
+                if compiler_triple in cross_triples:
+                    # Preserve GCC's builtin header precedence for freestanding
+                    # kernel sources, including ARMHF softfp NEON intrinsics.
+                    script += '-B "$root/usr/lib/' + compiler_triple + '/" -L "$root/usr/lib/' + compiler_triple + '/" -idirafter "$root/usr/include/' + compiler_triple + '" -idirafter "$root/usr/include" '
                 if name in ("host-gcc", "host-g++"):
                     script += '"-Wl,--dynamic-linker=$root/' + str(loader.relative_to(root)) + '" "-Wl,-rpath,' + native_library_path + '" '
             else:
@@ -203,6 +229,10 @@ export SONIC_BUILD_TOOLS_ROOT PATH SHELL CONFIG_SHELL DPKG_DATADIR DPKG_ORIGINS_
     required = {"sh", "bash", "perl", "python3", "gcc", "g++", "host-gcc", "make", "dpkg", "dpkg-query", "dpkg-source", "dpkg-buildpackage", "dh_testroot", "quilt", "kernel-wedge", "pahole", "kmod"}
     if architecture == "arm64":
         required |= {"arm-linux-gnueabihf-gcc", "arm-linux-gnueabihf-ld"}
+    for target_triple in cross_triples:
+        required |= {target_triple + "-gcc", target_triple + "-ld", target_triple + "-objcopy", target_triple + "-pkg-config"}
+        if target_triple == "aarch64-linux-gnu":
+            required |= {"arm-linux-gnueabihf-gcc", "arm-linux-gnueabihf-ld"}
     missing = required - set(emitted)
     if missing:
         raise RuntimeError("kernel tool runtime is missing launchers: " + ", ".join(sorted(missing)))

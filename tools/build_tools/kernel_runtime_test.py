@@ -51,6 +51,26 @@ def check_linker_inputs(root, runtime, work, run, architecture):
     return "gcc/host-gcc shared/static libc/libm/crypto inputs stay in the declared sysroot"
 
 
+def check_yacc(root, work, run):
+    """Generate and execute a parser without Debian's host-path shell alias."""
+    raw = (root / "usr/bin/yacc").resolve()
+    original, mode = raw.read_bytes(), raw.stat().st_mode
+    raw.chmod(mode | 0o200)
+    raw.write_text('#!/bin/sh\necho "yacc used Debian host-path alias" >&2\nexit 97\n')
+    (work / "parser.y").write_text(
+        '%{\nint yylex(void) { return 0; }\nvoid yyerror(const char *s) { (void)s; }\n%}\n'
+        '%%\nstart: ;\n%%\nint main(void) { return yyparse(); }\n')
+    try:
+        run(["/usr/bin/yacc", "-d", "parser.y"])
+        assert (work / "y.tab.c").is_file() and (work / "y.tab.h").is_file()
+        run(["/usr/bin/host-gcc", "y.tab.c", "-o", "parser"])
+        run(["./parser"])
+    finally:
+        raw.write_bytes(original)
+        raw.chmod(mode)
+    return "yacc generates a parser using declared bison, m4 and skeletons"
+
+
 def check_debian_package(root, work, environment, run, architecture):
     """Exercise the maintained Debian packaging sequence without privileges."""
     (work / "kernel_tools_check.py").write_text("VALUE = 42\n")
@@ -165,6 +185,7 @@ def main():
             return result.stdout
 
         linker_inputs = check_linker_inputs(root, runtime, work, run, architecture)
+        check_yacc(root, work, run)
         run(["/usr/bin/python3", "-c", "import dacite; import jinja2"])
         run(["/usr/bin/python3", "-c",
              "import sys; from debpython.version import DEFAULT; from dhpython.version import default; "

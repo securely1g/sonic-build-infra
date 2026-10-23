@@ -337,3 +337,40 @@ and checks competing-header precedence and exact linker/output operands. It
 also reproduces the library-only `collect2` spawn failure, then links and runs
 successfully with the adapter. Competing static libraries verify search priority
 from nested and symlinked working directories, including SDK paths with spaces.
+
+## Cross-compile kernel packages on AMD64
+
+Consume `//tools/build_tools:kernel_runtime` through a `cfg = "exec"`
+attribute for native or cross kernel builds. On AMD64 this selects one
+`kernel_runtime_amd64` tree containing AMD64 tools plus both ARM64 and ARMHF
+compilers, headers, libraries and Debian package metadata. All three target
+architectures reuse that same tree. On ARM64 it selects the native ARM64
+runtime, including its existing ARM32 compatibility compiler. The target
+platform for ARMHF is `//platforms:armv7_trixie`.
+
+The shared `build_tools` package set supplies pinned Debian cross compilers;
+explicit architecture labels add target libc/headers from `sysroot` and
+libelf/OpenSSL dependencies. Debian multiarch directories keep the ABI-specific
+files apart inside the same AMD64 tree. Payload merging rejects conflicting
+shared files. The private dpkg database records AMD64, ARM64 and ARMHF package
+controls, library symbols and file ownership for build-dependency checks and
+generated package dependencies.
+
+Make, Python, packaging tools, `host-gcc` and plain `pkgconf` continue using
+AMD64 executables and libraries. Each `<target-triplet>-pkg-config` wrapper
+selects its own target libraries; each cross compiler selects the corresponding
+headers and libraries while preserving GCC builtin header precedence for
+freestanding kernel code. The runtime marker records `architecture = "amd64"`
+and `cross_architectures = ["arm64", "armhf"]`, and includes all package
+archives in one input identity. No target program is executed. The
+`kernel_cross_runtime_arm64`, `kernel_cross_runtime_armhf` and
+`kernel_build_tools_armhf` compatibility aliases select that same AMD64 tree;
+`kernel_build_tools_arm64` aliases the execution-platform `kernel_runtime`.
+
+Run `//tools/build_tools:kernel_cross_runtime_arm64_test` and
+`//tools/build_tools:kernel_cross_runtime_armhf_test` on AMD64. Both consume
+`kernel_runtime_amd64` and verify native generator execution, target ELF
+architecture, hard-float ARMHF user-space and freestanding softfp NEON,
+declared library paths, and Debian dependency metadata. The native
+`kernel_runtime_test` checks the same tree for AMD64 regressions. Complete
+kernel source and package validation belongs to `sonic-linux-kernel`.
