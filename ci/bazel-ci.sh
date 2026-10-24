@@ -24,7 +24,8 @@ registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/so
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
 platform="//platforms:${cpu}_trixie"
-flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4)
+flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
+       '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$')
 bazel_cmd=(bazel --ignore_all_rc_files)
 # Exercise cold repository setup and lock-change invalidation with queries only.
 # The workflow runs this on both native AMD64 and ARM64 hosts.

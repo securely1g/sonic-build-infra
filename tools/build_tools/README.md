@@ -165,7 +165,8 @@ runs a small C program linked to a library built by `configure_make_test`, provi
 toolchains work when foreign_cc stages their runtime tree into an action.
 CI then repeats the tool runtime test in a fresh Bazel output directory, with
 compilation results shared only through the disk cache. It checks the execution
-log reports `PrepareBuildTools` as a disk-cache hit and retains that receipt.
+log reports `PrepareBuildTools` and the kernel runtime’s `PrepareBuildToolsRootfs`
+as disk-cache hits and retains that receipt.
 
 ## Kerberos error and command table generators
 
@@ -246,7 +247,40 @@ versions, input hashes and a path-independent identity. Adding or changing a
 relocation helper changes that declared runtime identity.
 
 Empty directories contain a zero-byte `.bazel-keep-directory` file so Bazel's
-remote-cache downloader preserves them, including targets of directory symlinks.
+cache downloader preserves them. Kernel preparation keeps packaged directory
+aliases such as Perl's `5.40 -> 5.40.1` and the root merged-/usr alias
+`lib -> usr/lib` instead of copying their target directories.
+Dependency lookup prefers canonical `/usr/lib` paths recorded in Debian package
+file lists, including when a cache restores `/lib` as a real directory.
+
+### Root download policy
+
+For the pinned Bazel 8.5.1, the root build configuration selects the kernel
+tool trees for explicit download from the action cache:
+
+```text
+build --remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$
+```
+
+This uses Bazel's upstream
+[`--remote_download_regex` option](https://bazel.build/reference/command-line-reference#param-remote-download-regex).
+The pattern covers either execution architecture, the tree itself and its
+children, and both root-module and external-repository output paths. It does
+not request every cached output as `--remote_download_all` would.
+
+This is a **root invocation requirement**. Bazel does not import a dependency's
+`.bazelrc`. Before selecting an infrastructure version without kernel alias
+normalization, consumers must check this option into their own root
+configuration and pass it explicitly in commands using `--ignore_all_rc_files`.
+For example, Sairedis's `//:runtime_packages.json` uses this tree through the
+shared metadata rule, even though the tools are not a top-level build target.
+Common, FIPS, DASH and image metadata builds have the same requirement; the
+registry's generated consumer workspace and standalone kernel builds are
+separate roots. Keep existing normalized dependency pins until those root
+configurations are updated. Documentation alone does not configure consumers.
+
+The infrastructure root `.bazelrc`, shared source CI and declared-tools CI carry
+the policy. Both CI paths specify it explicitly because they ignore RC files.
 
 The preparation action retains Debian's library/sysroot layout, explicit
 build-command alternatives, and the PurePerl XML parser registration normally
@@ -258,10 +292,9 @@ kernel tools' dependencies. The compiler's execution-side libc headers remain
 part of this runtime; they do not replace any consuming target's sysroot.
 
 Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
-boundaries and directory/symlink preservation through a cache transport that drops
-empty directories,
-then `kernel_debian_test` for narrowly scoped packaging-tool relocation and
-`kernel_runtime_test` against a copied runtime at a different path. The latter
+boundaries and empty-directory/symlink preservation. `kernel_debian_test`
+separately covers narrowly scoped packaging-tool relocation.
+`kernel_runtime_test` checks a copied runtime at a different path. The latter
 runs without chroot, parses XML through
 the registered Perl parser, imports packaging modules, compiles and executes a libelf/OpenSSL host program, and verifies its
 Debian shared-library dependencies. A temporary Debian source fixture runs
@@ -271,10 +304,13 @@ the resulting archives. ARM64 also compiles and links an ARM ELF32
 shared object with the declared `gcc-arm-linux-gnueabihf` toolchain, needed by
 the kernel's 32-bit compatibility vDSO, and checks its source dependency metadata.
 The ARM32 output is inspected, not executed. Fixture packages are discarded when
-the test ends. Kernel
-package compilation and remote-cache reuse are validated by `sonic-linux-kernel` and its
-`sonic-buildimage` consumer. This shared-runtime smoke test does not compile a
-full kernel.
+the test ends. CI repeats configure, foreign and kernel runtime tests in a fresh
+Bazel output directory with test-result caching disabled. Its execution receipt
+requires the prepared runtime trees, including the native kernel runtime, to
+come from the disk cache. The foreign test also checks that the packaged `dash`
+and `mawk` ELF files remain intact and their shell aliases work after relocation.
+Full kernel/package builds and image integration require validation in their
+own consumers; this shared-runtime smoke test does not compile a full kernel.
 
 ## Autotools and interface generators
 
