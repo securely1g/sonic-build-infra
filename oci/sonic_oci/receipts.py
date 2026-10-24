@@ -30,7 +30,11 @@ def package_identity(record, *, architecture):
             isinstance(record.get("version"), str) and record["version"] and
             record.get("architecture") == architecture, "unsupported source package identity")
     fields = record.get("control_fields")
-    require(isinstance(fields, dict) and set(fields) == CONTROL_FIELDS and
+    # Generated Debian controls also carry descriptions, recommendations and
+    # other owner fields. Keep them bound to the complete reviewed contract.
+    require(isinstance(fields, dict) and CONTROL_FIELDS <= fields.keys() and
+            all(isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", key)
+                for key in fields) and
             all(isinstance(value, str) for value in fields.values()) and
             (fields["Package"], fields["Version"], fields["Architecture"]) ==
             (name, record["version"], record["architecture"]),
