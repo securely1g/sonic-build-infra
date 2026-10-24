@@ -64,6 +64,7 @@ jobs:
           path: consumer
           persist-credentials: false
       - name: Compare fresh cached restores without PR64
+        timeout-minutes: 120
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE/infra"
           git config --global --add safe.directory "$GITHUB_WORKSPACE/consumer"

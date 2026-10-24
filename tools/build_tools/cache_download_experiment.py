@@ -40,16 +40,42 @@ def git(directory, *args):
 def execution_records(path):
     if not path.is_file():
         return []
-    text = path.read_text()
-    decoder, offset, selected = json.JSONDecoder(), 0, []
-    while offset < len(text):
-        record, offset = decoder.raw_decode(text, offset)
-        if record.get("mnemonic") in ("PrepareBuildToolsRootfs", "DebianRuntimeMetadata", "TestRunner"):
-            selected.append({key: record.get(key) for key in
-                             ("mnemonic", "targetLabel", "listedOutputs", "runner", "cacheHit", "status", "exitCode")})
-        while offset < len(text) and text[offset].isspace():
-            offset += 1
+    decoder, selected, buffer, eof = json.JSONDecoder(), [], "", False
+    # Bazel writes concatenated objects. Bound memory by one record rather than
+    # retaining a potentially multi-gigabyte execution log in a Python string.
+    with path.open() as stream:
+        while True:
+            buffer = buffer.lstrip()
+            if not buffer and eof:
+                break
+            try:
+                record, offset = decoder.raw_decode(buffer)
+            except json.JSONDecodeError:
+                if eof:
+                    raise ValueError(f"Truncated or invalid execution record in {path.name}")
+                if len(buffer) >= 64 * 1024 * 1024:
+                    raise ValueError(f"Execution record exceeds 64 MiB in {path.name}")
+                chunk = stream.read(1024 * 1024)
+                buffer += chunk
+                eof = not chunk
+                continue
+            buffer = buffer[offset:]
+            if record.get("mnemonic") in ("PrepareBuildToolsRootfs", "DebianRuntimeMetadata", "TestRunner"):
+                selected.append({key: record.get(key) for key in
+                                 ("mnemonic", "targetLabel", "listedOutputs", "runner", "cacheHit", "status", "exitCode")})
     return selected
+
+
+def private_execution_root(consumer, user_root):
+    output_link = consumer / "bazel-out"
+    assert output_link.is_symlink(), "Missing consumer bazel-out symlink"
+    output = output_link.resolve(strict=True)
+    private_root = user_root.resolve(strict=True)
+    execution_root = output.parent
+    assert output.is_dir() and output.name == "bazel-out", output
+    assert execution_root.is_relative_to(private_root), (execution_root, private_root)
+    assert execution_root.parent.name == "execroot", execution_root
+    return execution_root
 
 
 def rootfs_paths(data):
@@ -135,7 +161,8 @@ def main():
         commands, records = [], []
         cache = scratch / ("seed-cache" if mode == "seed-eager" else "cache-" + mode)
         result = {"mode": mode, "download_flags": download, "status": "running",
-                  "disk_free_before_bytes": shutil.disk_usage(scratch).free}
+                  "disk_free_before_bytes": shutil.disk_usage(scratch).free,
+                  "collection_errors": []}
         started = time.monotonic()
         def run(name, command, *, json_output=False, stdin=None):
             destination = directory / (name + (".json" if json_output else ".log"))
@@ -148,78 +175,117 @@ def main():
             dump(directory / "commands.json", commands)
             print(mode, name, completed.returncode, flush=True)
             return completed.returncode
-        def bazel(name, command, arguments, *, json_output=False, execution=False):
+        def bazel(name, command, arguments, *, json_output=False, execution=False, events=False):
             flags = [*common, "--disk_cache=" + str(cache), *download]
             if execution:
                 flags += ["--execution_log_json_file=" + str(directory / (name + ".spawns.json")),
-                          "--build_event_json_file=" + str(directory / (name + ".events.jsonl"))]
+                          "--execution_log_sort=false"]
+            if execution or events:
+                flags.append("--build_event_json_file=" + str(directory / (name + ".events.jsonl")))
             return run(name, [*startup, command, *flags, *arguments], json_output=json_output)
+
+        def collect(name, operation):
+            try:
+                return operation()
+            except Exception as error:
+                result["collection_errors"].append({"step": name, "error": str(error)})
+                return None
+
         try:
             if mode != "seed-eager":
                 assert (scratch / "seed-cache").is_dir(), "Seed did not populate a cache"
                 assert run("copy-seed-cache", ["cp", "-a", "--reflink=auto", str(scratch / "seed-cache"), str(cache)]) == 0
             # Each measured mode writes only to its private copy of the same seed.
             # This is the original consumer job sequence; runtime is never a top-level build target.
-            result["canonical_exit"] = bazel("canonical", "build", targets["raw_build"], execution=True)
+            result["canonical_exit"] = bazel("canonical", "build", targets["raw_build"], events=True)
             result["tests_exit"] = bazel("tests", "test", ["--nocache_test_results", "--test_output=errors", *targets["service_free_tests"]], execution=True)
             result["reachability_exit"] = bazel("compile-actions", "aquery", ["--output=jsonproto", "--noinclude_artifacts", "--include_commandline", 'mnemonic("CppCompile", deps(//:canonical_outputs))'], json_output=True)
             if result["reachability_exit"] == 0:
                 with (directory / "compile-actions.json").open() as stream:
                     result["reachability_exit"] = run("source-reachability", ["python3", "bazel/ci/check_source_reachability.py", "--manifest", "bazel/ci/expected_no_vpp_sources.json", "--output", str(directory / "source-reachability.json")], stdin=stream)
             result["metadata_exit"] = bazel("metadata", "build", ["//:runtime_packages.json", *targets["package_build"]], execution=True)
-            assert bazel("runtime-actions", "aquery", ["--output=jsonproto", 'mnemonic("PrepareBuildToolsRootfs", deps(//:runtime_packages.json))'], json_output=True) == 0
-            paths = rootfs_paths(json.loads((directory / "runtime-actions.json").read_text()))
-            assert paths and all(re.fullmatch(PATTERN, path) for path in paths), paths
-            result["runtime_paths"] = paths
-            execution_root = Path(subprocess.check_output([*startup, "info", *common, "execution_root"], cwd=consumer, text=True).strip())
-            dump(directory / "runtime-link-states.json", {path: links(execution_root / path) for path in paths})
+            codes = [result[name] for name in ("canonical_exit", "tests_exit", "reachability_exit", "metadata_exit")]
+            result["command_status"] = "passed" if all(code == 0 for code in codes) else "failed"
+
+            def collect_runtime_paths():
+                result["runtime_actions_exit"] = bazel("runtime-actions", "aquery", ["--output=jsonproto", 'mnemonic("PrepareBuildToolsRootfs", deps(//:runtime_packages.json))'], json_output=True)
+                assert result["runtime_actions_exit"] == 0
+                paths = rootfs_paths(json.loads((directory / "runtime-actions.json").read_text()))
+                assert paths and all(re.fullmatch(PATTERN, path) for path in paths), paths
+                result["runtime_paths"] = paths
+                execution_root = private_execution_root(consumer, user_root)
+                result["execution_root"] = str(execution_root)
+                dump(directory / "runtime-link-states.json", {path: links(execution_root / path) for path in paths})
+
+            collect("runtime-paths", collect_runtime_paths)
+
+            def collect_metadata():
+                assert bazel("metadata-output", "cquery", ["--output=files", "//:runtime_packages.json"]) == 0
+                lines = (directory / "metadata-output.log").read_text().splitlines()
+                names = [line for line in lines if line.startswith("bazel-out/") and line.endswith("runtime_packages.json")]
+                assert len(names) == 1, names
+                source = private_execution_root(consumer, user_root) / names[0]
+                shutil.copyfile(source, directory / "runtime_packages.json")
+                metadata = json.loads(source.read_text())
+                result["metadata_sha256"] = sha(source)
+                return metadata
+
+            if result["metadata_exit"] == 0:
+                metadata = collect("metadata-output", collect_metadata)
+                if mode == "seed-eager" and metadata is not None:
+                    seed_metadata = metadata
+                result["matches_seed_metadata"] = seed_metadata is not None and metadata == seed_metadata
+
+            def collect_graph():
+                result["module_graph_exit"] = run("module-graph", [*startup, "mod", "graph", "--output=json", "--lockfile_mode=update", "--override_module=sonic-build-infra=" + str(infra)], json_output=True)
+                assert result["module_graph_exit"] == 0, "Module graph was not captured"
+                graph = json.loads((directory / "module-graph.json").read_text())
+                assert "sonic-build-infra" in json.dumps(graph), "Missing overridden infrastructure in graph"
+
+            collect("module-graph", collect_graph)
+        except Exception as error:
+            result.update(status="inconclusive", error=str(error))
+        finally:
+            # Always preserve available receipts, even when another evidence
+            # query fails. Such failures cannot turn a successful command into
+            # a proven mitigation, or hide the original command's exit status.
             for path in directory.glob("*.spawns.json"):
-                records.extend(execution_records(path))
+                parsed = collect(path.name, lambda path=path: execution_records(path))
+                if parsed is not None:
+                    records.extend(parsed)
             dump(directory / "relevant-executions.json", records)
-            restored = [record for record in records if record["mnemonic"] == "PrepareBuildToolsRootfs"]
+            runtime_label = "//tools/build_tools:kernel_runtime_" + args.architecture
+            restored = [record for record in records if record["mnemonic"] == "PrepareBuildToolsRootfs"
+                        and str(record["targetLabel"]).endswith(runtime_label)]
             result["runtime_cache_hits"] = restored
             result["cache_proven"] = bool(restored) and all(record["cacheHit"] is True and record["runner"] == "disk cache hit" for record in restored)
             metadata_runs = [record for record in records if record["mnemonic"] == "DebianRuntimeMetadata"
                              and record["targetLabel"] in ("//:runtime_packages.json", "@@//:runtime_packages.json", "@//:runtime_packages.json")]
             result["metadata_execution"] = metadata_runs
             result["metadata_reexecuted"] = bool(metadata_runs) and all(record["cacheHit"] is False for record in metadata_runs)
-            if result["metadata_exit"] == 0:
-                assert bazel("metadata-output", "cquery", ["--output=files", "//:runtime_packages.json"]) == 0
-                lines = (directory / "metadata-output.log").read_text().splitlines()
-                names = [line for line in lines if line.startswith("bazel-out/") and line.endswith("runtime_packages.json")]
-                assert len(names) == 1, names
-                source = execution_root / names[0]
-                shutil.copyfile(source, directory / "runtime_packages.json")
-                metadata = json.loads(source.read_text())
-                result["metadata_sha256"] = sha(source)
-                if mode == "seed-eager":
-                    seed_metadata = metadata
-                result["matches_seed_metadata"] = seed_metadata is not None and metadata == seed_metadata
-            result["module_graph_exit"] = run("module-graph", [*startup, "mod", "graph", "--output=json", "--lockfile_mode=update", "--override_module=sonic-build-infra=" + str(infra)], json_output=True)
-            assert result["module_graph_exit"] == 0, "Module graph was not captured"
-            graph = json.loads((directory / "module-graph.json").read_text())
-            assert "sonic-build-infra" in json.dumps(graph), "Missing overridden infrastructure in graph"
-            codes = [result[name] for name in ("canonical_exit", "tests_exit", "reachability_exit", "metadata_exit")]
-            result["status"] = "passed" if all(code == 0 for code in codes) else "failed"
-            if result["status"] == "passed":
-                assert result["metadata_reexecuted"] and result["matches_seed_metadata"], result
-                assert (bool(restored) and any(record["cacheHit"] is False for record in restored)) if mode == "seed-eager" else result["cache_proven"], result
-        except Exception as error:
-            result.update(status="inconclusive", error=str(error))
-        finally:
             if (consumer / "MODULE.bazel.lock").is_file():
-                shutil.copyfile(consumer / "MODULE.bazel.lock", directory / "MODULE.bazel.lock")
-            result["shutdown_exit"] = run("shutdown", [*startup, "shutdown"])
+                collect("retain-lock", lambda: shutil.copyfile(consumer / "MODULE.bazel.lock", directory / "MODULE.bazel.lock"))
+            result["shutdown_exit"] = collect("shutdown", lambda: run("shutdown", [*startup, "shutdown"]))
+            # Write a preliminary receipt before cleanup/compression so any
+            # interruption still leaves the original command outcomes intact.
+            dump(directory / "result.json", result)
             if result["shutdown_exit"] == 0 and user_root.is_dir() and user_root.parent == scratch:
-                shutil.rmtree(user_root)
-                result["private_output_removed_after_evidence"] = True
+                collect("remove-private-output", lambda: shutil.rmtree(user_root))
+                result["private_output_removed_after_evidence"] = not user_root.exists()
             if mode != "seed-eager" and result["shutdown_exit"] == 0 and cache.is_dir() and cache.parent == scratch:
-                shutil.rmtree(cache)
-                result["private_cache_removed_after_evidence"] = True
+                collect("remove-private-cache", lambda: shutil.rmtree(cache))
+                result["private_cache_removed_after_evidence"] = not cache.exists()
             for path in directory.glob("*.spawns.json"):
-                with path.open("rb") as source, gzip.open(str(path) + ".gz", "wb") as destination:
-                    shutil.copyfileobj(source, destination)
-                path.unlink()
+                def compress(path=path):
+                    with path.open("rb") as source, gzip.open(str(path) + ".gz", "wb") as destination:
+                        shutil.copyfileobj(source, destination)
+                    path.unlink()
+                collect("compress-" + path.name, compress)
+            result["status"] = result.get("command_status", "inconclusive")
+            if result["status"] == "passed":
+                cache_valid = (bool(restored) and any(record["cacheHit"] is False for record in restored)) if mode == "seed-eager" else result["cache_proven"]
+                if result["collection_errors"] or not (cache_valid and result["metadata_reexecuted"] and result.get("matches_seed_metadata")):
+                    result["status"] = "inconclusive"
             result["elapsed_seconds"] = time.monotonic() - started
             dump(directory / "result.json", result)
             results.append(result)
