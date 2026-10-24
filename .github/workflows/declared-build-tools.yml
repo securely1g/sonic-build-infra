@@ -1,131 +1,82 @@
-name: Declared build tools
+name: PR64 download policy experiment
 
 on:
-  pull_request:
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
-  push:
-    branches: [master]
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: declared-build-tools-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   native:
-    name: Build tools (${{ matrix.architecture }})
+    name: Sairedis cache restore (${{ matrix.architecture }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - architecture: amd64
+            machine: x86_64
             runner: ubuntu-24.04
-            platform: x86_64_trixie
+            image: debian:trixie-20260918@sha256:d5ce19d4736f0ebbacd686d1040271a5aeb0cc920f5990c1bfae1717627f0674
             bazel_arch: x86_64
             bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
           - architecture: arm64
+            machine: aarch64
             runner: ubuntu-24.04-arm
-            platform: aarch64_trixie
+            image: debian:trixie-20260918@sha256:1808211ab6f37c6fc6a75368651697536f7bf47993f2797befa8908b1254979d
             bazel_arch: arm64
             bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    container: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    timeout-minutes: 150
+    container:
+      image: ${{ matrix.image }}
+      options: --init
     defaults:
       run:
         shell: bash
     env:
       ARCHITECTURE: ${{ matrix.architecture }}
-      PLATFORM: ${{ matrix.platform }}
+      MACHINE: ${{ matrix.machine }}
+      CONTAINER_IMAGE: ${{ matrix.image }}
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
-      # Use the published account-support module from the maintained registry.
-      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
     steps:
-      - name: Prepare Bazel bootstrap dependencies
+      - name: Install the consumer's host tools and pinned Bazel
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 tar xz-utils
-          [[ "$(dpkg --print-architecture)" == "$ARCHITECTURE" ]]
-          test ! -e /usr/bin/aspell
-          test ! -e /usr/bin/doxygen
-          curl --fail --location --retry 3 --output /usr/local/bin/bazel \
-            "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-$BAZEL_ARCH"
+          apt-get install -y --no-install-recommends binutils build-essential ca-certificates gdb git python3 tar curl
+          test "$(uname -m)" = "$MACHINE"
+          test "$(dpkg --print-architecture)" = "$ARCHITECTURE"
+          . /etc/os-release
+          test "$ID:$VERSION_CODENAME" = debian:trixie
+          curl --fail --location --retry 3 -o /usr/local/bin/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-$BAZEL_ARCH"
           printf '%s  %s\n' "$BAZEL_SHA" /usr/local/bin/bazel | sha256sum --check --strict
           chmod +x /usr/local/bin/bazel
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: infra
+          fetch-depth: 0
           persist-credentials: false
-      - name: Build executable tools and exercise sandboxed invocation
-        run: |
-          set -euo pipefail
-          mkdir -p ci-artifacts
-          printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
-          flags=(--registry="$SONIC_BAZEL_REGISTRY" \
-                 --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
-                 --host_platform="//platforms:$PLATFORM" \
-                 --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
-          bazel --ignore_all_rc_files build "${flags[@]}" \
-            --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
-            //tools/build_tools:aspell //tools/build_tools:doxygen \
-            //tools/build_tools:make //tools/build_tools:m4 \
-            //tools/build_tools:pkgconf //tools/build_tools:perl \
-            //tools/build_tools:bison //tools/build_tools:flex \
-            //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
-            //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
-          cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
-          bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
-            --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
-            //tools/build_tools:runtime_test \
-            //tools/build_tools:runtime_launcher_test \
-            //tools/build_tools:configure_runtime_test \
-            //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
-            //tools/build_tools:kerberos_runtime_test \
-            //tools/build_tools:configure_make_test 2>&1 | tee ci-artifacts/test.log
-          bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
-            'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
-          test -s MODULE.bazel.lock
-          cp -aL bazel-testlogs ci-artifacts/initial-testlogs
-          bazel --ignore_all_rc_files --output_user_root="$RUNNER_TEMP/configure-tools-fresh" \
-            test "${flags[@]}" --nocache_test_results --test_output=errors \
-            --build_event_json_file="$PWD/ci-artifacts/cache-test-events.jsonl" \
-            --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
-            //tools/build_tools:configure_runtime_test 2>&1 | tee ci-artifacts/cache-test.log
-          python3 - <<'PYTHON'
-          import json
-          from pathlib import Path
-          data = Path("ci-artifacts/cache-spawns.json").read_text()
-          decoder = json.JSONDecoder()
-          offset, runtimes = 0, []
-          while offset < len(data):
-              record, offset = decoder.raw_decode(data, offset)
-              if record.get("mnemonic") == "PrepareBuildTools":
-                  runtimes.append({key: record.get(key) for key in ("mnemonic", "targetLabel", "listedOutputs", "runner", "cacheHit")})
-              while offset < len(data) and data[offset].isspace():
-                  offset += 1
-          # A compiled execution tool can require target and exec runtimes.
-          # Every required runtime must be restored; do not assume one config.
-          assert runtimes, "No declared build-tool runtime action was recorded"
-          assert all(item["cacheHit"] and item["runner"] == "disk cache hit"
-                     for item in runtimes), runtimes
-          Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")
-          PYTHON
-      - name: Collect resolution and test evidence
-        if: always()
-        run: |
-          mkdir -p ci-artifacts
-          if [[ -f MODULE.bazel.lock ]]; then cp MODULE.bazel.lock ci-artifacts/; fi
-          if [[ -d bazel-testlogs ]]; then cp -aL bazel-testlogs ci-artifacts/testlogs; fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: declared-build-tools-${{ matrix.architecture }}
+          repository: securely1g/sonic-sairedis
+          ref: baaafcfb9422ad55577717f4e7c342ba5293a54a
+          path: consumer
+          persist-credentials: false
+      - name: Compare fresh cached restores without PR64
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/infra"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/consumer"
+          python3 -B infra/tools/build_tools/cache_download_experiment.py \
+            --infra "$GITHUB_WORKSPACE/infra" --consumer "$GITHUB_WORKSPACE/consumer" \
+            --output "$GITHUB_WORKSPACE/ci-artifacts" --scratch "$RUNNER_TEMP/pr64-download-experiment" \
+            --architecture "$ARCHITECTURE" --image "$CONTAINER_IMAGE"
+      - name: Retain every outcome, including the expected baseline failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr64-download-policy-${{ matrix.architecture }}-${{ github.sha }}
           path: ci-artifacts/
           if-no-files-found: error
           retention-days: 30
+          compression-level: 6
