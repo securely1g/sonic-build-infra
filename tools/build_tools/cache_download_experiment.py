@@ -15,6 +15,8 @@ import time
 BASELINE = "011a91d8030d9b8e72fec9b3163e40f51d72ba7e"
 CONSUMER = "baaafcfb9422ad55577717f4e7c342ba5293a54a"
 REGISTRY = "dba318c8a9702fb588d351225a42df782454a514"
+COMMON_VERSION = "0.0.4-bab24c3409a1e5839f249d49903ded95b0b41be3"
+COMMON_MODULE_SHA256 = "ef40c2278f46c88b257e9437b453428b9017ebd640a55af8b26c852d546e70c7"
 PATTERN = r"(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$"
 MODES = [
     ("seed-eager", ["--remote_download_all"]),
@@ -78,6 +80,49 @@ def private_execution_root(consumer, user_root):
     return execution_root
 
 
+def module_identity(path):
+    declaration = re.search(r"\bmodule\s*\((.*?)\n\)", path.read_text(), re.DOTALL)
+    assert declaration is not None, "Missing module declaration in " + str(path)
+    values = {}
+    for field in ("name", "version"):
+        match = re.search(r'^\s*' + field + r'\s*=\s*"([^\"]+)"', declaration[1], re.MULTILINE)
+        assert match is not None, "Missing module " + field + " in " + str(path)
+        values[field] = match[1]
+    return values
+
+
+def selected_module_receipt(mapping, execution_root, infra, directory, expected_infra_sha):
+    assert isinstance(mapping, dict), "Expected root repository mapping"
+    external = execution_root.parent.parent / "external"
+    receipt = {"scope": "Root repository mapping and selected infra/Common modules; not a full graph",
+               "registry": REGISTRY, "modules": {}}
+    for apparent, expected_name, expected_version, expected_sha in (
+            ("sonic_build_infra", "sonic-build-infra", module_identity(infra / "MODULE.bazel")["version"], expected_infra_sha),
+            ("sonic_swss_common", "sonic-swss-common", COMMON_VERSION, COMMON_MODULE_SHA256)):
+        canonical = mapping.get(apparent)
+        assert isinstance(canonical, str) and re.fullmatch(r"[A-Za-z0-9_+~.\-]+", canonical), canonical
+        assert canonical not in (".", ".."), canonical
+        repository = external / canonical
+        observed = repository / "MODULE.bazel"
+        shutil.copyfile(observed, directory / (apparent + ".MODULE.bazel"))
+        identity = module_identity(observed)
+        observed_sha = sha(observed)
+        row = {"canonical_repository": canonical, "repository_path": str(repository),
+               "resolved_repository_path": str(repository.resolve(strict=True)),
+               "identity": identity, "sha256": observed_sha,
+               "expected_sha256": expected_sha}
+        receipt["modules"][apparent] = row
+        # Retain observed bytes and partial receipt before rejecting a mismatch.
+        dump(directory / "selected-modules.json", receipt)
+        assert identity == {"name": expected_name, "version": expected_version}, row
+        assert observed_sha == expected_sha, row
+        if apparent == "sonic_build_infra":
+            assert repository.resolve(strict=True) == infra.resolve(strict=True), row
+    receipt["verified"] = True
+    dump(directory / "selected-modules.json", receipt)
+    return receipt
+
+
 def rootfs_paths(data):
     fragments = {item["id"]: item for item in data.get("pathFragments", [])}
     def path(identifier):
@@ -127,7 +172,7 @@ def main():
     assert changed <= {".github/workflows/declared-build-tools.yml", "tools/build_tools/cache_download_experiment.py"}, changed
     assert "materialize_directory_aliases" not in (infra / "tools/build_tools/prepare_rootfs.py").read_text()
     assert '\"/lib/$multiarch\", \"/usr/lib/$multiarch\"' in (infra / "tools/build_tools/kernel_debian.py").read_text()
-    source_files = ["tools/build_tools/prepare_rootfs.py", "tools/build_tools/prepare_runtime.py",
+    source_files = ["MODULE.bazel", "tools/build_tools/prepare_rootfs.py", "tools/build_tools/prepare_runtime.py",
                     "tools/build_tools/kernel_debian.py", "oci/runtime_packages.py"]
     source_hashes = {name: sha(infra / name) for name in source_files}
     for name in source_files:
@@ -236,13 +281,18 @@ def main():
                     seed_metadata = metadata
                 result["matches_seed_metadata"] = seed_metadata is not None and metadata == seed_metadata
 
-            def collect_graph():
-                result["module_graph_exit"] = run("module-graph", [*startup, "mod", "graph", "--output=json", "--lockfile_mode=update", "--override_module=sonic-build-infra=" + str(infra)], json_output=True)
-                assert result["module_graph_exit"] == 0, "Module graph was not captured"
-                graph = json.loads((directory / "module-graph.json").read_text())
-                assert "sonic-build-infra" in json.dumps(graph), "Missing overridden infrastructure in graph"
+            def collect_mapping():
+                # Bazel 8.5.1 mod graph evaluates unrelated unused extensions.
+                # Mapping avoids that inspector; verify the actual selected
+                # repositories and their MODULE bytes rather than a graph string.
+                result["repo_mapping_exit"] = run("repo-mapping", [*startup, "mod", "dump_repo_mapping", "", "--lockfile_mode=update", "--override_module=sonic-build-infra=" + str(infra)], json_output=True)
+                assert result["repo_mapping_exit"] == 0, "Root repository mapping was not captured"
+                mapping = json.loads((directory / "repo-mapping.json").read_text())
+                receipt = selected_module_receipt(mapping, private_execution_root(consumer, user_root),
+                                                  infra, directory, source_hashes["MODULE.bazel"])
+                result["selected_modules_verified"] = receipt["verified"]
 
-            collect("module-graph", collect_graph)
+            collect("selected-modules", collect_mapping)
         except Exception as error:
             result.update(status="inconclusive", error=str(error))
         finally:
@@ -284,7 +334,7 @@ def main():
             result["status"] = result.get("command_status", "inconclusive")
             if result["status"] == "passed":
                 cache_valid = (bool(restored) and any(record["cacheHit"] is False for record in restored)) if mode == "seed-eager" else result["cache_proven"]
-                if result["collection_errors"] or not (cache_valid and result["metadata_reexecuted"] and result.get("matches_seed_metadata")):
+                if result["collection_errors"] or not (cache_valid and result["metadata_reexecuted"] and result.get("matches_seed_metadata") and result.get("selected_modules_verified")):
                     result["status"] = "inconclusive"
             result["elapsed_seconds"] = time.monotonic() - started
             dump(directory / "result.json", result)
