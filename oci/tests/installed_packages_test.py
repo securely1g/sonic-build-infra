@@ -232,7 +232,7 @@ class InstalledPackagesTest(unittest.TestCase):
         self.receipt.write_text(json.dumps(apt))
         return path
 
-    def source_receipt(self):
+    def source_receipt(self, extra_fields=None):
         """Declare the source-receipt interface independently of the image assembler."""
         contents = bytearray(64)
         contents[:6] = b"\x7fELF\x02\x01"
@@ -241,6 +241,7 @@ class InstalledPackagesTest(unittest.TestCase):
         fields = {key: "" for key in package_contract.CONTROL_FIELDS}
         fields.update(Package="libexample", Version="2.0", Architecture="amd64")
         fields["Multi-Arch"] = "no"
+        fields.update(extra_fields or {})
         commit = "a" * 40
         version = "1.0-" + commit
         record = {"package": "libexample", "version": "2.0", "architecture": "amd64",
@@ -279,6 +280,50 @@ class InstalledPackagesTest(unittest.TestCase):
         self.assertEqual(receipt["source_packages"][0]["native_files"], [{
             "path": "usr/lib/libexample.so", "mode": 0o2755, "uid": 0, "gid": 104,
             "sha256": hashlib.sha256(contents).hexdigest()}])
+
+    def test_source_receipt_preserves_complete_debian_controls(self):
+        """Install generated owner fields without reducing them to dependency keys."""
+        fields = {
+            "Description": "source-built runtime library\n Preserve this continuation line.",
+            "Source": "sonic", "Maintainer": "SONiC maintainers <sonic@example.org>",
+            "Priority": "optional", "Section": "libs",
+            "Recommends": "consumer (>= 1.0)", "Conflicts": "obsolete-runtime",
+            "X-Project-Note": "generated from the owner's Debian recipe",
+        }
+        path, _ = self.source_receipt(fields)
+        status, _ = self.build(source_receipt=path)
+        for key, value in fields.items():
+            self.assertIn(key + ": " + value + "\n", status)
+
+    def test_source_receipt_rejects_changed_optional_controls(self):
+        """Additional fields must match the reviewed contract, even with a new receipt hash."""
+        for field in ("Description", "Recommends"):
+            with self.subTest(field=field):
+                path, _ = self.source_receipt({"Description": "reviewed", "Recommends": "consumer"})
+                document = json.loads(path.read_text())
+                document["packages"][0]["control_fields"][field] = "changed"
+                path.write_text(json.dumps(document))
+                apt = json.loads(self.receipt.read_text())
+                apt["source_receipt_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+                self.receipt.write_text(json.dumps(apt))
+                with self.assertRaisesRegex(ValueError, "package differs from the reviewed contract"):
+                    self.build(source_receipt=path)
+
+    def test_source_receipt_still_requires_valid_dependency_controls(self):
+        """Accepting owner fields must not allow missing dependencies or malformed identities."""
+        path, _ = self.source_receipt({"Description": "reviewed"})
+        original = json.loads(path.read_text())["packages"][0]
+        invalid_fields = [
+            {key: value for key, value in original["control_fields"].items() if key != "Depends"},
+            dict(original["control_fields"], **{"Invalid:Name": "value"}),
+            dict(original["control_fields"], **{"Recommends\nDepends": "value"}),
+            dict(original["control_fields"], Description=42),
+            dict(original["control_fields"], Version="different"),
+        ]
+        for fields in invalid_fields:
+            with self.subTest(fields=fields):
+                with self.assertRaisesRegex(ValueError, "invalid source package dependency controls"):
+                    package_contract.package_identity({**original, "control_fields": fields}, architecture="amd64")
 
     def test_source_only_receipt_rejects_changed_tar_and_contract(self):
         path, contents = self.source_receipt()
