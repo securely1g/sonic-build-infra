@@ -38,6 +38,11 @@ def _runtime_packages_impl(ctx):
         payload = _single(target, "runtime TAR for " + package)
         inputs.append(payload)
         args.add("--package", package + "=" + ctx.attr.declared_targets[package] + "=" + payload.path)
+    for package, paths in ctx.attr.required_paths.items():
+        if package not in ctx.attr.packages or not paths:
+            fail("required_paths needs a declared package and at least one path: " + package)
+        for path in paths:
+            args.add("--required-path", package + "=" + path)
     if len(ctx.attr.apt_data) != len(ctx.attr.apt_controls):
         fail("APT data and controls must be declared in pairs")
     for data, control in zip(ctx.attr._abi_data + ctx.attr.apt_data, ctx.attr._abi_controls + ctx.attr.apt_controls):
@@ -82,6 +87,7 @@ _runtime_packages = rule(
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
         "packages": attr.string_keyed_label_dict(allow_files = True, mandatory = True),
         "declared_targets": attr.string_dict(mandatory = True),
+        "required_paths": attr.string_list_dict(),
         "dependencies": attr.label_list(providers = [RuntimePackagesInfo]),
         "apt_data": attr.label_list(allow_files = True),
         "apt_controls": attr.label_list(allow_files = True),
@@ -101,6 +107,9 @@ def runtime_packages(name, packages, control, changelog = None, apt_packages = {
     """Generate owner metadata; package facts stay in the existing Debian files.
 
     packages maps Debian binary package names to their public runtime TAR targets.
+    required_paths optionally maps package names to reviewed runtime TAR paths.
+    Each listed path must exist before metadata is published; {multiarch} expands
+    for the target architecture. Images may add their own integration checks.
     dependencies supplies source-built library metadata in target configuration.
     apt_packages maps target APT data labels to their matching control labels.
     Neither input selects libraries from the execution tools' private runtime.

@@ -5,6 +5,8 @@ import hashlib
 import json
 import re
 
+from sonic_oci.paths import expand_required_paths
+
 
 def require(value, message):
     if not value:
@@ -24,10 +26,10 @@ def module_identity(path, expected):
 
 
 def resolve(spec, owners, modules, source_labels, architecture):
-    """Use owners for dependency facts; keep installed-path policy in the image."""
+    """Combine producer file guarantees with optional image-specific checks."""
     require(spec.get("schema") == 1, "unsupported image source policy schema")
     expected = spec.get("packages")
-    require(isinstance(expected, dict) and set(expected) == set(source_labels), "image paths differ from source TAR declarations")
+    require(isinstance(expected, dict) and set(expected) <= set(source_labels), "image paths name undeclared source TARs")
     module_versions = {name: module_identity(path, name) for name, path in modules.items()}
     records, identities = {}, {}
     for label, path in owners.items():
@@ -51,18 +53,32 @@ def resolve(spec, owners, modules, source_labels, architecture):
                     "invalid owner package controls: " + name)
             require(not set(control).intersection({"Architecture", "Status", "Installed-Size", "Conffiles", "SHA256", "MD5sum"}),
                     "owner metadata must not freeze installed architecture or payload state: " + name)
-            require(set(expected[name]) <= {"required_paths", "path_modes", "path_owners", "required_inherited_files"},
+            image = expected.get(name, {})
+            require(isinstance(image, dict), "image path policy must be an object: " + name)
+            require(set(image) <= {"required_paths", "path_modes", "path_owners", "required_inherited_files"},
                     "image policy duplicates owner package metadata: " + name)
+            producer_paths = entry.get("required_paths", [])
+            image_paths = image.get("required_paths", [])
+            # Syncd's source-contract consumer owns typed path expectations.
+            # Keep that mapping intact; generic producer presence checks cannot
+            # invent or replace its ELF/file/symlink classifications.
+            typed_paths = isinstance(image_paths, dict)
+            image_names = list(image_paths) if typed_paths else image_paths
+            combined = expand_required_paths(producer_paths, architecture) | expand_required_paths(image_names, architecture)
+            require(combined, "source package lacks producer or image required paths: " + name)
+            required_paths = dict(image_paths) if typed_paths else list(dict.fromkeys([*producer_paths, *image_names]))
             version = module_versions[module]
             commit = re.search(r"-([0-9a-f]{40})$", version)
             revision = commit[1] if commit else version
-            records[name] = {**expected[name], "control_fields": {**control, "Architecture": architecture},
+            records[name] = {**image, "required_paths": required_paths, "control_fields": {**control, "Architecture": architecture},
                              "target": source_labels[name], "source_revision": revision, "source_module": module}
+            if typed_paths and producer_paths:
+                records[name]["producer_required_paths"] = list(producer_paths)
             if "payload_sha256" in entry:
                 require(isinstance(entry["payload_sha256"], str) and
                         re.fullmatch(r"[0-9a-f]{64}", entry["payload_sha256"]),
                         "invalid generated source payload identity: " + name)
                 records[name]["payload_sha256"] = entry["payload_sha256"]
             identities[module] = {"version": version, "module_sha256": hashlib.sha256(modules[module].read_bytes()).hexdigest()}
-    require(set(records) == set(expected), "missing source owner package metadata")
+    require(set(records) == set(source_labels), "missing source owner package metadata")
     return {**spec, "packages": records}, identities

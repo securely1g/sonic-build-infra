@@ -47,8 +47,8 @@ depending on the account implementation.
 
 `installed_packages` builds dpkg status and a package receipt from the checked
 base, selected Debian controls and source-owned runtime TARs. Source repositories generate their public `runtime_packages.json` target from
-existing `debian/control`, `debian/changelog` and the runtime TARs. Images declare
-only required paths. Changing a version in the producer's changelog changes the
+existing `debian/control`, `debian/changelog` and the runtime TARs. Producers
+declare their required package paths; images add only their own integration checks. Changing a version in the producer's changelog changes the
 image inventory without editing another copy of the package controls.
 
 ```starlark
@@ -59,6 +59,7 @@ runtime_packages(
     control = "debian/control",
     changelog = "debian/changelog",
     packages = {"example": "//dist:runtime"},
+    required_paths = {"example": ["usr/bin/example"]},
 )
 ```
 
@@ -126,11 +127,36 @@ installed_packages(
 The generated metadata schema includes `{"schema":1,"module":"sonic-swss-common","packages":{
 "libswsscommon":{"runtime_target":"//dist:libswsscommon_pkg","control_fields":{
 "Package":"libswsscommon","Version":"1.0.0"}}}}`. Architecture, payload hashes and installed state are derived by the build;
-do not duplicate them in source declarations. The image policy is
-`{"schema":1,"packages":{"libswsscommon":{"required_paths":["usr/lib/{multiarch}/libswsscommon.so.0"]}}}`.
+do not duplicate them in source declarations.
 
-For AMD64 this checks `usr/lib/x86_64-linux-gnu/libswsscommon.so.0`; for
-ARM64 it checks `usr/lib/aarch64-linux-gnu/libswsscommon.so.0`.
+A producer can add `required_paths` to its `runtime_packages` call. For example,
+Common can require `usr/lib/{multiarch}/libswsscommon.so.0` and
+`var/run/redis/sonic-db/database_config.json` in its runtime TAR. An omitted file
+fails metadata generation, even if compilation and TAR creation succeeded. These
+are reviewed expectations, not a file list discovered from the same TAR.
+`{multiarch}` expands to `x86_64-linux-gnu` on AMD64 and `aarch64-linux-gnu` on
+ARM64. Absolute paths, parent traversal and other placeholders are rejected.
+
+The generated owner metadata carries these requirements with the payload hash.
+`runtime_packages_group` preserves them. Image `source_spec` may now contain a
+sparse package map: packages whose producer checks suffice need no image entry.
+For example, config-engine adds only its installed location:
+`{"schema":1,"packages":{"libswsscommon":{"required_paths":["run/redis/sonic-db/database_config.json"]}}}`.
+The producer still checks the raw `var/run` path. The image combines both sets and
+applies its already-checked directory normalization before checking the TAR.
+
+| Input or action | Before | After |
+| --- | --- | --- |
+| Common TAR omits `libswsscommon.so.0` | Each image must repeat the library path to detect this | The producer rejects the incomplete TAR before publishing metadata |
+| Config-engine requires its database configuration under `/run` | The image repeats common package files alongside this requirement | The image keeps this integration check and inherits the producer's file checks |
+| A package has neither producer nor image requirements | The image check rejects an empty required-path list | The combined check still rejects missing coverage |
+
+Producer `required_paths` is optional for existing callers. Unmigrated images may
+retain their complete path policies. Image additions cannot replace producer
+checks; unknown image package names, missing owner metadata, changed TAR hashes
+and missing required paths remain errors. Legacy typed path maps, such as Syncd’s ELF/file/symlink assertions, retain their
+classifications; producer presence checks remain additional requirements. Installed-image
+receipt fields are unchanged.
 
 The rule verifies the declared runtime target belongs to the same repository as
 its metadata. It reads the selected MODULE declaration for version/provenance,

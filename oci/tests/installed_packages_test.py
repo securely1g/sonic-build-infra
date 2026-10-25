@@ -127,6 +127,48 @@ class InstalledPackagesTest(unittest.TestCase):
         self.assertIn("X-Sonic-Source-Revision: " + "a" * 40, status)
         self.assertEqual(receipt["source_modules"]["example"]["version"], "0.0.1-" + "a" * 40)
 
+    def build_with_owner_paths(self, required_paths, image_paths=(), **kwargs):
+        self.spec.write_text(json.dumps({"schema": 1, "packages": {
+            "libexample": {"required_paths": dict(image_paths) if isinstance(image_paths, dict) else list(image_paths)}} if image_paths else {}}))
+        module = self.root / "MODULE.bazel"
+        module.write_text('module(name="example", version="1.0.0.sonic.1")\n')
+        metadata = self.root / "owner.json"
+        metadata.write_text(json.dumps({"schema": 1, "module": "example", "packages": {
+            "libexample": {"runtime_target": "//:runtime", "required_paths": required_paths,
+                           "payload_sha256": hashlib.sha256(self.payload.read_bytes()).hexdigest(),
+                           "control_fields": {"Package": "libexample", "Version": "2.0", "Description": "source-owned"}}}}))
+        return self.build(package_metadata={"@@example+//:runtime_packages.json": metadata},
+                          source_modules={"example": module}, source_labels={"libexample": "@@example+//:runtime"}, **kwargs)
+
+    def test_producer_paths_replace_repeated_image_checks_without_changing_receipts(self):
+        _, receipt = self.build_with_owner_paths(["usr/lib/libexample.so"])
+        self.assertEqual(set(receipt["source_packages"][0]), {
+            "package", "version", "target", "source_revision", "payload_sha256", "replaced_version", "native_files"})
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build_with_owner_paths(["usr/lib/required-but-missing.so"])
+
+    def test_image_specific_paths_are_checked_in_addition_to_producer_paths(self):
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build_with_owner_paths(["usr/lib/libexample.so"], ["run/redis/sonic-db/database_config.json"])
+
+    def test_legacy_typed_image_checks_still_enforce_producer_requirements(self):
+        self.build_with_owner_paths(["usr/lib/libexample.so"], {"usr/lib/libexample.so": "file"})
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build_with_owner_paths(["usr/lib/required-but-missing.so"], {"usr/lib/libexample.so": "file"})
+
+    def test_common_raw_database_path_and_image_run_path_share_checked_normalization(self):
+        self.payload = self.tar("common-layout.tar", {
+            "usr/lib/x86_64-linux-gnu/libswsscommon.so.0": b"runtime library",
+            "var/run/redis/sonic-db/database_config.json": b"{}"})
+        normalization = self.root / "normalization.json"
+        normalization.write_text(json.dumps({
+            "base_manifest_digest": json.loads(self.receipt.read_text())["base_manifest_digest"],
+            "directory_aliases": {"var/run": {"linkname": "/run", "target": "run"}},
+            "root_owned": True, "modes": {}}))
+        self.build_with_owner_paths([
+            "usr/lib/{multiarch}/libswsscommon.so.0", "var/run/redis/sonic-db/database_config.json"],
+            ["run/redis/sonic-db/database_config.json"], normalization_receipt=normalization)
+
     def test_source_version_must_satisfy_installed_consumers(self):
         self.write_spec("0.5")
         with self.assertRaisesRegex(ValueError, "consumer"):

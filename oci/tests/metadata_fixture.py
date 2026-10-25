@@ -23,8 +23,7 @@ index = json.loads((args.base / "index.json").read_text())
 args.apt.write_text(json.dumps({"base_manifest_digest": index["manifests"][0]["digest"],
     "selected": [], "dependency_check": {"status": "satisfied", "packages": {"base-files": base_fields},
     "base_package_inventory_sha256": inventory_digest({"base-files": base_fields})}}))
-args.policy.write_text(json.dumps({"schema": 1, "packages": {
-    "example": {"required_paths": ["usr/share/example/data"]}}}))
+args.policy.write_text(json.dumps({"schema": 1, "packages": {}}))
 args.control.write_text("Source: example\nMaintainer: Example <example@example.org>\n"
     "Section: misc\nPriority: optional\n\nPackage: example\nArchitecture: any\n"
     "Depends: base-files (>= 1.0)\nDescription: Source-owned package\n")

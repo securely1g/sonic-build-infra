@@ -16,7 +16,7 @@ from unittest.mock import patch
 from runtime_packages import (
     DebianTools, check_substitutions, dependency_records, elf_files, merge,
     read_substvars, sha, source_definition, tool_environment,
-    unique_dependencies, validate_archive,
+    unique_dependencies, validate_archive, validate_required_paths,
 )
 
 
@@ -164,17 +164,50 @@ class RuntimePackagesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsafe runtime TAR path"):
             validate_archive(path)
 
+    def test_common_required_paths_follow_the_selected_architecture(self):
+        """A producer checks Common's SONAME and DB configuration before publishing."""
+        required = ["usr/lib/{multiarch}/libswsscommon.so.0",
+                    "var/run/redis/sonic-db/database_config.json"]
+        for architecture, multiarch in (("amd64", "x86_64-linux-gnu"), ("arm64", "aarch64-linux-gnu")):
+            with self.subTest(architecture=architecture):
+                payload = self.root / (architecture + ".tar")
+                with tarfile.open(payload, "w") as archive:
+                    for path in required:
+                        item = tarfile.TarInfo(path.format(multiarch=multiarch))
+                        archive.addfile(item, io.BytesIO())
+                validate_required_paths(payload, required, architecture, "libswsscommon")
+                with self.assertRaisesRegex(ValueError, "libswsscommon.so.0"):
+                    validate_required_paths(payload, required, "arm64" if architecture == "amd64" else "amd64", "libswsscommon")
+
+    def test_common_missing_soname_is_rejected_even_when_the_tar_exists(self):
+        """Valid TAR bytes alone do not establish the required runtime layout."""
+        payload = self.root / "common.tar"
+        with tarfile.open(payload, "w") as archive:
+            archive.addfile(tarfile.TarInfo("usr/lib/x86_64-linux-gnu/libswsscommon.so"), io.BytesIO())
+        with self.assertRaisesRegex(ValueError, "runtime package lacks required paths: libswsscommon"):
+            validate_required_paths(payload, ["usr/lib/{multiarch}/libswsscommon.so.0"], "amd64", "libswsscommon")
+
+    def test_required_paths_reject_empty_unsafe_or_unrecognized_placeholders(self):
+        payload = self.root / "empty.tar"
+        with tarfile.open(payload, "w"):
+            pass
+        for paths in ([], ["../escape"], ["/usr/bin/program"], ["usr/{unknown}/program"],
+                      ["usr/{multiarch.__class__}/program"], [""], ["."], "usr/bin/program"):
+            with self.subTest(paths=paths), self.assertRaises(ValueError):
+                validate_required_paths(payload, paths, "amd64", "example")
+
     def test_group_rejects_wrong_owner_or_duplicate_package(self):
         """Multiple Debian source trees may share one module without losing package ownership."""
         paths = [self.root / "one.json", self.root / "two.json"]
         first = {"schema": 1, "module": "example", "architecture": "amd64",
-                 "packages": {"libone": {"runtime_target": "//:one"}}}
+                 "packages": {"libone": {"runtime_target": "//:one", "required_paths": ["usr/lib/libone.so"]}}}
         second = {**first, "packages": {"libtwo": {"runtime_target": "//:two"}}}
         paths[0].write_text(json.dumps(first))
         paths[1].write_text(json.dumps(second))
         output = self.root / "combined.json"
         merge(paths, output)
         self.assertEqual(set(json.loads(output.read_text())["packages"]), {"libone", "libtwo"})
+        self.assertEqual(json.loads(output.read_text())["packages"]["libone"]["required_paths"], ["usr/lib/libone.so"])
         paths[1].write_text(json.dumps(first))
         with self.assertRaisesRegex(ValueError, "duplicate"):
             merge(paths, output)
