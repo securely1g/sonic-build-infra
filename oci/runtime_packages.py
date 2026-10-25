@@ -20,6 +20,8 @@ import tempfile
 from debian.changelog import Changelog
 from debian.deb822 import Deb822
 
+from sonic_oci.paths import expand_required_paths
+
 
 ARCHITECTURES = {"amd64": 62, "arm64": 183, "armhf": 40}
 RELATION_FIELDS = {
@@ -132,6 +134,16 @@ def validate_archive(path):
             if member.islnk():
                 target = PurePosixPath(member.linkname)
                 require(not target.is_absolute() and ".." not in target.parts, "unsafe runtime TAR hardlink")
+
+
+def validate_required_paths(payload, paths, architecture, package):
+    """Reject an omitted runtime file using expectations reviewed by its owner."""
+    expected = expand_required_paths(paths, architecture)
+    require(expected, "producer required paths are empty: " + package)
+    with tarfile.open(payload) as archive:
+        available = {str(PurePosixPath(member.name)) for member in archive}
+    missing = expected - available
+    require(not missing, "runtime package lacks required paths: " + package + ": " + ", ".join(sorted(missing)))
 
 
 def extract(path, destination, tar):
@@ -331,10 +343,12 @@ def helper_substitutions(dpkg, name, root, fields, debian, provided):
 
 
 def generate(*, control, changelog, module, architecture, tools, tar, output, tree,
-             packages, dependencies=(), apt_packages=(), symbols=None, substvars=None, debian_files=None):
+             packages, dependencies=(), apt_packages=(), symbols=None, substvars=None, debian_files=None, required_paths=None):
     source, stanzas, version = source_definition(control, changelog)
     require(module and set(packages) <= set(stanzas), "runtime package mapping differs from Debian control")
     require(packages, "runtime package mapping is empty")
+    required_paths = required_paths or {}
+    require(set(required_paths) <= set(packages), "required paths refer to an unmapped package")
     symbols, substvars = symbols or {}, substvars or {}
     require(set(symbols) <= set(packages) and set(substvars) <= set(packages),
             "symbols or substitutions refer to an unmapped package")
@@ -385,6 +399,8 @@ def generate(*, control, changelog, module, architecture, tools, tar, output, tr
             require(label.startswith("//") and ":" in label, "runtime target must be a public owner-relative label")
             root = tree / "packages" / name
             extract(payload, root, tar)
+            if name in required_paths:
+                validate_required_paths(payload, required_paths[name], architecture, name)
             require(not (root / "DEBIAN").exists(), "runtime TAR unexpectedly contains Debian control files")
             (root / "DEBIAN").mkdir()
             native = elf_files(root, architecture)
@@ -459,6 +475,8 @@ def generate(*, control, changelog, module, architecture, tools, tar, output, tr
             result[name] = {"runtime_target": record["label"],
                             "control_fields": {key: value for key, value in fields.items() if key not in INSTALLED_FIELDS},
                             "payload_sha256": record["payload_sha256"]}
+            if name in required_paths:
+                result[name]["required_paths"] = list(required_paths[name])
         # Dependencies are supplied transitively by the Starlark provider. Only
         # this action's newly staged source/APT trees belong in its manifest.
         manifest = {"schema": 1, "architecture": architecture, "packages": [
@@ -508,7 +526,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=name == "output")
     parser.add_argument("--module")
     parser.add_argument("--architecture", choices=ARCHITECTURES)
-    for name in ("package", "dependency", "apt-package", "symbols", "substvars", "merge", "debian-file"):
+    for name in ("package", "dependency", "apt-package", "symbols", "substvars", "merge", "debian-file", "required-path"):
         parser.add_argument("--" + name, action="append", default=[])
     args = parser.parse_args()
     if args.merge:
@@ -521,10 +539,15 @@ def main():
         name, label, path = entry.split("=", 2)
         require(PACKAGE.fullmatch(name) and name not in packages, "invalid or duplicate runtime package mapping")
         packages[name] = label, Path(path).resolve()
+    required_paths = {}
+    for entry in args.required_path:
+        name, path = entry.split("=", 1)
+        required_paths.setdefault(name, []).append(path)
     generate(control=args.control.resolve(), changelog=args.changelog.resolve() if args.changelog else None,
              tools=args.tools.resolve(), tar=args.tar.resolve(), output=args.output.resolve(), tree=args.tree.resolve(),
              module=args.module, architecture=args.architecture, packages=packages,
              dependencies=[Path(path).resolve() for path in args.dependency],
+             required_paths=required_paths,
              apt_packages=[tuple(Path(path).resolve() for path in value.split("=", 1)) for value in args.apt_package],
              symbols=named_paths(args.symbols), substvars=named_paths(args.substvars),
              debian_files=named_paths(args.debian_file))

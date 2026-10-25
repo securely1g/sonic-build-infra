@@ -120,6 +120,7 @@ runtime_packages(
     control = ":metadata_control",
     module_name = "example",
     packages = {"example": ":metadata_source.tar"},
+    required_paths = {"example": ["usr/share/example/data"]},
 )
 
 installed_packages(
@@ -199,6 +200,7 @@ runtime_packages(
     changelog = "metadata/debian/changelog",
     control = "metadata/debian/control",
     packages = {"metadata-library": ":metadata_library_tar"},
+    required_paths = {"metadata-library": ["usr/lib/libmetadata-fixture.so.1"]},
 )
 
 runtime_packages(
@@ -208,6 +210,7 @@ runtime_packages(
     control = "metadata/debian/control",
     dependencies = [":metadata_library.json"],
     packages = {"metadata-cli": ":metadata_cli_tar"},
+    required_paths = {"metadata-cli": ["usr/bin/metadata-cli"]},
 )
 
 runtime_packages_group(

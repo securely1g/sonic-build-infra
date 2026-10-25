@@ -187,7 +187,8 @@ def build(base, apt_receipt, controls, source_spec, sources, architecture, norma
                     "normalized source inventory changes native bytes: " + name)
             native_files = installed_native
             paths = set(files)
-        expected_paths = {path.format(multiarch=multiarch) for path in item["required_paths"]}
+        requirements = [*item["required_paths"], *item.get("producer_required_paths", [])]
+        expected_paths = {path.format(multiarch=multiarch) for path in requirements}
         if normalization is not None:
             expected_paths = {normalized_path(path, directory_aliases=normalization["directory_aliases"])
                               for path in expected_paths}

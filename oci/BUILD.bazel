@@ -43,7 +43,10 @@ py_library(
     name = "runtime_packages_lib",
     srcs = ["runtime_packages.py"],
     imports = ["."],
-    deps = ["//apt:lib"],
+    deps = [
+        ":package_metadata",
+        "//apt:lib",
+    ],
 )
 
 py_binary(

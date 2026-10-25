@@ -2,6 +2,7 @@
 
 import copy
 from pathlib import PurePosixPath
+from string import Formatter
 
 def require(value, message):
     if not value:
@@ -62,3 +63,27 @@ def normalized_member(member, *, directory_aliases=DIRECTORY_ALIASES, root_owned
         output.mode = int(value, 8) if isinstance(value, str) else value
         require(isinstance(output.mode, int) and 0 <= output.mode <= 0o7777, 'invalid mode for ' + normalized)
     return output
+
+
+def expand_required_paths(paths, architecture):
+    """Validate reviewed producer/image paths and expand their target directory."""
+    multiarch = {"amd64": "x86_64-linux-gnu", "arm64": "aarch64-linux-gnu"}
+    require(architecture in multiarch, "unsupported required-path architecture")
+    require(isinstance(paths, list) and all(isinstance(path, str) and path for path in paths),
+            "required paths must be a list of nonempty strings")
+    require(len(paths) == len(set(paths)), "duplicate required path")
+    result = set()
+    for value in paths:
+        try:
+            fields = list(Formatter().parse(value))
+            require(all(field in (None, "multiarch") and not spec and conversion is None
+                        for _, field, spec, conversion in fields),
+                    "required paths support only the {multiarch} placeholder")
+            path = value.format(multiarch=multiarch[architecture])
+        except (KeyError, ValueError, IndexError) as error:
+            raise ValueError("invalid required path: " + value) from error
+        require(path not in (".", "") and "\x00" not in path and "\n" not in path and
+                not PurePosixPath(path).is_absolute() and ".." not in PurePosixPath(path).parts,
+                "unsafe required path: " + value)
+        result.add(str(PurePosixPath(path)))
+    return result

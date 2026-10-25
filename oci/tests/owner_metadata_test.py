@@ -33,6 +33,47 @@ class OwnerTest(unittest.TestCase):
         self.assertEqual(entry["target"], "@@example+//dist:runtime")
         self.assertEqual(len(modules["example"]["module_sha256"]), 64)
 
+    def test_image_can_omit_checks_supplied_by_the_producer(self):
+        self.document["packages"]["libexample"]["required_paths"] = ["usr/lib/{multiarch}/libswsscommon.so.0"]
+        self.spec["packages"] = {}
+        resolved, _ = self.resolve()
+        self.assertEqual(resolved["packages"]["libexample"]["required_paths"],
+                         ["usr/lib/{multiarch}/libswsscommon.so.0"])
+
+    def test_image_additions_cannot_replace_the_producer_checks(self):
+        self.document["packages"]["libexample"]["required_paths"] = ["usr/lib/{multiarch}/libswsscommon.so.0"]
+        self.spec["packages"]["libexample"]["required_paths"] = ["run/redis/sonic-db/database_config.json"]
+        resolved, _ = self.resolve()
+        self.assertEqual(resolved["packages"]["libexample"]["required_paths"], [
+            "usr/lib/{multiarch}/libswsscommon.so.0", "run/redis/sonic-db/database_config.json"])
+
+    def test_legacy_typed_paths_preserve_the_source_contract_classifications(self):
+        typed = {"usr/lib/libswsscommon.so.0": "symlink", "usr/lib/libswsscommon.so.0.0.0": "elf"}
+        self.spec["packages"]["libexample"]["required_paths"] = typed
+        self.document["packages"]["libexample"]["required_paths"] = ["var/run/redis/sonic-db/database_config.json"]
+        resolved, _ = self.resolve()
+        record = resolved["packages"]["libexample"]
+        self.assertEqual(record["required_paths"], typed)
+        self.assertEqual(record["producer_required_paths"], ["var/run/redis/sonic-db/database_config.json"])
+        del self.document["packages"]["libexample"]["required_paths"]
+        legacy, _ = self.resolve()
+        self.assertEqual(legacy["packages"]["libexample"]["required_paths"], typed)
+        self.assertNotIn("producer_required_paths", legacy["packages"]["libexample"])
+
+    def test_unmapped_image_packages_and_missing_combined_coverage_are_rejected(self):
+        self.spec["packages"]["typo"] = {"required_paths": ["usr/bin/program"]}
+        with self.assertRaisesRegex(ValueError, "undeclared source TARs"):
+            self.resolve()
+        self.spec["packages"] = {}
+        with self.assertRaisesRegex(ValueError, "lacks producer or image required paths"):
+            self.resolve()
+
+    def test_malformed_producer_paths_are_rejected(self):
+        for paths in ("usr/bin/program", ["../escape"], ["usr/{unknown}/program"]):
+            with self.subTest(paths=paths), self.assertRaises(ValueError):
+                self.document["packages"]["libexample"]["required_paths"] = paths
+                self.resolve()
+
     def test_sonic_commit_version_exposes_actual_commit(self):
         self.module.write_text('module(name="example", version="0.0.1-' + "a" * 40 + '")\n')
         self.assertEqual(self.resolve()[0]["packages"]["libexample"]["source_revision"], "a" * 40)

@@ -58,10 +58,22 @@ class RuntimePackagesRuleTest(unittest.TestCase):
                 self.assertNotIn("Architecture", fields)
         self.assertIn("libc6 (>=", packages["metadata-library"]["control_fields"]["Depends"])
         self.assertIn("metadata-library (>= 2.0)", packages["metadata-cli"]["control_fields"]["Depends"])
+        self.assertEqual(packages["metadata-library"]["required_paths"], ["usr/lib/libmetadata-fixture.so.1"])
+        self.assertEqual(packages["metadata-cli"]["required_paths"], ["usr/bin/metadata-cli"])
         self.assertEqual(packages["metadata-library"]["runtime_target"], "//oci/tests:metadata_library_tar")
         self.assertEqual(packages["metadata-cli"]["runtime_target"], "//oci/tests:metadata_cli_tar")
         self.assertEqual(packages["metadata-library"]["payload_sha256"], hashlib.sha256(library.read_bytes()).hexdigest())
         self.assertEqual(packages["metadata-cli"]["payload_sha256"], hashlib.sha256(program.read_bytes()).hexdigest())
+
+    def test_omitted_reviewed_file_prevents_metadata_publication(self):
+        """Run the real generator against a valid TAR missing a declared file."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = self.generate(root, control.resolve(), library,
+                additional=["--required-path", "metadata-library=usr/lib/missing-required-soname.so.0"])
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("runtime package lacks required paths", result.stderr)
+            self.assertFalse((root / "metadata.json").exists())
 
     def test_missing_target_library_cannot_fall_back_to_execution_runtime(self):
         """Declared dpkg tools include libc, but that libc cannot satisfy a target dependency."""
