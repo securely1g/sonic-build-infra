@@ -149,7 +149,7 @@ applies its already-checked directory normalization before checking the TAR.
 | --- | --- | --- |
 | Common TAR omits `libswsscommon.so.0` | Each image must repeat the library path to detect this | The producer rejects the incomplete TAR before publishing metadata |
 | Config-engine requires its database configuration under `/run` | The image repeats common package files alongside this requirement | The image keeps this integration check and inherits the producer's file checks |
-| A package has neither producer nor image requirements | The image check rejects an empty required-path list | The combined check still rejects missing coverage |
+| A package without a checked source receipt has neither producer nor image requirements | The image check rejects an empty required-path list | The combined check still rejects missing coverage |
 
 Producer `required_paths` is optional for existing callers. Unmigrated images may
 retain their complete path policies. Image additions cannot replace producer
@@ -172,5 +172,12 @@ installed paths, modes and ownership; the latter two are mutually exclusive.
 APT/base hashes, source payload hashes and independent contract identities must
 agree. The rule runs no package installation scripts and creates no DEB packages;
 it records installed contents rather than performing a package-manager transaction.
+
+With a checked `source_receipt`, required paths may be empty, for example for a
+development-header TAR whose producer declares no optional path requirements.
+The receipt must still bind the contract, base, APT selection, source identities,
+raw TAR hash and a nonempty installed inventory. Any declared paths must exist.
+Without `source_receipt`, the combined required-path list must remain nonempty;
+`retained_manifest` alone does not relax this requirement.
 
 Owner runtime targets may be aliases. The metadata macro records the requested public label using the calling package's repository mapping, while the receipt hashes the actual TAR provided by that target.

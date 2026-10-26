@@ -192,7 +192,10 @@ def build(base, apt_receipt, controls, source_spec, sources, architecture, norma
         if normalization is not None:
             expected_paths = {normalized_path(path, directory_aliases=normalization["directory_aliases"])
                               for path in expected_paths}
-        require(expected_paths and expected_paths <= paths,
+        # A checked source receipt binds the contract, raw TAR and nonempty
+        # installed inventory; producer path requirements may be optional.
+        # Legacy callers without that receipt still need reviewed paths.
+        require((expected_paths or source_receipt is not None) and expected_paths <= paths,
                 "source package lacks reviewed installed paths: " + name)
         digest = sha(payload)
         require(item.get("payload_sha256", digest) == digest,
