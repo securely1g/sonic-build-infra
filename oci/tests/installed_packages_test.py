@@ -274,7 +274,7 @@ class InstalledPackagesTest(unittest.TestCase):
         self.receipt.write_text(json.dumps(apt))
         return path
 
-    def source_receipt(self, extra_fields=None):
+    def source_receipt(self, extra_fields=None, *, required_paths=None):
         """Declare the source-receipt interface independently of the image assembler."""
         contents = bytearray(64)
         contents[:6] = b"\x7fELF\x02\x01"
@@ -289,7 +289,7 @@ class InstalledPackagesTest(unittest.TestCase):
         record = {"package": "libexample", "version": "2.0", "architecture": "amd64",
             "control_fields": fields,
             "source": {"module": "example", "version": version, "commit": commit, "target": "@example//:runtime"},
-            "required_paths": {"usr/lib/libexample.so": "elf"},
+            "required_paths": {"usr/lib/libexample.so": "elf"} if required_paths is None else required_paths,
             "path_modes": {"usr/lib/libexample.so": 0o2755},
             "path_owners": {"usr/lib/libexample.so": {"uid": 0, "gid": 104}}}
         self.spec.write_text(json.dumps({"schema": 1, "image": "example", "architecture": "amd64",
@@ -313,6 +313,80 @@ class InstalledPackagesTest(unittest.TestCase):
         apt["dependency_check"]["packages"]["libexample"] = fields
         self.receipt.write_text(json.dumps(apt))
         return path, bytes(contents)
+
+    def bind_source_receipt(self, path, document):
+        path.write_text(json.dumps(document))
+        apt = json.loads(self.receipt.read_text())
+        apt["source_receipt_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.receipt.write_text(json.dumps(apt))
+
+    def test_legacy_empty_path_catalog_is_rejected_even_with_retained_inventory(self):
+        spec = json.loads(self.spec.read_text())
+        spec["packages"]["libexample"]["required_paths"] = []
+        self.spec.write_text(json.dumps(spec))
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build()
+        retained = self.retained()
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build(retained_manifest=retained)
+
+    def test_checked_source_receipt_allows_optional_path_requirements(self):
+        path, contents = self.source_receipt(required_paths={})
+        status, receipt = self.build(source_receipt=path)
+        self.assertIn("Version: 2.0", status)
+        package, = receipt["source_packages"]
+        self.assertEqual(package["payload_sha256"], hashlib.sha256(self.payload.read_bytes()).hexdigest())
+        self.assertEqual(package["native_files"][0]["sha256"], hashlib.sha256(contents).hexdigest())
+
+    def test_checked_data_only_source_receipt_needs_no_path_catalog(self):
+        # Development TARs such as libnl-3-dev have files but no producer path requirements.
+        path, _ = self.source_receipt(required_paths={})
+        header, contents = "usr/include/example/api.h", b"/* public header */\n"
+        self.payload = self.tar("headers.tar", {header: contents})
+        document = json.loads(path.read_text())
+        document["packages"][0].update(
+            input_tar_sha256=hashlib.sha256(self.payload.read_bytes()).hexdigest(),
+            files={header: {"kind": "file", "sha256": hashlib.sha256(contents).hexdigest(),
+                            "mode": 0o644, "uid": 0, "gid": 0}})
+        self.bind_source_receipt(path, document)
+        _, receipt = self.build(source_receipt=path)
+        package, = receipt["source_packages"]
+        self.assertEqual(package["native_files"], [])
+        self.assertEqual(package["payload_sha256"], document["packages"][0]["input_tar_sha256"])
+        self.payload = self.tar("changed-headers.tar", {header: contents + b"changed"})
+        with self.assertRaisesRegex(ValueError, "source TAR differs from the retained inventory"):
+            self.build(source_receipt=path)
+
+    def test_checked_source_receipt_still_enforces_declared_paths(self):
+        path, _ = self.source_receipt(required_paths={"usr/lib/missing.so": "elf"})
+        with self.assertRaisesRegex(ValueError, "lacks reviewed installed paths"):
+            self.build(source_receipt=path)
+
+    def test_optional_paths_do_not_bypass_source_receipt_bindings(self):
+        for change, message in [
+                ("contract", "declared contract, base or APT selection"),
+                ("base", "declared contract, base or APT selection"),
+                ("apt", "declared contract, base or APT selection"),
+                ("modules", "resolved module identities"),
+                ("files", "tar identity and inventory")]:
+            with self.subTest(change=change):
+                path, _ = self.source_receipt(required_paths={})
+                document = json.loads(path.read_text())
+                if change == "contract":
+                    document["contract_sha256"] = "0" * 64
+                elif change == "base":
+                    document["base_manifest_digest"] = "sha256:" + "0" * 64
+                elif change == "modules":
+                    document["module_file_sha256"] = {}
+                elif change == "files":
+                    document["packages"][0]["files"] = {}
+                self.bind_source_receipt(path, document)
+                if change == "apt":
+                    apt = json.loads(self.receipt.read_text())
+                    apt["source_receipt_sha256"] = "0" * 64
+                    self.receipt.write_text(json.dumps(apt))
+                with self.assertRaisesRegex(ValueError, message):
+                    self.build(source_receipt=path)
 
     def test_source_only_receipt_preserves_normalized_elf_permissions(self):
         path, contents = self.source_receipt()
