@@ -31,6 +31,7 @@ bazel_cmd=(bazel --ignore_all_rc_files)
 # The workflow runs this on both native AMD64 and ARM64 hosts.
 python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
 tests=(
+  //deps:alternatives_test
   //oci/tests:runtime_packages_test //oci/tests:runtime_packages_rule_test
   //oci/tests:installed_packages_test
   //oci/tests:owner_metadata_test //oci/tests:installed_packages_rule_test
