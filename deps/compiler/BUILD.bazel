@@ -1,0 +1,32 @@
+"""Debian Trixie compiler alternatives for images that extract APT payloads."""
+
+load("@tar.bzl", "tar")
+
+_LINK = "./{path} uid=0 gid=0 time=0 mode=0777 type=link link={target}"
+
+_ALTERNATIVES = {
+    "c++": ("usr/bin/c++", "/usr/bin/clang++"),
+    "cc": ("usr/bin/cc", "/usr/bin/gcc"),
+    "c89": ("usr/bin/c89", "/usr/bin/c89-gcc"),
+    "c99": ("usr/bin/c99", "/usr/bin/c99-gcc"),
+    "cpp": ("usr/lib/cpp", "/usr/bin/cpp"),
+}
+
+# Mirror the package post-install links without executing maintainer scripts.
+tar(
+    name = "alternatives_pkg",
+    mtree = [
+        _LINK.format(
+            path = path,
+            target = "/etc/alternatives/" + name,
+        )
+        for name, (path, _) in _ALTERNATIVES.items()
+    ] + [
+        _LINK.format(
+            path = "etc/alternatives/" + name,
+            target = target,
+        )
+        for name, (_, target) in _ALTERNATIVES.items()
+    ],
+    visibility = ["//visibility:public"],
+)

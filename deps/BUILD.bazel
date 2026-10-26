@@ -1,6 +1,23 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
 # Marks this directory as a package so `uv.project()` can reference the files below.
 
 exports_files([
     "pyproject.toml",
     "uv.lock",
 ])
+
+py_test(
+    name = "alternatives_test",
+    srcs = ["alternatives_test.py"],
+    args = [
+        "$(rootpath //deps/automake:alternatives_pkg)",
+        "$(rootpath //deps/compiler:alternatives_pkg)",
+        "$(rootpath //deps/openmpi:alternatives_pkg)",
+    ],
+    data = [
+        "//deps/automake:alternatives_pkg",
+        "//deps/compiler:alternatives_pkg",
+        "//deps/openmpi:alternatives_pkg",
+    ],
+)

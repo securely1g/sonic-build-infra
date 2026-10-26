@@ -1,0 +1,100 @@
+"""Debian Trixie openmpi alternatives for images that extract APT payloads."""
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@tar.bzl", "tar")
+
+_LINK = "./{path} uid=0 gid=0 time=0 mode=0777 type=link link={target}"
+
+_ALTERNATIVES = {
+    "mpi": ("usr/bin/mpicc", "/usr/bin/mpicc.openmpi"),
+    "mpiCC": ("usr/bin/mpiCC", "/usr/bin/mpic++.openmpi"),
+    "mpic++": ("usr/bin/mpic++", "/usr/bin/mpic++.openmpi"),
+    "mpicxx": ("usr/bin/mpicxx", "/usr/bin/mpic++.openmpi"),
+    "mpiexec": ("usr/bin/mpiexec", "/usr/bin/mpiexec.openmpi"),
+    "mpif77": ("usr/bin/mpif77", "/usr/bin/mpif77.openmpi"),
+    "mpif90": ("usr/bin/mpif90", "/usr/bin/mpif90.openmpi"),
+    "mpifort": ("usr/bin/mpifort", "/usr/bin/mpifort.openmpi"),
+    "mpirun": ("usr/bin/mpirun", "/usr/bin/mpirun.openmpi"),
+}
+
+_MULTIARCH = {
+    triplet: {
+        "mpi-" + triplet: (
+            "usr/include/" + triplet + "/mpi",
+            "/usr/lib/" + triplet + "/openmpi/include",
+        ),
+        "libmpi.so-" + triplet: (
+            "usr/lib/" + triplet + "/libmpi.so",
+            "/usr/lib/" + triplet + "/openmpi/lib/libmpi.so",
+        ),
+        "mpi-c.pc-" + triplet: (
+            "usr/lib/" + triplet + "/pkgconfig/mpi-c.pc",
+            "/usr/lib/" + triplet + "/pkgconfig/ompi-c.pc",
+        ),
+        "mpi-fort.pc-" + triplet: (
+            "usr/lib/" + triplet + "/pkgconfig/mpi-fort.pc",
+            "/usr/lib/" + triplet + "/pkgconfig/ompi-fort.pc",
+        ),
+        "mpi.pc-" + triplet: (
+            "usr/lib/" + triplet + "/pkgconfig/mpi.pc",
+            "/usr/lib/" + triplet + "/pkgconfig/ompi.pc",
+        ),
+    }
+    for triplet in [
+        "x86_64-linux-gnu",
+        "aarch64-linux-gnu",
+    ]
+}
+
+# Mirror the package post-install links without executing maintainer scripts.
+write_file(
+    name = "alternatives_mtree",
+    out = "alternatives.mtree",
+    content = [
+        _LINK.format(
+            path = path,
+            target = "/etc/alternatives/" + name,
+        )
+        for name, (path, _) in _ALTERNATIVES.items()
+    ] + [
+        _LINK.format(
+            path = "etc/alternatives/" + name,
+            target = target,
+        )
+        for name, (_, target) in _ALTERNATIVES.items()
+    ] + select({
+        "@platforms//cpu:x86_64": [
+            _LINK.format(
+                path = path,
+                target = "/etc/alternatives/" + name,
+            )
+            for name, (path, _) in _MULTIARCH["x86_64-linux-gnu"].items()
+        ] + [
+            _LINK.format(
+                path = "etc/alternatives/" + name,
+                target = target,
+            )
+            for name, (_, target) in _MULTIARCH["x86_64-linux-gnu"].items()
+        ],
+        "@platforms//cpu:aarch64": [
+            _LINK.format(
+                path = path,
+                target = "/etc/alternatives/" + name,
+            )
+            for name, (path, _) in _MULTIARCH["aarch64-linux-gnu"].items()
+        ] + [
+            _LINK.format(
+                path = "etc/alternatives/" + name,
+                target = target,
+            )
+            for name, (_, target) in _MULTIARCH["aarch64-linux-gnu"].items()
+        ],
+    }) + [""],
+    newline = "unix",
+)
+
+tar(
+    name = "alternatives_pkg",
+    mtree = ":alternatives_mtree",
+    visibility = ["//visibility:public"],
+)
