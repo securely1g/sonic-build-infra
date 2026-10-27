@@ -43,8 +43,9 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
-      # Use the published account-support module from the maintained registry.
-      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+      # Draft validation of the .13 native interfaces from registry PR #146.
+      # Restore maintained main after that exact recipe lands.
+      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/songqing-sq/sonic-bazel-registry/6f277d4a12de1fa156a1e2566080e0bf23bc38ea
     steps:
       - name: Prepare Bazel bootstrap dependencies
         run: |

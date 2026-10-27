@@ -5,6 +5,15 @@ They select source-native Cc actions with fixed Debian GCC12 and an independent
 Bookworm glibc2.36 sysroot. Linux AMD64 execution can target both architectures;
 ARM64 execution has a declared native compiler distribution.
 
+Bookworm keeps GCC12, its compiler support files and its glibc2.36 target
+sysroot. Linking uses the architecture-matched declared Trixie BFD launcher:
+Distroless preserves Debian linker scripts and supplies `--remap-inputs` so their
+absolute paths resolve to declared package files; Bookworm's BFD2.40 cannot read
+that option. The Trixie launcher brings its own execution loader and libraries,
+separately from the Bookworm target ABI. Compiler action inputs and runfiles
+include that complete linker runtime. The compiler's `inputs.json` records the
+selected linker and support-files labels.
+
 Components declare target APT packages through the shared extension namespace:
 
 ```starlark

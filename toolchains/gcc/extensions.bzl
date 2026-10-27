@@ -144,6 +144,8 @@ def _gcc_impl(mctx):
             suite = suite,
             gcc_major = DEBIAN_SUITES[suite].gcc_major,
             packages = tag.debian_packages,
+            linker = tag.linker,
+            linker_files = tag.linker_files,
             target_arch = cpu,
             exec_arch = exec_cpu,
         )
@@ -182,6 +184,12 @@ debian_toolchain = tag_class(
         "debian_packages": attr.label_list(
             doc = "Pinned Debian compiler and execution-runtime data.tar.xz archives.",
             mandatory = True,
+        ),
+        "linker": attr.label(
+            doc = "Optional exported source-file launcher in an external repository, matching this execution and target architecture; keeps the compiler and sysroot unchanged.",
+        ),
+        "linker_files": attr.label(
+            doc = "Required with linker: its complete declared execution runtime and support files.",
         ),
         "tool_prefix": attr.string(
             doc = "Target triple used by compiler binaries and private directories; defaults to the Debian multiarch prefix.",

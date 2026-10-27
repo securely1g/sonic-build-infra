@@ -40,7 +40,7 @@ filegroup(
             "{triple}/**",
         ],
         allow_empty = True,
-    ) + ["inputs.json"],
+    ) + ["inputs.json"] + {linker_files},
 )
 
 alias(
