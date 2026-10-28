@@ -13,6 +13,24 @@ import zlib
 from elf_metadata import Elf
 
 
+def origin_paths(elf, directory):
+    paths = {15: [], 29: []}
+    has_runpath = False
+    for section in elf.sections:
+        if section[1] != 6:
+            continue
+        strings = elf.section_data(elf.sections[section[6]])
+        for offset in range(section[4], section[4] + section[5], section[9]):
+            tag, value = elf.unpack("qQ" if elf.bits == 64 else "iI", offset)
+            if tag not in paths:
+                continue
+            has_runpath |= tag == 29
+            for entry in elf.string(strings, value).split(":"):
+                if "$ORIGIN" in entry or "${ORIGIN}" in entry:
+                    paths[tag].append(entry.replace("${ORIGIN}", str(directory)).replace("$ORIGIN", str(directory)))
+    return ([] if has_runpath else paths[15], paths[29], has_runpath)
+
+
 def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
     binary = Path(binary).resolve()
     elf = Elf(binary.read_bytes())
@@ -74,33 +92,27 @@ def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
             if destination.exists() and destination.read_bytes() != debug:
                 raise ValueError("conflicting runtime debuglink filename: " + item.debuglink)
             destination.write_bytes(debug)
-        paths = [str(root)]
-        for section in elf.sections:
-            if section[1] != 6:
-                continue
-            strings = elf.section_data(elf.sections[section[6]])
-            for offset in range(section[4], section[4] + section[5], section[9]):
-                tag, value = elf.unpack("qQ" if elf.bits == 64 else "iI", offset)
-                if tag in (15, 29):
-                    for entry in elf.string(strings, value).split(":"):
-                        if "$ORIGIN" in entry or "${ORIGIN}" in entry:
-                            paths.append(entry.replace("${ORIGIN}", str(binary.parent)).replace("$ORIGIN", str(binary.parent)))
-        pending = [binary]
+        pending = [(binary, [])]
         checked = set()
         while pending:
-            current = pending.pop()
+            current, inherited_rpaths = pending.pop()
             if current in checked:
                 continue
             checked.add(current)
-            for soname in Elf(current.read_bytes()).needed:
+            current_elf = Elf(current.read_bytes())
+            rpaths, runpaths, has_runpath = origin_paths(current_elf, current.parent)
+            paths = rpaths + ([] if has_runpath else inherited_rpaths) + [str(root)] + runpaths
+            for soname in current_elf.needed:
                 provider = next((Path(directory) / soname for directory in paths if (Path(directory) / soname).is_file()), None)
                 if provider is None:
                     raise ValueError("undeclared runtime library: " + soname + " required by " + str(current))
-                pending.append(provider)
+                pending.append((provider, rpaths + inherited_rpaths))
         environment = dict(os.environ)
         for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT"):
             environment.pop(name, None)
-        command = [str(loader), "--inhibit-cache", "--library-path", ":".join(paths), str(binary)] + arguments
+        # Let the loader apply each object's RPATH/RUNPATH itself. Promoting
+        # the main RUNPATH to --library-path incorrectly makes it transitive.
+        command = [str(loader), "--inhibit-cache", "--library-path", str(root), str(binary)] + arguments
         if instrument:
             command = [str(Path(instrument).absolute())] + list(instrument_arguments) + command
         return subprocess.run(command, env=environment).returncode

@@ -61,6 +61,15 @@ tests=(
   //toolchains/gcc/tests:foreign_link_test
   //cc/tests:transitive_runtime_test
   //cc/tests:shared_library_layout_test
+  //cc/tests/runtime_context:layout_test
+  //cc/tests/runtime_test:native_test
+  //cc/tests/runtime_test:contract_test
+  //cc/tests/runtime_test:origin_contract_test
+  //testing:exec_test_args_test
+  //tests:hello_rpath_installation_test
+  //tests:hello_runpath_installation_test
+  //tests:installation_rpath_tar_test
+  //toolchains/gcc/tests:prefix_map_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.

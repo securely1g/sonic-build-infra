@@ -65,8 +65,11 @@ execute native Linux target ELFs using the matching loader and libraries from
 explicit target Debian payload tar archives. They preserve installed PT_INTERP.
 Provide `binary` and `runtime_payloads` (including libc6 and the runtime library
 closure). Payload labels may be architecture-selecting filegroups. The wrapper
-retains the binary's runfiles and its relative ORIGIN library paths. A tool
-attribute with `cfg = "exec"` selects the complete wrapper in exec configuration.
+retains the binary's runfiles and its relative ORIGIN library paths.
+Shared libraries expand ORIGIN relative to their own location. RPATH search
+paths reach indirect dependencies; RUNPATH applies only to direct dependencies.
+An execution tool attribute with `cfg = "exec"` selects the complete wrapper
+in exec configuration.
 Cross architecture binaries may be built; this interface requires matching
 execution and target CPUs to execute them. It supports library payloads, not a
 chroot filesystem or arbitrary package data requirements.

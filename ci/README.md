@@ -8,11 +8,9 @@ revision, so the checks exercise the current PR with its target branch.
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
 Local builds default to `sonic-bazel-registry/main` and the Bazel Central
-Registry. This Draft requires the updated `rules_distroless` `0.9.4.sonic.13`
+Registry. Native APT exports require the updated `rules_distroless` `0.9.4.sonic.13`
 recipe from [registry #146](https://github.com/securely1g/sonic-bazel-registry/pull/146),
-which adds the individual APT library and header interfaces. The older `.14`
-candidate was removed; the `.13` recipe currently on `main` does not yet have
-these interfaces.
+which adds the individual APT library and header interfaces.
 
 The Bazel and declared-tool workflows temporarily select the reviewed registry
 commit `6f277d4a12de1fa156a1e2566080e0bf23bc38ea`. On a native Trixie host,
@@ -28,11 +26,6 @@ endpoint plus BCR, replacing the default instead of adding another snapshot.
 It generates `MODULE.bazel.lock` and records the endpoint with the CI evidence;
 the lock remains ignored. Ordinary Bazel commands continue to use `.bazelrc`'s
 maintained `main` default.
-
-Keep this PR Draft until #146 lands. Then change both workflow registry values
-back to `https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main`,
-remove this temporary reproduction pin, regenerate the ignored lock, and rerun
-the native checks against `main` before marking the PR ready.
 
 Distroless patches, upstream regressions and package-import consumer tests live
 with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).
@@ -63,6 +56,12 @@ and shared library using `@bookworm_perl_tools//libperl-dev:libperl_cc`;
 execution tools and select the matching Bookworm target architecture, retaining
 a separate action audit, test events and logs. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
+
+The native source matrix explicitly runs runtime-context and native-runtime
+contracts, including per-object ORIGIN, RPATH inheritance and RUNPATH isolation,
+checker argument forwarding, installation RPATH preservation and GCC prefix maps.
+The declared-tool matrix also runs the Trixie test runtime, Bookworm Perl and
+Bookworm Valgrind contracts on both native architectures.
 
 Archive timestamp checks cover the shared default and caller overrides, explicit
 zero times, and both direct tar and stripped-binary deployment paths. The tar.bzl

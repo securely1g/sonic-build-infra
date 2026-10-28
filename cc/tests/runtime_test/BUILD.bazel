@@ -50,3 +50,40 @@ native_runtime_binary(
     instrument = "//tools/build_tools:valgrind",
     instrument_args = ["--quiet", "--error-exitcode=86", "--leak-check=full"],
 )
+
+# Distinct SONAMEs and a relocatable three-object graph exercise the ELF loader
+# contract independently of Bazel's generated solib search paths.
+cc_binary(
+    name = "liborigin_leaf.so",
+    srcs = ["origin_leaf.c"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,liborigin_leaf.so"],
+)
+
+cc_binary(
+    name = "liborigin_middle.so",
+    srcs = ["origin_middle.c", ":liborigin_leaf.so"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,liborigin_middle.so"],
+)
+
+cc_binary(
+    name = "origin_program",
+    srcs = ["origin_main.c", ":liborigin_middle.so"],
+    linkopts = ["-Wl,--allow-shlib-undefined"],
+)
+
+py_test(
+    name = "origin_contract_test",
+    srcs = ["origin_contract_test.py", "//cc:runtime_test.py"],
+    main = "origin_contract_test.py",
+    args = [
+        "$(location :origin_program)",
+        "$(location :liborigin_middle.so)",
+        "$(location :liborigin_leaf.so)",
+        "$(location @patchelf//:patchelf)",
+        "$(location @build_tools//libc6:data)",
+    ],
+    data = [":origin_program", ":liborigin_middle.so", ":liborigin_leaf.so", "@patchelf//:patchelf", "@build_tools//libc6:data"],
+    deps = ["//deb:elf_metadata"],
+)

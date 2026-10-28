@@ -89,6 +89,9 @@ jobs:
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
+            //tools/build_tools:test_runtime_test \
+            //tools/build_tools:perl_bookworm_test \
+            //tools/build_tools:bookworm_test_runtime_test \
             //tools/build_tools:configure_make_test \
             //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
             2>&1 | tee ci-artifacts/test.log
