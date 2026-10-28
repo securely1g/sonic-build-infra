@@ -4,7 +4,7 @@ load("//testing:exec_test.bzl", "exec_test")
 
 package(default_testonly = True)
 
-alias(name = "perl", actual = "@bookworm_perl_tools//libperl-dev:libperl_cc")
+alias(name = "perl", actual = "@bookworm_build_tools//libperl-dev:libperl_cc")
 
 cc_library(name = "perl_headers_objects", srcs = ["perl_headers_probe.c"], deps = [":perl"])
 cc_shared_library(name = "perl_headers_shared", deps = [":perl_headers_objects"], shared_lib_name = "libheader_probe.so", target_compatible_with = ["//platforms:bookworm"])

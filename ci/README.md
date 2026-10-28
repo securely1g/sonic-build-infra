@@ -50,7 +50,7 @@ ownership rule is present. These rule families are selected independently, so
 either can be developed and validated on its own. The native matrix also selects
 the three existing Bookworm contracts:
 `//cc/tests/header_includes:headers_link_test` builds and inspects an executable
-and shared library using `@bookworm_perl_tools//libperl-dev:libperl_cc`;
+and shared library using `@bookworm_build_tools//libperl-dev:libperl_cc`;
 `//toolchains/bookworm/tests:abi_test` checks the target ELF ABI; and
 `:native_test` executes it with the declared Bookworm runtime. They keep Trixie
 execution tools and select the matching Bookworm target architecture, retaining
