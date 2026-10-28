@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.25",
+    version = "0.0.26",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -620,3 +620,9 @@ http_archive(
     sha256 = "043219839669c431def9bb410c4a827f115ee5bf377469d55c4ed905f81f73be",
     urls = [DEBIAN_SNAPSHOT + "/pool/main/m/make-dfsg/make_4.4.1-2_arm64.deb"],
 )
+
+# The Go lock updater's contract tests use a Bazel-managed SDK.
+bazel_dep(name = "rules_go", version = "0.64.1", repo_name = "io_bazel_rules_go", dev_dependency = True)
+go_sdk = use_extension("@io_bazel_rules_go//go:extensions.bzl", "go_sdk", dev_dependency = True)
+go_sdk.download(name = "go_sdk", version = "1.26.7")
+use_repo(go_sdk, "go_sdk")
