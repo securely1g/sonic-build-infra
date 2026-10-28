@@ -427,3 +427,9 @@ The shared execution runtime also exports `sphinx-build` and `makeinfo` for
 native documentation generation actions. Their Python/Perl modules, Texinfo XS
 modules, Sphinx themes and native libraries come from the same pinned
 execution-architecture package set.
+
+Bookworm tools use one shared `bookworm_build_tools` package set, with separate
+Perl and instrumentation runtime subsets. This approved suite-specific exception
+preserves Perl 5.36 for Bookworm XS generators; the existing Trixie `build_tools`
+set supplies Perl 5.40. Both subsets use the execution configuration, and target
+debug libraries remain separate.

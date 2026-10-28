@@ -542,7 +542,7 @@ alias(
         architecture = architecture,
         profile = "perl",
         exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
-        packages = ["@bookworm_perl_tools//" + package for package in ["perl", "perl-base", "perl-modules-5.36", "libperl-dev"]],
+        packages = ["@bookworm_build_tools//" + package for package in ["perl", "perl-base", "perl-modules-5.36", "libperl-dev"]],
     )
     for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
 ]
@@ -570,7 +570,7 @@ py_test(
 
 # The tool runs on the execution CPU while its package suite is explicitly chosen.
 [
-    build_tools_runtime(name = "bookworm_test_runtime_" + architecture, architecture = architecture, profile = "tests", packages = ["@bookworm_test_tools//" + package for package in ["valgrind", "libc6-dbg", "tcl8.6", "tcl-expect"]], exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu])
+    build_tools_runtime(name = "bookworm_test_runtime_" + architecture, architecture = architecture, profile = "tests", packages = ["@bookworm_build_tools//" + package for package in ["valgrind", "libc6-dbg", "tcl8.6", "tcl-expect"]], exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu])
     for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
 ]
 alias(name = "bookworm_test_runtime", actual = select({"@platforms//cpu:x86_64": ":bookworm_test_runtime_amd64", "@platforms//cpu:aarch64": ":bookworm_test_runtime_arm64"}), visibility = ["//visibility:public"])
