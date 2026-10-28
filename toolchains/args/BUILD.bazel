@@ -53,6 +53,24 @@ cc_args(
     visibility = ["//visibility:public"],
 )
 
+# Native config_setting constraints permit Bookworm's more specific suite
+# condition to specialize the generic Linux architecture condition.
+[
+    config_setting(
+        name = name + "_hardening",
+        constraint_values = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ] + (["//platforms:bookworm"] if bookworm else []),
+    )
+    for name, cpu, bookworm in [
+        ("linux_x86_64", "x86_64", False),
+        ("linux_aarch64", "aarch64", False),
+        ("bookworm_x86_64", "x86_64", True),
+        ("bookworm_aarch64", "aarch64", True),
+    ]
+]
+
 # dpkg-buildflags hands these flags to every Debian package build,
 # so we have to replicate them in this toolchain.
 cc_args(
@@ -62,15 +80,23 @@ cc_args(
     ],
     args = [
         "-fstack-protector-strong",
-        "-fstack-clash-protection",
         "-Wformat",
         "-Werror=format-security",
         # Inert without optimisation, and glibc warns when it is missing.
         "-O2",
         "-D_FORTIFY_SOURCE=2",
     ] + select({
-        "//toolchains/constraint:linux_aarch64": ["-mbranch-protection=standard"],
-        "//toolchains/constraint:linux_x86_64": ["-fcf-protection"],
+        # Bookworm dpkg1.21.23 does not add Trixie dpkg1.22 hardening defaults.
+        ":bookworm_aarch64_hardening": [],
+        ":bookworm_x86_64_hardening": [],
+        ":linux_aarch64_hardening": [
+            "-fstack-clash-protection",
+            "-mbranch-protection=standard",
+        ],
+        ":linux_x86_64_hardening": [
+            "-fstack-clash-protection",
+            "-fcf-protection",
+        ],
     }),
     visibility = ["//visibility:public"],
 )

@@ -1,3 +1,4 @@
+load(":prefix_map.bzl", "prefix_map_fixture")
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
 load("@rules_python//python:defs.bzl", "py_test")
 
@@ -30,3 +31,6 @@ py_test(
     args = ["$(locations :foreign_probe)"],
     data = [":foreign_probe"],
 )
+
+prefix_map_fixture(name = "prefix_map_object", src = "prefix_map.c")
+py_test(name = "prefix_map_test", srcs = ["prefix_map_test.py"], args = ["$(locations :prefix_map_object)"], data = [":prefix_map_object"])

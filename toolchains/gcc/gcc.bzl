@@ -22,13 +22,14 @@ GCC_METADATA = {
     ),
 }
 
-def gcc_repo_name(cpu, version, exec_cpu = None):
+def gcc_repo_name(cpu, version, exec_cpu = None, suite = "trixie"):
     """The repo the `gcc` extension fetches one distribution into.
 
     Args:
         cpu: The `@platforms//cpu` value, e.g. `x86_64`.
         version: The GCC version, e.g. `14.2.0`.
         exec_cpu: Architecture running the tools; defaults to the target CPU.
+        suite: Debian target suite; existing Trixie repository names remain unchanged.
 
     Returns:
         The bare repo name, e.g. `gcc-14.2.0-linux-target-x86_64-host-x86_64`.
@@ -39,8 +40,8 @@ def gcc_repo_name(cpu, version, exec_cpu = None):
             cpu,
             sorted(GCC_METADATA),
         ))
-    return "gcc-{version}-linux-target-{cpu}-host-{exec_cpu}".format(
+    return ("gcc-{version}-linux-target-{cpu}-host-{exec_cpu}".format(
         cpu = cpu,
         exec_cpu = exec_cpu or cpu,
         version = version,
-    )
+    ) + ("-" + suite if suite != "trixie" else ""))

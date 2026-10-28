@@ -31,6 +31,7 @@ write_file(
 debug_symbols_tar(
     name = "ownership_fixture_tar",
     srcs = [":ownership_fixture"],
+    symlinks = {"usr/share/doc/fixture-dbgsym": "fixture"},
 )
 
 py_test(

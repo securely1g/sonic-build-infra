@@ -19,7 +19,8 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-# Use maintained main and record the effective endpoint with the module lock.
+# Default to maintained main; Draft validation may select one exact candidate.
+# Record the effective endpoint with the generated module lock.
 registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
@@ -60,6 +61,15 @@ tests=(
   //toolchains/gcc/tests:foreign_link_test
   //cc/tests:transitive_runtime_test
   //cc/tests:shared_library_layout_test
+  //cc/tests/runtime_context:layout_test
+  //cc/tests/runtime_test:native_test
+  //cc/tests/runtime_test:contract_test
+  //cc/tests/runtime_test:origin_contract_test
+  //testing:exec_test_args_test
+  //tests:hello_rpath_installation_test
+  //tests:hello_runpath_installation_test
+  //tests:installation_rpath_tar_test
+  //toolchains/gcc/tests:prefix_map_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
@@ -86,11 +96,19 @@ apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test
 apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
 "${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
   "deps(set(${apt_python_tests[*]}))" > "$artifacts/apt-python313-actions.json"
+# Explicitly exercise the individual APT library/header exports on Bookworm.
+# The same native CPU uses Trixie execution tools and a Bookworm target ABI.
+bookworm_tests=(//cc/tests/header_includes:headers_link_test
+  //toolchains/bookworm/tests:abi_test //toolchains/bookworm/tests:native_test)
+bookworm_flags=("${flags[@]}" --platforms="//platforms:${cpu}_bookworm")
+printf '%s\n' "${bookworm_tests[@]}" > "$artifacts/bookworm-targets.txt"
+"${bazel_cmd[@]}" aquery "${bookworm_flags[@]}" --output=jsonproto \
+  "deps(set(${bookworm_tests[*]}))" > "$artifacts/bookworm-actions.json"
 python3 - "$artifacts" <<'PYTHON'
 import collections, json, re, sys
 from pathlib import Path
 root = Path(sys.argv[1])
-for filename in ('actions.json', 'apt-python313-actions.json'):
+for filename in ('actions.json', 'apt-python313-actions.json', 'bookworm-actions.json'):
     graph = json.loads((root / filename).read_text())
     fragments = {item['id']: item for item in graph['pathFragments']}
     def path(identifier):
@@ -121,6 +139,9 @@ cp -aL bazel-testlogs "$artifacts/testlogs"
 "${bazel_cmd[@]}" test "${apt_python_flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/apt-python313-tests.bep.json" "${apt_python_tests[@]}"
 cp -aL bazel-testlogs "$artifacts/apt-python313-testlogs"
+"${bazel_cmd[@]}" test "${bookworm_flags[@]}" --test_output=errors \
+  --build_event_json_file="$artifacts/bookworm-tests.bep.json" "${bookworm_tests[@]}"
+cp -aL bazel-testlogs "$artifacts/bookworm-testlogs"
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp

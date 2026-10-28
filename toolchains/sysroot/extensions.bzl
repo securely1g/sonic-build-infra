@@ -15,6 +15,11 @@ def _relocate_linker_scripts(ctx, architecture):
         relative = "usr/lib/{}/{}".format(multiarch, name)
         script = ctx.path("root/" + relative)
         original = ctx.read(script)
+
+        # Bookworm ARM64 libm.so is an ELF alias and libm.a is an archive;
+        # only GNU linker scripts contain host-root path operands.
+        if original.startswith(json.decode('"\\u007fELF"')) or original.startswith("!<arch>\n"):
+            continue
         tokens = original.replace("\n", " ").replace("\t", " ").split(" ")
         paths = [token for token in tokens if token.startswith(("/lib/", "/lib64/", "/usr/lib/"))]
         if not paths:
@@ -45,7 +50,7 @@ directory(
     if ctx.os.name.lower() != "linux" or not host_arch:
         fail("SONiC sysroot creation requires a Linux AMD64 or ARM64 executor")
     tar = ctx.path(getattr(ctx.attr, "_tar_" + host_arch))
-    collision_check = extract_archives(ctx, tar, ctx.attr.archives, "root")
+    collision_check = extract_archives(ctx, tar, ctx.attr.archives, "root", relocate_root_symlinks = ctx.attr.suite == "bookworm")
 
     # Debian Trixie uses merged /usr. Its linker scripts must reach these same
     # declared files through /lib and /lib64 as well as /usr/lib.
@@ -67,7 +72,7 @@ directory(
     ctx.delete("links.mtree")
 
     linker_scripts = {}
-    for architecture in ["amd64", "arm64"]:
+    for architecture in ctx.attr.architectures:
         linker_scripts.update(_relocate_linker_scripts(ctx, architecture))
 
     ctx.file("inputs.json", json.encode_indent({
@@ -75,7 +80,7 @@ directory(
             "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY.",
             "generator": "sonic-build-infra//toolchains/sysroot:extensions.bzl",
         },
-        "architectures": ["amd64", "arm64"],
+        "architectures": ctx.attr.architectures,
         "collision_check": collision_check,
         "suite": ctx.attr.suite,
         "archives": [str(label) for label in ctx.attr.archives],
@@ -87,6 +92,7 @@ _sysroot = repository_rule(
     attrs = {
         "archives": attr.label_list(mandatory = True, allow_files = [".xz"]),
         "suite": attr.string(mandatory = True),
+        "architectures": attr.string_list(default = ["amd64", "arm64"]),
         "_tar_amd64": attr.label(default = "@bsd_tar_toolchains_linux_amd64//:tar", allow_single_file = True),
         "_tar_arm64": attr.label(default = "@bsd_tar_toolchains_linux_arm64//:tar", allow_single_file = True),
     },
@@ -96,7 +102,9 @@ def _sysroots_impl(ctx):
     declared = {}
     for module in ctx.modules:
         for tag in module.tags.debian:
-            settings = tag.suite
+            if not tag.architectures or len(depset(tag.architectures).to_list()) != len(tag.architectures) or any([architecture not in ["amd64", "arm64"] for architecture in tag.architectures]):
+                fail("Sysroot architectures must be a nonempty unique selection of amd64 and arm64")
+            settings = (tag.suite, tag.architectures)
             if tag.name in declared:
                 if declared[tag.name] != settings:
                     fail("Conflicting suite for sysroot {}".format(tag.name))
@@ -108,7 +116,8 @@ def _sysroots_impl(ctx):
             _sysroot(
                 name = tag.name,
                 suite = tag.suite,
-                archives = sysroot_source_archives(tag.suite, "amd64") + sysroot_source_archives(tag.suite, "arm64"),
+                architectures = tag.architectures,
+                archives = [archive for architecture in tag.architectures for archive in sysroot_source_archives(tag.suite, architecture)],
             )
 
 sysroots = module_extension(
@@ -117,6 +126,7 @@ sysroots = module_extension(
         "debian": tag_class(attrs = {
             "name": attr.string(mandatory = True),
             "suite": attr.string(default = "trixie", values = sorted(DEBIAN_SUITES)),
+            "architectures": attr.string_list(default = ["amd64", "arm64"]),
         }),
     },
 )

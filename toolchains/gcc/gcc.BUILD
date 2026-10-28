@@ -31,11 +31,16 @@ directory(
 # own helper files, including specs and compiler-specific startup objects.
 filegroup(
     name = "multicall_support_files",
-    srcs = glob([
-        "usr/**",
-        "bin/**",
-        "{triple}/**",
-    ]) + ["inputs.json"],
+    srcs = glob(
+        [
+            "usr/**",
+            "lib/**",
+            "lib64/**",
+            "bin/**",
+            "{triple}/**",
+        ],
+        allow_empty = True,
+    ) + ["inputs.json"] + {linker_files},
 )
 
 alias(

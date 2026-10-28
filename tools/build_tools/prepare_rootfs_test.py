@@ -245,6 +245,21 @@ class RootfsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unresolved runtime"):
             validate_links(self.root)
 
+    def test_optional_tex_search_index_does_not_require_postinst(self):
+        directory = self.root / "usr/share/texmf"
+        directory.mkdir(parents=True)
+        index = directory / "ls-R"
+        index.symlink_to("../../../var/lib/texmf/ls-R-TEXMFMAIN")
+        validate_links(self.root)
+        self.assertFalse(index.is_symlink())
+        # An actually supplied index remains part of the declared runtime.
+        data = self.root / "var/lib/texmf/ls-R-TEXMFMAIN"
+        data.parent.mkdir(parents=True)
+        data.write_text("declared index")
+        index.symlink_to("../../../var/lib/texmf/ls-R-TEXMFMAIN")
+        validate_links(self.root)
+        self.assertEqual(index.read_text(), "declared index")
+
     def test_unresolved_manpage_does_not_require_an_unrelated_package(self):
         directory = self.root / "usr/share/man/man1"
         directory.mkdir(parents=True)

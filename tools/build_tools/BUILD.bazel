@@ -5,7 +5,7 @@ load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "n
 load("@rules_python//python:defs.bzl", "py_test")
 load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "check_build_tools", "python_runtime")
 
-python_runtime(name = "python_runtime")
+python_runtime(name = "python_runtime", visibility = ["//visibility:public"])
 
 cc_binary(
     name = "runtime_launcher",
@@ -433,7 +433,7 @@ py_test(
                 "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "automake",
                 "libtool", "libtool-bin", "coreutils", "diffutils", "grep", "sed", "mawk",
                 "findutils", "bash", "dash", "protobuf-compiler", "protobuf-compiler-grpc",
-                "thrift-compiler", "python3", "libxml-simple-perl", "graphviz", "fonts-dejavu-core", "debianutils",
+                "thrift-compiler", "python3", "python3-sphinx", "python3-pytest", "texinfo", "libxml-simple-perl", "graphviz", "fonts-dejavu-core", "debianutils",
             ]
         ] + ["@build_tools//libprotobuf-dev:data"],
     )
@@ -451,14 +451,15 @@ alias(
 
 [
     build_tool(name = tool, tool = tool, runtime = ":foreign_runtime", visibility = ["//visibility:public"])
-    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "dot"]
+    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot"]
 ]
 
 py_test(
     name = "foreign_runtime_test",
     srcs = ["foreign_runtime_test.py"],
     args = ["$(location :foreign_runtime)", "$(location :metadata_runtime)"],
-    data = [":foreign_runtime", ":metadata_runtime"],
+    data = [":foreign_runtime", ":metadata_runtime", ":sphinx-build"],
+    deps = ["@rules_python//python/runfiles"],
     visibility = ["//visibility:public"],
 )
 
@@ -506,5 +507,89 @@ py_test(
     srcs = ["libtool_test.py"],
     args = ["$(location :libtool_program)", "$(location :libtool_library)", "$(location :libtool_c_library)", "$(location :libtool_config)", "$(location :libtool_argv_validation)"],
     data = [":libtool_program", ":libtool_library", ":libtool_c_library", ":libtool_config", ":libtool_argv_validation"],
+    visibility = ["//visibility:public"],
+)
+
+# Execution-side instrumentation is independent of source-generator runtimes.
+[
+    build_tools_runtime(name = "test_runtime_" + architecture, architecture = architecture, profile = "tests", packages = ["@build_tools//valgrind", "@build_tools//libc6-dbg", "@build_tools//tcl8.6", "@build_tools//tcl-expect"], exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu])
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+alias(name = "test_runtime", actual = select({"@platforms//cpu:x86_64": ":test_runtime_amd64", "@platforms//cpu:aarch64": ":test_runtime_arm64"}), visibility = ["//visibility:public"])
+[
+    build_tool(name = tool, tool = tool, runtime = ":test_runtime", visibility = ["//visibility:public"])
+    for tool in ["valgrind", "tclsh"]
+]
+
+cc_binary(name = "test_runtime_probe", srcs = ["test_runtime_probe.c"])
+py_test(name = "test_runtime_test", srcs = ["test_runtime_test.py"], args = ["$(location :test_runtime)", "$(location :test_runtime_probe)"], data = [":test_runtime", ":test_runtime_probe"], visibility = ["//visibility:public"])
+
+# Matching target libc debug objects for native runtime instrumentation callers.
+config_setting(name = "bookworm_target_debug", constraint_values = ["//platforms:bookworm"])
+
+alias(
+    name = "libc_debug_payload",
+    actual = select({
+        ":bookworm_target_debug": "@bookworm_target_debug//libc6-dbg:data",
+        "//conditions:default": "@build_tools//libc6-dbg:data",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tools_runtime(
+        name = "perl_bookworm_runtime_" + architecture,
+        architecture = architecture,
+        profile = "perl",
+        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
+        packages = ["@bookworm_build_tools//" + package for package in ["perl", "perl-base", "perl-modules-5.36", "libperl-dev"]],
+    )
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+alias(
+    name = "perl_bookworm_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":perl_bookworm_runtime_amd64",
+        "@platforms//cpu:aarch64": ":perl_bookworm_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+build_tool(
+    name = "perl_bookworm",
+    tool = "perl",
+    runtime = ":perl_bookworm_runtime",
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "perl_bookworm_test",
+    srcs = ["perl_bookworm_test.py"],
+    args = ["$(location :perl_bookworm_runtime)", "$(location :perl_bookworm)"],
+    data = [":perl_bookworm_runtime", ":perl_bookworm"],
+)
+
+# The tool runs on the execution CPU while its package suite is explicitly chosen.
+[
+    build_tools_runtime(name = "bookworm_test_runtime_" + architecture, architecture = architecture, profile = "tests", packages = ["@bookworm_build_tools//" + package for package in ["valgrind", "libc6-dbg", "tcl8.6", "tcl-expect"]], exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu])
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+alias(name = "bookworm_test_runtime", actual = select({"@platforms//cpu:x86_64": ":bookworm_test_runtime_amd64", "@platforms//cpu:aarch64": ":bookworm_test_runtime_arm64"}), visibility = ["//visibility:public"])
+build_tool(name = "valgrind_bookworm", tool = "valgrind", runtime = ":bookworm_test_runtime", visibility = ["//visibility:public"])
+py_test(
+    name = "bookworm_test_runtime_test",
+    srcs = ["bookworm_test_runtime_test.py", "test_runtime_test.py"],
+    main = "bookworm_test_runtime_test.py",
+    args = ["$(location :bookworm_test_runtime)", "$(location :test_runtime_probe)", "$(location :valgrind_bookworm)"],
+    data = [":bookworm_test_runtime", ":test_runtime_probe", ":valgrind_bookworm"],
+    visibility = ["//visibility:public"],
+)
+
+# Sphinx takes directories, while Bazel declares source files. This adapter
+# consumes conf.py directly; callers declare builders, versions and timestamps.
+py_binary(
+    name = "sphinx",
+    srcs = ["sphinx.py"],
+    data = [":sphinx-build"],
+    deps = ["@rules_python//python/runfiles"],
     visibility = ["//visibility:public"],
 )

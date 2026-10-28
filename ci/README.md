@@ -8,21 +8,29 @@ revision, so the checks exercise the current PR with its target branch.
 Run `bash ci/bazel-ci.sh` on a native AMD64 or ARM64 Debian Trixie host with
 Bazel 8.5.1, a C/C++ compiler, binutils, GDB, Git, Python, tar and xz installed.
 Local builds default to `sonic-bazel-registry/main` and the Bazel Central
-Registry. The Bazel and declared-tool workflows use that same maintained
-endpoint, which contains `rules_distroless` 0.9.4.sonic.1. On a native Trixie
-host, reproduce the source checks with:
+Registry. Native APT exports require the updated `rules_distroless` `0.9.4.sonic.13`
+recipe from [registry #146](https://github.com/securely1g/sonic-bazel-registry/pull/146),
+which adds the individual APT library and header interfaces.
+
+The Bazel and declared-tool workflows temporarily select the reviewed registry
+commit `6f277d4a12de1fa156a1e2566080e0bf23bc38ea`. On a native Trixie host,
+reproduce that same candidate with:
 
 ```sh
-bash ci/bazel-ci.sh
+SONIC_BAZEL_REGISTRY=https://raw.githubusercontent.com/songqing-sq/sonic-bazel-registry/6f277d4a12de1fa156a1e2566080e0bf23bc38ea \
+  bash ci/bazel-ci.sh
 ```
 
-CI selects its URLs explicitly so user-specific Bazel settings cannot change
-its registries.
+The script ignores user/workspace rc files and selects exactly this SONiC
+endpoint plus BCR, replacing the default instead of adding another snapshot.
+It generates `MODULE.bazel.lock` and records the endpoint with the CI evidence;
+the lock remains ignored. Ordinary Bazel commands continue to use `.bazelrc`'s
+maintained `main` default.
 
 Distroless patches, upstream regressions and package-import consumer tests live
 with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).
 This repository tests its own SONiC rules, toolchains and APT adapters against
-the selected published dependency; it does not maintain a second Distroless
+the selected dependency recipe; it does not maintain a second Distroless
 patch archive or test suite.
 
 The main branch contains the landed tar.bzl patch. The separate shared-Rust
@@ -39,8 +47,21 @@ also runs the nine external-consumer analysis/sysroot tests and rejects the
 unsafe archive fixture. Wheel installation tests run when the wheel-layer rule
 is present; archive ownership and debug-header ownership tests run when the
 ownership rule is present. These rule families are selected independently, so
-either can be developed and validated on its own. These checks do not claim
+either can be developed and validated on its own. The native matrix also selects
+the three existing Bookworm contracts:
+`//cc/tests/header_includes:headers_link_test` builds and inspects an executable
+and shared library using `@bookworm_build_tools//libperl-dev:libperl_cc`;
+`//toolchains/bookworm/tests:abi_test` checks the target ELF ABI; and
+`:native_test` executes it with the declared Bookworm runtime. They keep Trixie
+execution tools and select the matching Bookworm target architecture, retaining
+a separate action audit, test events and logs. These checks do not claim
 ARMHF execution, an installed SONiC image, or full component downstream coverage.
+
+The native source matrix explicitly runs runtime-context and native-runtime
+contracts, including per-object ORIGIN, RPATH inheritance and RUNPATH isolation,
+checker argument forwarding, installation RPATH preservation and GCC prefix maps.
+The declared-tool matrix also runs the Trixie test runtime, Bookworm Perl and
+Bookworm Valgrind contracts on both native architectures.
 
 Archive timestamp checks cover the shared default and caller overrides, explicit
 zero times, and both direct tar and stripped-binary deployment paths. The tar.bzl

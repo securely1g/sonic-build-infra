@@ -1,0 +1,25 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+load(":exec_test.bzl", "exec_test")
+
+exports_files(["exec_test.bzl"])
+
+py_binary(
+    name = "argv_check",
+    srcs = ["argv_check.py"],
+    main = "argv_check.py",
+)
+
+alias(name = "argv_long", actual = "argv/foobar")
+
+exec_test(
+    name = "exec_test_args_test",
+    runner = ":argv_check",
+    srcs = ["argv/foo", ":argv_long"],
+    data = ["argv/data file's.txt"],
+    checker_args = [
+        "--long=$(location :argv_long)",
+        "--literal=testing/argv/foo",
+        "--spaced=$(location argv/data file's.txt)",
+        "--text=a value with 'quotes'; untouched",
+    ],
+)
