@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
+load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
 
 cc_args(
     name = "warnings",
@@ -25,6 +26,16 @@ cc_args(
         "-Wextra",
         # "-Wpedantic",
     ],
+    visibility = ["//visibility:public"],
+)
+
+# rules_go disables this documented C++ toolchain feature when constructing
+# CGo flags. SDK and generated CGo sources own their diagnostics; inheriting
+# project -Wextra conflicts with runtime/cgo's own -Werror.
+cc_feature(
+    name = "non_cgo_warnings",
+    feature_name = "rules_go_unsupported_feature",
+    args = [":warnings"],
     visibility = ["//visibility:public"],
 )
 
