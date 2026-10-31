@@ -53,25 +53,24 @@ errors still fail the build.
 ## Ordinary package inputs
 
 Keep the canonical `apt.lock.json` with reviewed package identities, source
-hashes and extracted data/control hashes. Two adapters expose those inputs to
-Bazel:
+hashes and any extracted data/control hashes required by the layer selector.
+For runtime archives, landed `rules_distroless 0.9.4.sonic.13` provides
+`apt.import_lock`, which reads the exact archive URLs, SHA256 values and graph
+without resolving package indexes. Its public targets expose original `:deb`
+archives as well as `:data`, `:control`, and payload closures.
 
-- `export_inputs.py` generates the checked-in `apt_inputs.MODULE.bazel`, which
-  calls standard `apt.install` with exact versions and architectures for every
-  candidate in the reviewed dependency sets.
-- The `apt_inputs` repository rule reads that same lock during Bazel setup and
-  generates `apt_inputs.bzl` in an external repository. It maps lock keys to
-  public package labels such as `@image_apt//tcpdump`; the layer adapter uses
-  their existing `:data` and `:control` targets.
+The `apt_inputs` repository rule reads that same lock during Bazel setup and
+generates `apt_inputs.bzl` in an external repository. It maps lock keys to
+public package labels such as `@image_apt//tcpdump`; the layer adapter uses
+their existing `:data` and `:control` targets. The mapping includes base
+packages such as OpenSSL; the selector still removes those automatically during
+the build. The selection action verifies the complete candidate set and the
+reviewed extracted-content hashes before choosing payloads.
 
-These are exports of one canonical lock, not another lock or a manually curated
-list of packages missing from the base. They include base packages such as
-OpenSSL; the selector still removes those automatically during the build.
-Distroless uses the root/dependency module's pinned snapshot sources and its
-normal resolver/importer. The selection action verifies the complete candidate
-set and the reviewed extracted-content hashes before choosing payloads.
-
-Generate the MODULE declaration after an intentional lock update:
+`export_inputs.py` remains available for callers that need the existing
+`apt.install` declaration path, including native C++ discovery from Debian
+Contents indexes. Generate that compatibility declaration after an intentional
+lock update:
 
 ```sh
 python3 PATH_TO_INFRA/apt/export_inputs.py \
@@ -79,12 +78,14 @@ python3 PATH_TO_INFRA/apt/export_inputs.py \
   --module dockers/my-image/bazel/apt_inputs.MODULE.bazel
 ```
 
-Commit the lock and MODULE declaration together. `--check` verifies the
-declaration without changing it; the image's owner tests should perform the same
-check. In the root MODULE, include it and declare the metadata repository:
+Commit the lock and compatibility MODULE declaration together. `--check`
+verifies the declaration without changing it. Runtime import callers instead
+declare the lock and metadata repository directly:
 
 ```starlark
-include("//dockers/my-image/bazel:apt_inputs.MODULE.bazel")
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.import_lock(lock = "//dockers/my-image/bazel:apt.lock.json")
+use_repo(apt, "image_apt")
 
 apt_inputs = use_repo_rule("@sonic_build_infra//apt:inputs_repository.bzl", "apt_inputs")
 apt_inputs(
@@ -101,9 +102,34 @@ Keep the package request recipe used for intentional refreshes separate from
 these resolved inputs. The export command does not resolve a fresh lock or add
 extracted-content hashes.
 
+### Select one locked root subset
+
+`apt_inputs` also accepts `dependency_set`, `architecture`, and `root_packages`
+together. This mode validates the complete selected set/architecture, then
+follows locked dependency keys from the requested package names. A requested
+name may already be transitive in the shared set. Omitting all three attributes
+preserves the existing full-set mapping.
+
+The subset repository emits a restricted `APT_INPUTS` mapping and
+`apt_manifest.json`. The manifest contains exactly `schema = 1`,
+`dependency_set`, `architecture`, `root_packages`, and `packages`. Its package
+object is keyed by full version-2 lock keys; each row contains `name`, `version`,
+`architecture`, ordered `urls`, `sha256`, and the locked `depends_on` keys.
+Duplicate selected archive hashes fail so a consumer can bind files to rows by
+SHA256 without relying on their filenames.
+
+For example, `sonic-build-infra` uses this mode for
+`//tools/build_tools:installer_worker_debs_amd64`. The target selects the 39
+Debian names requested by `sonic-buildimage`'s installer worker plus Docker CE's
+`nftables` dependency, then consumes public `<package>/amd64:deb` aliases.
+This is a subset of the existing `build_tools` lock, with no additional APT set
+or resolver. See the [worker target contract](../tools/build_tools/README.md#locked-installer-worker-packages).
+
 Generated Bazel files start with `AUTO-GENERATED. DO NOT EDIT MANUALLY.` and
 name their generator. Generated JSON inputs and selection receipts carry the
 same notice in `_generated` metadata because JSON does not support comments.
+The frozen `apt_manifest.json` interface is the exception: it contains only
+the five fields documented above, and its generator is this metadata repository.
 Keep that metadata in reviewed package locks too, with the package-resolution
 and hash-preparation origin. Change package requests through the documented
 refresh procedure and regenerate derived files.
@@ -172,10 +198,10 @@ does not run installation scripts or update the inherited dpkg database.
 
 ## Validation and dependency
 
-Use `rules_distroless` **0.9.4.sonic.1**. It includes the existing Protobuf `.inc`
-header fix and sorts above plain 0.9.4, so that competing request needs no root
-override. The dotted registry entry preserves the code and patches from
-0.9.4-sonic.1. No local archive patches are required.
+Use the selected `rules_distroless` **0.9.4.sonic.13**. It retains the compiler
+and header fixes and supplies locked runtime imports and original-DEB exports.
+The module is available from the canonical SONiC registry; no local archive
+patches are required.
 
 `//apt:dependencies_test` checks Debian version order, alternatives, virtual
 providers, supported architecture qualifiers and malformed metadata.

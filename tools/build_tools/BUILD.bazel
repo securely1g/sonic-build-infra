@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:select_file.bzl", "select_file")
+load("@installer_worker_apt_inputs//:apt_inputs.bzl", "APT_INPUTS")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
 load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
@@ -6,6 +7,43 @@ load("@rules_python//python:defs.bzl", "py_test")
 load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "check_build_tools", "python_runtime")
 
 python_runtime(name = "python_runtime")
+
+# The metadata repository projects these roots and dependencies from the one
+# shared lock. Explicit architecture aliases keep this worker target on AMD64.
+_INSTALLER_WORKER_PACKAGES = APT_INPUTS["build_tools"]["amd64"]
+
+filegroup(
+    name = "installer_worker_debs_amd64",
+    srcs = [
+        _INSTALLER_WORKER_PACKAGES[key] + "/amd64:deb"
+        for key in sorted(_INSTALLER_WORKER_PACKAGES)
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "installer_worker_manifest_amd64",
+    srcs = ["@installer_worker_apt_inputs//:apt_manifest.json"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "installer_worker_debs_test",
+    srcs = ["installer_worker_debs_test.py"],
+    args = [
+        "$(location :installer_worker_manifest_amd64)",
+        "$(locations :installer_worker_debs_amd64)",
+    ],
+    data = [
+        ":installer_worker_debs_amd64",
+        ":installer_worker_manifest_amd64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 cc_binary(
     name = "runtime_launcher",
@@ -34,6 +72,18 @@ py_test(
     imports = ["."],
     main = "runtime_launcher_test.py",
     visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "export_apt_lock_test",
+    srcs = [
+        "export_apt_lock.py",
+        "export_apt_lock_test.py",
+    ],
+    imports = ["."],
+    main = "export_apt_lock_test.py",
+    visibility = ["//visibility:public"],
+    deps = ["//apt:lib"],
 )
 
 # dpkg-shlibdeps needs the native runtime libraries' symbols/shlibs metadata and
@@ -179,10 +229,17 @@ py_test(
 py_test(
     name = "kernel_runtime_test",
     srcs = ["kernel_runtime_test.py"],
-    args = ["$(location :kernel_runtime)"],
-    data = [":kernel_runtime"],
+    args = [
+        "$(location :kernel_runtime)",
+        "$(location //tools/build_tools/lock:apt.lock.json)",
+    ],
+    data = [
+        ":kernel_runtime",
+        "//tools/build_tools/lock:apt.lock.json",
+    ],
     python_version = "PY3",
     tags = ["no-remote-exec"],
+    deps = ["//apt:lib"],
 )
 
 [

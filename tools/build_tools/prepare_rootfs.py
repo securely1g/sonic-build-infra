@@ -140,6 +140,13 @@ def validate_links(root: Path) -> None:
             raise ValueError(f"invalid runtime symlink: {path.relative_to(root)}") from error
         if not destination.is_relative_to(root):
             raise ValueError(f"runtime symlink escapes output: {path.relative_to(root)}")
+        # Sudo's service mask is not part of the offline compiler contract.
+        # This tree has no device nodes, and Bazel rejects its dangling /dev/null
+        # target. Keep the original DEB unchanged for real worker installation.
+        sudo_mask = path == root / "usr/lib/systemd/system/sudo.service" and destination == root / "dev/null"
+        if not destination.exists() and sudo_mask:
+            path.unlink()
+            continue
         # These optional files are outside the offline compiler/packager
         # contract: system CAs, Quilt's mail helper, and documentation targets.
         optional = str(path.relative_to(root)) in (

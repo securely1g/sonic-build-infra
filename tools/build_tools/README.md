@@ -7,8 +7,10 @@ Use these executable targets for generators that need Aspell or Doxygen:
 | `@sonic_build_infra//tools/build_tools:aspell` | Aspell with the pinned English dictionary and filters; accepts ordinary Aspell arguments, including `-l en -a -p ./personal.pws`. |
 | `@sonic_build_infra//tools/build_tools:doxygen` | Doxygen with its pinned shared libraries; accepts ordinary Doxygen arguments. |
 
-Both use the existing `build_tools` APT package set, dated snapshots and package
-integrities from `MODULE.bazel`. Their runtime contains the dynamic loader,
+Both use the existing `build_tools` APT package set from the checked-in
+`tools/build_tools/lock/apt.lock.json`. Its manual resolver recipe keeps the dated
+snapshots and package requests in `tools/build_tools/lock_refresh/MODULE.bazel`.
+Their runtime contains the dynamic loader,
 libraries, plugins and dictionaries. A declared Python action unpacks the package
 payloads, compiles Debian's compressed dictionaries, and checks that runtime
 libraries resolve inside the bundle. The compiler's target `sysroot` is unchanged.
@@ -199,18 +201,22 @@ approval. Ordinary builds and validation of existing, approved package producers
 need no new package approval. These runtime targets extract existing Debian
 package payloads and do not produce DEBs.
 
-Keep only the required top-level package roots in `MODULE.bazel`; the APT resolver
-fetches their binary `Depends` and `Pre-Depends` transitively. For example, Bash
+Keep only the required top-level package roots in the manual refresh recipe;
+the APT resolver records their binary `Depends` and `Pre-Depends` transitively.
+Ordinary builds import that reviewed graph without resolving package indexes.
+For example, Bash
 brings in `base-files` and `mawk`, while `build-essential` brings in `bzip2`,
 `patch` and `tar`. Do not repeat these or tools already declared for generators.
 
-The selected `rules_distroless` API does not read source `Build-Depends` or
+The selected `rules_distroless` resolver does not read source `Build-Depends` or
 `Build-Depends-Arch`. The kernel roots are therefore an explicit mapping of the
 selected Debian kernel source requirements plus the tools used by its SONiC
 build. Its generated control file depends on the selected build profiles and
 architecture. Retain roots such as `debhelper`, `python3`, `gcc-14` and `xz-utils`
-even when their payloads are transitive: the APT hub writes dpkg status records
-only for explicit roots, and the kernel runs `dpkg-checkbuilddeps`. The six
+even when their payloads are transitive so the refresh recipe records those
+requirements. `apt.import_lock` exposes every locked transitive package and its
+dpkg status record. Native runtime tests compare that complete status inventory
+with the lock and exercise `dpkg-checkbuilddeps` and `dpkg-shlibdeps`. The six
 `_KERNEL_LINK_LIBRARIES` roots also expose the `:data` and `:control` labels used
 to install library ownership, shlibs and symbols metadata. These entries have
 direct metadata consumers; the other runtime libraries remain transitive.
@@ -290,6 +296,11 @@ without following a directory cycle. It retains package status and library owner
 shlibs and symbols metadata so `dpkg-shlibdeps` can calculate the source-built
 kernel tools' dependencies. The compiler's execution-side libc headers remain
 part of this runtime; they do not replace any consuming target's sysroot.
+
+The relocatable compiler tree omits the packaged `sudo.service` mask that ends
+at `/dev/null`: it has no device nodes, and Bazel rejects dangling links in tree
+outputs. The original sudo DEB remains unchanged for real worker installation.
+Other unresolved systemd links still fail.
 
 Native AMD64 and ARM64 source CI run `prepare_rootfs_test` for metadata, archive
 boundaries and empty-directory/symlink preservation. `kernel_debian_test`
@@ -422,3 +433,77 @@ architecture, hard-float ARMHF user-space and freestanding softfp NEON,
 declared library paths, and Debian dependency metadata. The native
 `kernel_runtime_test` checks the same tree for AMD64 regressions. Complete
 kernel source and package validation belongs to `sonic-linux-kernel`.
+
+## Locked installer worker packages
+
+`sonic-buildimage` uses an AMD64 Debian Trixie worker for its VS installer
+assembly. The worker's Dockerfile requests 39 Debian package names, including
+`j2cli=0.3.12b-5` and `squashfs-tools=1:4.6.1-1`. Its separately supplied Docker
+CE archive also requires `nftables`. These execution tools use the same
+`build_tools` lock as source generators and kernel builds.
+
+| Public target | Output |
+| --- | --- |
+| `@sonic_build_infra//tools/build_tools:installer_worker_debs_amd64` | One original `rules_distroless` `:deb` archive for every package in the 40 requested names' AMD64 dependency closure. |
+| `@sonic_build_infra//tools/build_tools:installer_worker_manifest_amd64` | JSON metadata for exactly those archives, derived from the same canonical lock. |
+
+The metadata repository follows only locked dependency keys. A requested name
+may already be transitive in the shared set, as `make` and `binutils` are. It
+does not resolve versions, download packages, or change the ARM64 and ARMHF
+selections. The DEB target selects explicit `<package>/amd64:deb` aliases, also
+for packages whose Debian architecture is `all`.
+
+The manifest has `schema = 1`, `dependency_set`, `architecture`,
+`root_packages`, and `packages`. The `packages` object is keyed by the complete
+version-2 lock key. Each row contains `name`, `version`, `architecture`, ordered
+`urls`, `sha256`, and the locked `depends_on` keys. The source URLs and hashes
+come from the reviewed lock.
+
+Every upstream raw archive is named `package.deb` inside a distinct external
+repository. Consumers must keep the full Bazel paths while enumerating the DEB
+target, match each file's SHA256 to one manifest row, and verify the complete
+set before staging unique filenames. Do not flatten by basename or infer a
+package identity from Bazel's internal repository path. These targets supply
+archives; the worker still owns real APT/dpkg installation and its installed
+runtime checks.
+
+### Refresh the shared lock manually
+
+Ordinary builds use landed `rules_distroless 0.9.4.sonic.13` through
+`apt.import_lock`. The reviewed version-2 `lock/apt.lock.json` contains the resolved
+versions, sources, original archive hashes, and complete graph. Keep that file
+in Git. `MODULE.bazel.lock` remains ignored generated evidence.
+
+Edit the package requests in `lock_refresh/MODULE.bazel`, then resolve them in
+that separate preparation module with Bazel 8.5.1:
+
+```sh
+cd tools/build_tools/lock_refresh
+bazel query --lockfile_mode=update @build_tools//:packages
+cd ../../..
+python3 tools/build_tools/export_apt_lock.py export \
+  --module-lock tools/build_tools/lock_refresh/MODULE.bazel.lock \
+  --output /tmp/build_tools.apt.lock.json \
+  --receipt /tmp/build_tools.apt-lock-receipt.json
+```
+
+The preparation module declares the same `build_tools` set and shared dated
+sources; it is never included by ordinary builds. The exporter accepts only
+Bazel 8.5.1 lock version 24 and the reviewed `.sonic.13` registry recipe and
+resolver-record shape. It selects this set's graph from the generated
+`lock_content`, omits index-cache facts, and rejects missing, ambiguous, or
+malformed package records. That internal field is a version-bound preparation
+input, not a stable public rules API.
+
+Before writing its output, the exporter creates a fresh temporary module and
+uses the public `apt.import_lock` API. It checks the imported expanded graph and
+the original-DEB repository URLs and SHA256 values against the candidate. The
+receipt records this metadata roundtrip. It does not establish a full archive
+build or installed worker behavior.
+
+Review the candidate against the checked-in lock before replacing it. Confirm
+the old archive identities and each architecture's graph remain intact, or
+review a demonstrated compatibility change with its affected consumer tests.
+Then run the native source checks and the installer worker archive check. The
+optional `--repository-cache` argument reuses Bazel's verified download cache;
+it does not alter package selection.
