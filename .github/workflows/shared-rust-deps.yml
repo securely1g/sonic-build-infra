@@ -86,11 +86,13 @@ jobs:
       - name: Verify generated and tracked source state
         run: |
           set -euo pipefail
-          test -z "$(git ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')"
-          git check-ignore rust/deps/MODULE.bazel.lock
-          git ls-files --error-unmatch -- rust/deps/Cargo.lock
-          git diff --exit-code
-          git diff --cached --exit-code
+          source_git=(git -c safe.directory="$PWD")
+          tracked_module_locks=$("${source_git[@]}" ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')
+          test -z "$tracked_module_locks"
+          "${source_git[@]}" check-ignore rust/deps/MODULE.bazel.lock
+          "${source_git[@]}" ls-files --error-unmatch -- rust/deps/Cargo.lock
+          "${source_git[@]}" diff --exit-code
+          "${source_git[@]}" diff --cached --exit-code
       - name: Collect shared dependency evidence
         if: always()
         run: |

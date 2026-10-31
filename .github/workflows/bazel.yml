@@ -93,14 +93,16 @@ jobs:
       - name: Verify generated and tracked source state
         run: |
           set -euo pipefail
-          test -z "$(git ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')"
-          git check-ignore MODULE.bazel.lock
+          source_git=(git -c safe.directory="$PWD")
+          tracked_module_locks=$("${source_git[@]}" ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')
+          test -z "$tracked_module_locks"
+          "${source_git[@]}" check-ignore MODULE.bazel.lock
           if [[ -f tests/shared_api_consumer/MODULE.bazel.lock ]]; then
-            git check-ignore tests/shared_api_consumer/MODULE.bazel.lock
+            "${source_git[@]}" check-ignore tests/shared_api_consumer/MODULE.bazel.lock
           fi
-          git ls-files --error-unmatch -- tools/build_tools/lock/apt.lock.json
-          git diff --exit-code
-          git diff --cached --exit-code
+          "${source_git[@]}" ls-files --error-unmatch -- tools/build_tools/lock/apt.lock.json
+          "${source_git[@]}" diff --exit-code
+          "${source_git[@]}" diff --cached --exit-code
       - name: Send ARM64 programs and their declared runtime to the native runner
         if: matrix.arch == 'AMD64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
