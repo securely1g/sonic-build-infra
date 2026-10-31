@@ -83,6 +83,14 @@ jobs:
           cp bazel-testlogs/tests/panic_runtime_test/test.xml ci-artifacts/panic-release-test.xml
           test ! -e Cargo.Bazel.lock
           git diff --exit-code -- Cargo.lock
+      - name: Verify generated and tracked source state
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')"
+          git check-ignore rust/deps/MODULE.bazel.lock
+          git ls-files --error-unmatch -- rust/deps/Cargo.lock
+          git diff --exit-code
+          git diff --cached --exit-code
       - name: Collect shared dependency evidence
         if: always()
         run: |

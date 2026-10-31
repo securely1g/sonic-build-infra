@@ -134,6 +134,14 @@ jobs:
                      for item in runtimes), runtimes
           Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")
           PYTHON
+      - name: Verify generated and tracked source state
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files -- MODULE.bazel.lock ':(glob)**/MODULE.bazel.lock')"
+          git check-ignore MODULE.bazel.lock
+          git ls-files --error-unmatch -- tools/build_tools/lock/apt.lock.json
+          git diff --exit-code
+          git diff --cached --exit-code
       - name: Collect resolution and test evidence
         if: always()
         run: |
