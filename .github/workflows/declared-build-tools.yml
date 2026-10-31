@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
@@ -81,6 +81,10 @@ jobs:
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
+          worker_tests=()
+          if [[ "$ARCHITECTURE" == amd64 ]]; then
+            worker_tests+=(//tools/build_tools:installer_worker_debs_test)
+          fi
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
@@ -90,10 +94,14 @@ jobs:
             //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test \
             //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            //tools/build_tools:export_apt_lock_test "${worker_tests[@]}" \
             2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
           test -s MODULE.bazel.lock
+          python3 tools/build_tools/export_apt_lock.py validate \
+            --module-lock MODULE.bazel.lock --lock tools/build_tools/lock/apt.lock.json \
+            --receipt ci-artifacts/build-tools-lock-import.json
           cp -aL bazel-testlogs ci-artifacts/initial-testlogs
           bazel --ignore_all_rc_files --output_user_root="$RUNNER_TEMP/configure-tools-fresh" \
             test "${flags[@]}" --nocache_test_results --test_output=errors \
@@ -131,6 +139,8 @@ jobs:
         run: |
           mkdir -p ci-artifacts
           if [[ -f MODULE.bazel.lock ]]; then cp MODULE.bazel.lock ci-artifacts/; fi
+          if [[ -f tools/build_tools/lock/apt.lock.json ]]; then cp tools/build_tools/lock/apt.lock.json ci-artifacts/build-tools-apt.lock.json; fi
+          if [[ -f tools/build_tools/lock_refresh/MODULE.bazel ]]; then cp tools/build_tools/lock_refresh/MODULE.bazel ci-artifacts/build-tools-resolver.MODULE.bazel; fi
           if [[ -d bazel-testlogs ]]; then cp -aL bazel-testlogs ci-artifacts/testlogs; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

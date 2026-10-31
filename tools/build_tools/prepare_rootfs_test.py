@@ -245,6 +245,34 @@ class RootfsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unresolved runtime"):
             validate_links(self.root)
 
+    def test_sudo_systemd_null_mask_is_omitted_without_device_nodes(self):
+        parent = self.root / "usr/lib/systemd/system"
+        parent.mkdir(parents=True)
+        mask = parent / "sudo.service"
+        mask.symlink_to("../../../../dev/null")
+        validate_links(self.root)
+        self.assertFalse(mask.is_symlink())
+        self.assertFalse((self.root / "dev/null").exists())
+
+    def test_null_link_outside_systemd_units_is_rejected(self):
+        (self.root / "usr/bin/missing").symlink_to("../../dev/null")
+        with self.assertRaisesRegex(ValueError, "unresolved runtime"):
+            validate_links(self.root)
+
+    def test_systemd_link_to_another_missing_path_is_rejected(self):
+        parent = self.root / "usr/lib/systemd/system"
+        parent.mkdir(parents=True)
+        (parent / "sudo.service").symlink_to("../../../../dev/missing")
+        with self.assertRaisesRegex(ValueError, "unresolved runtime"):
+            validate_links(self.root)
+
+    def test_another_systemd_null_mask_is_rejected(self):
+        parent = self.root / "usr/lib/systemd/system"
+        parent.mkdir(parents=True)
+        (parent / "unrelated.service").symlink_to("../../../../dev/null")
+        with self.assertRaisesRegex(ValueError, "unresolved runtime"):
+            validate_links(self.root)
+
     def test_unresolved_manpage_does_not_require_an_unrelated_package(self):
         directory = self.root / "usr/share/man/man1"
         directory.mkdir(parents=True)

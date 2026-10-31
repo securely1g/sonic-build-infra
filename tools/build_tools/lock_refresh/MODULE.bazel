@@ -1,0 +1,182 @@
+# Manual resolver recipe for the one shared build_tools package set.
+# Ordinary builds import ../lock/apt.lock.json and do not evaluate this module.
+module(
+    name = "sonic_build_tools_lock_refresh",
+    version = "0.0.0",
+    bazel_compatibility = [
+        ">=8.5.1",
+        "<=8.5.1",
+    ],
+)
+
+bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.13")
+
+NATIVE_ARCHITECTURES = [
+    "amd64",
+    "arm64",
+]
+
+KERNEL_TARGET_ARCHITECTURES = NATIVE_ARCHITECTURES + ["armhf"]
+
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = KERNEL_TARGET_ARCHITECTURES,
+    components = ["main"],
+    suites = [
+        "trixie",
+        "trixie-updates",
+    ],
+    uris = ["https://snapshot.debian.org/archive/debian/20260727T143429Z"],
+)
+apt.sources_list(
+    architectures = KERNEL_TARGET_ARCHITECTURES,
+    components = ["main"],
+    suites = ["trixie-security"],
+    uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
+)
+
+# Shared source-generation and kernel execution tools. Keep these roots aligned
+# with the approved source requirements and runtime metadata consumers.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        name if ":" in name else name + ":" + architecture
+        for name in [
+            "aspell",
+            "aspell-en",
+            "autoconf",
+            "automake",
+            "bash",
+            "bc",
+            "bison",
+            "build-essential",
+            "comerr-dev",
+            "coreutils",
+            "cpio",
+            "dash",
+            "debhelper",
+            "debianutils",
+            "dh-python",
+            "diffutils",
+            "doxygen",
+            "findutils",
+            "flex",
+            "fonts-dejavu-core",
+            "gcc-14",
+            "gcc-arm-linux-gnueabihf:arm64",
+            "graphviz",
+            "grep",
+            "gzip",
+            "kernel-wedge",
+            "kmod",
+            "libc-bin",
+            "libc6",
+            "libelf-dev",
+            "libelf1t64",
+            "libgcc-s1",
+            "libprotobuf-dev",
+            "libssl-dev",
+            "libssl3t64",
+            "libtool",
+            "libtool-bin",
+            "libxml-simple-perl",
+            "libzstd1",
+            "lz4",
+            "m4",
+            "mawk",
+            "openssl",
+            "pahole",
+            "perl",
+            "pkgconf",
+            "protobuf-compiler",
+            "protobuf-compiler-grpc",
+            "python3",
+            "python3-dacite",
+            "python3-jinja2",
+            "quilt",
+            "rsync",
+            "sed",
+            "ss-dev",
+            "thrift-compiler",
+            "util-linux",
+            "xz-utils",
+            "zlib1g",
+            "zstd",
+        ]
+        for architecture in NATIVE_ARCHITECTURES
+        if ":" not in name or name.endswith(":" + architecture)
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+
+# The existing AMD64 kernel runtime also compiles ARM64 and ARMHF targets.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        "gcc-14-aarch64-linux-gnu:amd64",
+        "gcc-14-arm-linux-gnueabihf:amd64",
+        "gcc-aarch64-linux-gnu:amd64",
+        "gcc-arm-linux-gnueabihf:amd64",
+    ] + [
+        name + ":" + architecture
+        for name in [
+            "libelf-dev",
+            "libelf1t64",
+            "libssl-dev",
+            "libssl3t64",
+            "libzstd-dev",
+            "libzstd1",
+            "zlib1g-dev",
+            "zlib1g",
+        ]
+        for architecture in [
+            "arm64",
+            "armhf",
+        ]
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+
+# Missing Debian tools for sonic-buildimage's AMD64 installer worker. Docker CE
+# is supplied separately and requires nftables in addition to the worker's
+# explicit package list. Keep its complete Debian runtime in this shared set.
+apt.install(
+    dependency_set = "build_tools",
+    packages = [
+        "acl:amd64",
+        "busybox:amd64",
+        "ca-certificates:amd64",
+        "curl:amd64",
+        "gawk:amd64",
+        "git:amd64",
+        "iproute2:amd64",
+        "iptables:amd64",
+        "j2cli:amd64 (= 0.3.12b-5)",
+        "jq:amd64",
+        "mount:amd64",
+        "nftables:amd64",
+        "passwd:amd64",
+        "pigz:amd64",
+        "pkg-config:amd64",
+        "psmisc:amd64",
+        "squashfs-tools:amd64 (= 1:4.6.1-1)",
+        "sudo:amd64",
+        "unzip:amd64",
+        "wget:amd64",
+        "zip:amd64",
+    ],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+use_repo(apt, "build_tools")

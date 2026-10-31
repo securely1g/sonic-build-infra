@@ -70,9 +70,11 @@ if [[ -f tar/root_owned_tar.bzl ]]; then
   tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
-  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test)
+  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test
+          //tools/build_tools:export_apt_lock_test)
   if [[ "$debian_arch" == amd64 ]]; then
-    tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
+    tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test
+            //tools/build_tools:installer_worker_debs_test)
   fi
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
@@ -115,6 +117,10 @@ for filename in ('actions.json', 'apt-python313-actions.json'):
 PYTHON
 "${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
+mkdir -p "$artifacts/build-tools"
+python3 tools/build_tools/export_apt_lock.py validate \
+  --module-lock MODULE.bazel.lock --lock tools/build_tools/lock/apt.lock.json \
+  --receipt "$artifacts/build-tools/import.json"
 # Include external test labels and their canonical repository paths in artifacts.
 cp -aL bazel-testlogs "$artifacts/testlogs"
 # The image consumer runs Python 3.13; retain its separate hub/runfiles proof.
@@ -139,6 +145,8 @@ python3 ci/verify_deploy_archives.py \
   --source-data tests/testdata/file.txt --architecture "$debian_arch" \
   > "$artifacts/deploy-archives.json"
 cp MODULE.bazel MODULE.bazel.lock python/wheel_requirements_lock.txt "$artifacts/"
+cp tools/build_tools/lock/apt.lock.json "$artifacts/build-tools/"
+cp tools/build_tools/lock_refresh/MODULE.bazel "$artifacts/build-tools/resolver.MODULE.bazel"
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (
     cd tests/shared_api_consumer

@@ -13,6 +13,9 @@ import sys
 import tarfile
 import tempfile
 
+from debian.deb822 import Deb822
+from sonic_apt.inputs import package_keys
+
 
 def check_linker_inputs(root, runtime, work, run, architecture):
     """Exercise linker scripts materialized as Bazel-style input symlinks."""
@@ -144,11 +147,29 @@ binary-indep:
 
 def main():
     runtime = Path(sys.argv[1]).resolve()
+    lock = json.loads(Path(sys.argv[2]).read_bytes())
     manifest = json.loads((runtime / "kernel-runtime.json").read_text())
     architecture = {"x86_64": "amd64", "aarch64": "arm64"}[platform.machine()]
     assert manifest["architecture"] == architecture
     assert manifest["kind"] == "debian-build-tools"
     assert manifest["execution"] == "relocatable"
+    expected_packages = {(lock["packages"][key]["name"], lock["packages"][key]["architecture"]): lock["packages"][key]["version"]
+                         for key in package_keys(lock, "build_tools", architecture)}
+    status_packages = {}
+    with (runtime / "var/lib/dpkg/status").open() as stream:
+        for record in Deb822.iter_paragraphs(stream):
+            identity = (record["Package"], record["Architecture"])
+            assert identity not in status_packages, "duplicate dpkg status record: " + str(identity)
+            assert record.get("Status") == "install ok installed", identity
+            status_packages[identity] = record["Version"]
+    native_packages = {identity: version for identity, version in status_packages.items()
+                       if identity[1] in (architecture, "all")}
+    assert native_packages == expected_packages, {
+        "missing": sorted(set(expected_packages) - set(native_packages)),
+        "extra": sorted(set(native_packages) - set(expected_packages)),
+        "changed": sorted(identity for identity in set(expected_packages) & set(native_packages)
+                          if expected_packages[identity] != native_packages[identity]),
+    }
     with tempfile.TemporaryDirectory(prefix="kernel-runtime-check-") as temporary:
         root = Path(temporary) / "relocated-runtime"
         shutil.copytree(runtime, root, symlinks=True)
@@ -183,6 +204,10 @@ def main():
                 sys.stderr.write(result.stdout + result.stderr)
                 result.check_returncode()
             return result.stdout
+
+        # The imported hub records the full locked closure. Keep the source
+        # package's existing build-dependency check working with that expansion.
+        run(["/usr/bin/dpkg-checkbuilddeps"])
 
         # A restored Bazel tree can contain a real /lib directory instead of
         # the merged-/usr symlink. Dpkg must choose the /usr/lib path recorded
@@ -275,13 +300,12 @@ def main():
             assert struct.unpack_from("<H", compat_elf, 18)[0] == 40, "expected ARM machine type"
             compatibility_vdso = "ARM ELF32 compile/link passed"
         dependencies = run(["/usr/bin/dpkg-shlibdeps", "-O", "-l" + str(root / "usr/lib" / {"amd64": "x86_64-linux-gnu", "arm64": "aarch64-linux-gnu"}[architecture]), "host-tools"])
-        for package in ("libc6", "libelf1t64", "libssl3t64"):
-            assert package in dependencies, dependencies
+        assert dependencies.strip() == "shlibs:Depends=libc6 (>= 2.34), libelf1t64 (>= 0.131), libssl3t64 (>= 3.0.0)", dependencies
         run(["/usr/bin/dpkg-source", "--version"])
         run(["/usr/bin/dh_testdir"])
         run(["/usr/bin/dh_testroot"])
         package_check = check_debian_package(root, work, environment, run, architecture)
-        print(json.dumps({"result": "passed", "architecture": architecture, "execution": "relocatable", "uid": os.geteuid(), "compatibility_vdso": compatibility_vdso, "runtime_identity": manifest["identity_sha256"], "dependencies": dependencies.strip(), "quilt_patch": "push/pop passed", "linker_inputs": linker_inputs, "debian_package": package_check, "vendor": "Debian"}, sort_keys=True))
+        print(json.dumps({"result": "passed", "architecture": architecture, "execution": "relocatable", "uid": os.geteuid(), "compatibility_vdso": compatibility_vdso, "runtime_identity": manifest["identity_sha256"], "dpkg_status_packages": len(expected_packages), "dpkg_checkbuilddeps": "passed", "dependencies": dependencies.strip(), "quilt_patch": "push/pop passed", "linker_inputs": linker_inputs, "debian_package": package_check, "vendor": "Debian"}, sort_keys=True))
 
 
 if __name__ == "__main__":

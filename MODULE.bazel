@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.25",
+    version = "0.0.26",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -107,118 +107,11 @@ apt.install(
     ],
 )
 
-# Build tools used by source generation. Consumers select these package
-# payloads in the execution configuration so the tools and their runtime files
-# match the machine running the generator.
-# Kernel roots also retain source Build-Depends and runtime-library control
-# metadata needed by dpkg-checkbuilddeps and dpkg-shlibdeps.
-apt.install(
-    dependency_set = "build_tools",
-    packages = [
-        name if ":" in name else name + ":" + architecture
-        for name in [
-            "aspell",
-            "aspell-en",
-            "autoconf",
-            "automake",
-            "bash",
-            "bc",
-            "bison",
-            "build-essential",
-            "comerr-dev",
-            "coreutils",
-            "cpio",
-            "dash",
-            "debhelper",
-            "debianutils",
-            "dh-python",
-            "diffutils",
-            "doxygen",
-            "findutils",
-            "flex",
-            "fonts-dejavu-core",
-            "gcc-14",
-            # The ARM64 kernel builds a 32-bit compatibility vDSO with this compiler.
-            "gcc-arm-linux-gnueabihf:arm64",
-            "graphviz",
-            "grep",
-            "gzip",
-            "kernel-wedge",
-            "kmod",
-            "libc-bin",
-            "libc6",
-            "libelf-dev",
-            "libelf1t64",
-            "libgcc-s1",
-            "libprotobuf-dev",
-            "libssl-dev",
-            "libssl3t64",
-            "libtool",
-            "libtool-bin",
-            "libxml-simple-perl",
-            "libzstd1",
-            "lz4",
-            "m4",
-            "mawk",
-            "openssl",
-            "pahole",
-            "perl",
-            "pkgconf",
-            "protobuf-compiler",
-            "protobuf-compiler-grpc",
-            "python3",
-            "python3-dacite",
-            "python3-jinja2",
-            "quilt",
-            "rsync",
-            "sed",
-            "ss-dev",
-            "thrift-compiler",
-            "util-linux",
-            "xz-utils",
-            "zlib1g",
-            "zstd",
-        ]
-        for architecture in NATIVE_ARCHITECTURES
-        if ":" not in name or name.endswith(":" + architecture)
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
-)
-
-# The kernel's AMD64 execution tools also compile ARM64 and ARMHF targets.
-apt.install(
-    dependency_set = "build_tools",
-    packages = [
-        "gcc-14-aarch64-linux-gnu:amd64",
-        "gcc-14-arm-linux-gnueabihf:amd64",
-        "gcc-aarch64-linux-gnu:amd64",
-        "gcc-arm-linux-gnueabihf:amd64",
-    ] + [
-        name + ":" + architecture
-        for name in [
-            "libelf-dev",
-            "libelf1t64",
-            "libssl-dev",
-            "libssl3t64",
-            "libzstd-dev",
-            "libzstd1",
-            "zlib1g-dev",
-            "zlib1g",
-        ]
-        for architecture in [
-            "arm64",
-            "armhf",
-        ]
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
+# Execution tools and their private runtimes consume one reviewed package lock.
+# Manual request changes live in tools/build_tools/lock_refresh/MODULE.bazel.
+apt.import_lock(
+    dependency_sets = ["build_tools"],
+    lock = "//tools/build_tools/lock:apt.lock.json",
 )
 
 # Expose individual ABI package payloads and metadata to kernel cross builds.
@@ -311,6 +204,59 @@ use_repo(
 
     # Build tools and their runtime dependencies, resolved per architecture.
     "build_tools",
+)
+
+# The installer worker selects its own closure from the same locked set. These
+# names include the worker's Debian requests and Docker CE's nftables dependency.
+apt_inputs = use_repo_rule("//apt:inputs_repository.bzl", "apt_inputs")
+
+apt_inputs(
+    name = "installer_worker_apt_inputs",
+    architecture = "amd64",
+    dependency_set = "build_tools",
+    lock = "//tools/build_tools/lock:apt.lock.json",
+    root_packages = [
+        "acl",
+        "autoconf",
+        "automake",
+        "binutils",
+        "build-essential",
+        "busybox",
+        "ca-certificates",
+        "curl",
+        "diffutils",
+        "file",
+        "findutils",
+        "gawk",
+        "git",
+        "grep",
+        "gzip",
+        "iproute2",
+        "iptables",
+        "j2cli",
+        "jq",
+        "kmod",
+        "libtool",
+        "make",
+        "mount",
+        "nftables",
+        "passwd",
+        "pigz",
+        "pkg-config",
+        "procps",
+        "psmisc",
+        "python3",
+        "sed",
+        "squashfs-tools",
+        "sudo",
+        "tar",
+        "unzip",
+        "util-linux",
+        "wget",
+        "xz-utils",
+        "zip",
+        "zstd",
+    ],
 )
 
 # The `vim` .debs, because rules_distroless can't give us vim.
