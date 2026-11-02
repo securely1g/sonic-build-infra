@@ -442,3 +442,26 @@ Perl and instrumentation runtime subsets. This approved suite-specific exception
 preserves Perl 5.36 for Bookworm XS generators; the existing Trixie `build_tools`
 set supplies Perl 5.40. Both subsets use the execution configuration, and target
 debug libraries remain separate.
+
+## Kernel runtime package boundary
+
+`kernel_roots.bzl` fixes the execution package roots consumed by
+`kernel_runtime` to the maintained 17a1e555 selection: 63 AMD64 roots and
+62 ARM64 roots from the same shared `build_tools` APT set. Each root retains
+its declared transitive dependencies, and the existing cross-target ABI data,
+controls and native library metadata remain unchanged. The existing
+`dpkg_status` rule generates status for that selected subset.
+
+This is a conservative compatibility boundary, not a minimal kernel toolset.
+New shared generators do not automatically enter the kernel rootfs; extend
+the explicit roots when an actual kernel consumer requires another tool.
+For example, DocBook's SGML/man tooling can use the shared package set without
+adding its unrelated Jade/TeX/PDF dependencies to the kernel compiler and
+metadata runtime. Strict runtime symlink validation remains enabled.
+
+`kernel_runtime_tools_test` reuses the existing relocated runtime test, including
+actual C/C++ compilation, native shared/static link inputs, Quilt push/pop,
+Perl XML parsing, tool execution and Debian dependency metadata. Its explicit
+`--tools-only` mode omits only the function that creates the runtime/debug DEB
+fixture. `kernel_runtime_test` retains the original full behavior and remains
+the CI check for every branch.
