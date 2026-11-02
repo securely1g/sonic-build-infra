@@ -87,7 +87,9 @@ def _debian_gcc_impl(ctx):
         "g++": "usr/bin/" + layout.triple + "-g++-" + major,
         "gcc-ar": "usr/bin/" + layout.triple + "-gcc-ar-" + major,
     }
-    for tool in ["ar", "as", "ld", "nm", "objcopy", "objdump", "ranlib", "readelf", "strip"]:
+    # Explicit -fuse-ld=bfd (including Common's CGo links) searches ld.bfd
+    # separately from ld. Both must use the declared Debian execution runtime.
+    for tool in ["ar", "as", "ld", "ld.bfd", "nm", "objcopy", "objdump", "ranlib", "readelf", "strip"]:
         tools[tool] = "usr/bin/" + layout.triple + "-" + tool
     for tool in ["cc1", "cc1plus", "collect2", "lto1", "lto-wrapper"]:
         tools[tool] = layout.libexec + "/" + tool
