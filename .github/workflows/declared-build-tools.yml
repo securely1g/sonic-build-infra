@@ -78,6 +78,7 @@ jobs:
             //tools/build_tools:pkgconf //tools/build_tools:perl \
             //tools/build_tools:bison //tools/build_tools:flex \
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
+            //tools/build_tools:patch //tools/build_tools:xmllint //tools/build_tools:xsltproc \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \

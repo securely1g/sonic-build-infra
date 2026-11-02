@@ -490,6 +490,7 @@ py_test(
                 "libtool", "libtool-bin", "coreutils", "diffutils", "grep", "sed", "mawk",
                 "findutils", "bash", "dash", "protobuf-compiler", "protobuf-compiler-grpc",
                 "thrift-compiler", "python3", "python3-sphinx", "python3-pytest", "texinfo", "libxml-simple-perl", "graphviz", "fonts-dejavu-core", "debianutils",
+                "patch", "libxml2-utils", "xsltproc",
             ]
         ] + ["@build_tools//libprotobuf-dev:data"],
     )
@@ -507,7 +508,7 @@ alias(
 
 [
     build_tool(name = tool, tool = tool, runtime = ":foreign_runtime", visibility = ["//visibility:public"])
-    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot"]
+    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot", "patch", "xmllint", "xsltproc"]
 ]
 
 py_test(

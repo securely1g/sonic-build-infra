@@ -488,3 +488,22 @@ Perl XML parsing, tool execution and Debian dependency metadata. Its explicit
 `--tools-only` mode omits only the function that creates the runtime/debug DEB
 fixture. `kernel_runtime_test` retains the original full behavior and remains
 the CI check for every branch.
+
+## Source patch and XML tools
+
+The existing `foreign_runtime` also supplies public executable targets `patch`,
+`xmllint` and `xsltproc`. They use the same pinned `build_tools` dependency set
+and private loader/libraries as the other generator tools. Select each executable
+or the runtime bundle with `cfg = "exec"`; no component-specific execution APT
+set is needed. XML callers declare their schemas/stylesheets, and the wrappers
+disable implicit host XML catalog lookup.
+
+Framework CLI uses these tools to apply its vendored klish normal-diff patches,
+validate platform/command XML and run its existing feature XSLT. Target libxml2,
+libcurl, Python-embed and cJSON libraries remain target dependencies owned by the
+Framework build. They are not compiler sysroot or execution-tool inputs.
+
+`foreign_runtime_test` exercises real patch application and reversal rejection,
+valid/invalid XSD input and an XSLT transformation after relocating the runtime
+with an empty PATH. Existing native AMD64/ARM64 CI retains that coverage and the
+fresh-output-base cache check; local validation is recorded per architecture.

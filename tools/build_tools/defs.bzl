@@ -163,7 +163,7 @@ build_tool = rule(
     implementation = _executable_impl,
     executable = True,
     attrs = {
-        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot", "valgrind", "tclsh", "po2debconf", "msgcat", "docbook2man"]),
+        "tool": attr.string(mandatory = True, values = ["aspell", "doxygen", "make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te", "compile_et", "mk_cmds", "autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot", "patch", "xmllint", "xsltproc", "valgrind", "tclsh", "po2debconf", "msgcat", "docbook2man"]),
         "_launcher": attr.label(default = Label(":launcher.py"), allow_single_file = True, cfg = "exec"),
         "runtime": attr.label(default = Label(":runtime"), allow_single_file = True, cfg = "exec"),
         "_python": attr.label(default = Label(":python_runtime"), providers = [PythonRuntimeInfo], cfg = "exec"),
