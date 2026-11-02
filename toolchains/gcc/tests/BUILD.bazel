@@ -19,6 +19,7 @@ configure_make(
     out_binaries = [
         "probe",
         "probe-static-math",
+        "probe-bfd",
     ],
     out_data_dirs = ["share"],
     targets = [],

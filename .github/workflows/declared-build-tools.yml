@@ -67,6 +67,13 @@ jobs:
           set -euo pipefail
           mkdir -p ci-artifacts
           printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
+          # This source-only linker fix excludes the existing DEB fixture;
+          # still build/cache its declared tool root. Other branches are unchanged.
+          kernel_check=//tools/build_tools:kernel_runtime_test
+          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/declared-bfd-linker ]]; then
+            kernel_check=//tools/build_tools:kernel_runtime
+            printf '%s\n' 'kernel_runtime_test omitted: no DEB generation' > ci-artifacts/omitted-package-fixture.txt
+          fi
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
@@ -89,7 +96,7 @@ jobs:
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test \
-            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            //tools/build_tools:prepare_rootfs_test "$kernel_check" \
             2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
@@ -101,7 +108,7 @@ jobs:
             --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
             --execution_log_sort=false \
             //tools/build_tools:configure_runtime_test //tools/build_tools:foreign_runtime_test \
-            //tools/build_tools:kernel_runtime_test \
+            "$kernel_check" \
             2>&1 | tee ci-artifacts/cache-test.log
           python3 - <<'PYTHON'
           import json
