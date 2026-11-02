@@ -422,3 +422,27 @@ architecture, hard-float ARMHF user-space and freestanding softfp NEON,
 declared library paths, and Debian dependency metadata. The native
 `kernel_runtime_test` checks the same tree for AMD64 regressions. Complete
 kernel source and package validation belongs to `sonic-linux-kernel`.
+
+## Kernel runtime package boundary
+
+`kernel_roots.bzl` fixes the execution package roots consumed by
+`kernel_runtime` to the maintained 17a1e555 selection: 63 AMD64 roots and
+62 ARM64 roots from the same shared `build_tools` APT set. Each root retains
+its declared transitive dependencies, and the existing cross-target ABI data,
+controls and native library metadata remain unchanged. The existing
+`dpkg_status` rule generates status for that selected subset.
+
+This is a conservative compatibility boundary, not a minimal kernel toolset.
+New shared generators do not automatically enter the kernel rootfs; extend
+the explicit roots when an actual kernel consumer requires another tool.
+For example, DocBook's SGML/man tooling can use the shared package set without
+adding its unrelated Jade/TeX/PDF dependencies to the kernel compiler and
+metadata runtime. Strict runtime symlink validation remains enabled.
+
+`kernel_runtime_tools_test` reuses the existing relocated runtime test, including
+actual C/C++ compilation, native shared/static link inputs, Quilt push/pop,
+Perl XML parsing, tool execution and Debian dependency metadata. Its explicit
+`--tools-only` mode omits only the function that creates the runtime/debug DEB
+fixture. `kernel_runtime_test` retains the original full behavior. The source-only
+feature branches select the tools-only test in CI and retain the fresh-output-base
+disk-cache checks; they do not execute DEB generation.

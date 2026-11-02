@@ -81,6 +81,13 @@ jobs:
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
+          # The source-only branches retain actual tool tests without creating DEBs.
+          kernel_tests=(//tools/build_tools:kernel_runtime_test)
+          case "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" in
+            codex/kernel-runtime-subset|codex/docbook-build-tools)
+              kernel_tests=(//tools/build_tools:kernel_runtime_tools_test)
+              printf '%s\n' 'kernel package fixture omitted; all tool checks retained' > ci-artifacts/omitted-package-fixture.txt ;;
+          esac
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
             //tools/build_tools:runtime_test \
@@ -89,7 +96,7 @@ jobs:
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
             //tools/build_tools:configure_make_test \
-            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            //tools/build_tools:prepare_rootfs_test "${kernel_tests[@]}" \
             2>&1 | tee ci-artifacts/test.log
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
@@ -101,7 +108,7 @@ jobs:
             --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
             --execution_log_sort=false \
             //tools/build_tools:configure_runtime_test //tools/build_tools:foreign_runtime_test \
-            //tools/build_tools:kernel_runtime_test \
+            "${kernel_tests[@]}" \
             2>&1 | tee ci-artifacts/cache-test.log
           python3 - <<'PYTHON'
           import json

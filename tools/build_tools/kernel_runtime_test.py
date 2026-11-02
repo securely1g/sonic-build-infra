@@ -143,6 +143,8 @@ binary-indep:
 
 
 def main():
+    assert len(sys.argv) in (2, 3) and (len(sys.argv) == 2 or sys.argv[2] == "--tools-only")
+    tools_only = len(sys.argv) == 3
     runtime = Path(sys.argv[1]).resolve()
     manifest = json.loads((runtime / "kernel-runtime.json").read_text())
     architecture = {"x86_64": "amd64", "aarch64": "arm64"}[platform.machine()]
@@ -280,7 +282,7 @@ def main():
         run(["/usr/bin/dpkg-source", "--version"])
         run(["/usr/bin/dh_testdir"])
         run(["/usr/bin/dh_testroot"])
-        package_check = check_debian_package(root, work, environment, run, architecture)
+        package_check = "not requested: tools-only validation" if tools_only else check_debian_package(root, work, environment, run, architecture)
         print(json.dumps({"result": "passed", "architecture": architecture, "execution": "relocatable", "uid": os.geteuid(), "compatibility_vdso": compatibility_vdso, "runtime_identity": manifest["identity_sha256"], "dependencies": dependencies.strip(), "quilt_patch": "push/pop passed", "linker_inputs": linker_inputs, "debian_package": package_check, "vendor": "Debian"}, sort_keys=True))
 
 

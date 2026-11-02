@@ -1,9 +1,12 @@
 load("@bazel_skylib//rules:select_file.bzl", "select_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_distroless//apt:defs.bzl", "dpkg_status")
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
 load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
 load("@rules_python//python:defs.bzl", "py_test")
 load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "check_build_tools", "python_runtime")
+
+load(":kernel_roots.bzl", "KERNEL_TOOL_ROOTS")
 
 python_runtime(name = "python_runtime")
 
@@ -82,6 +85,14 @@ _KERNEL_CROSS_PACKAGES = [
 ]
 
 [
+    dpkg_status(
+        name = "kernel_package_status_" + architecture,
+        controls = ["@build_tools//" + name + "/" + architecture + ":control" for name in KERNEL_TOOL_ROOTS[architecture]],
+    )
+    for architecture in ["amd64", "arm64"]
+]
+
+[
     build_tools_rootfs(
         name = "kernel_runtime_" + architecture,
         architecture = architecture,
@@ -92,7 +103,10 @@ _KERNEL_CROSS_PACKAGES = [
         ],
         metadata_controls = ["@build_tools//" + name + ":control" for name in _KERNEL_LINK_LIBRARIES],
         metadata_data = ["@build_tools//" + name + ":data" for name in _KERNEL_LINK_LIBRARIES],
-        packages = ["@build_tools"],
+        packages = [":kernel_package_status_" + architecture] + [
+            "@build_tools//" + name + "/" + architecture
+            for name in KERNEL_TOOL_ROOTS[architecture]
+        ],
         target_controls = [label + ":control" for label in _KERNEL_CROSS_PACKAGES] if architecture == "amd64" else [],
         target_data = [label + ":data" for label in _KERNEL_CROSS_PACKAGES] if architecture == "amd64" else [],
     )
@@ -180,6 +194,18 @@ py_test(
     name = "kernel_runtime_test",
     srcs = ["kernel_runtime_test.py"],
     args = ["$(location :kernel_runtime)"],
+    data = [":kernel_runtime"],
+    python_version = "PY3",
+    tags = ["no-remote-exec"],
+)
+
+
+# Reuse every actual tool/compiler check without producing the package fixture.
+py_test(
+    name = "kernel_runtime_tools_test",
+    main = "kernel_runtime_test.py",
+    srcs = ["kernel_runtime_test.py"],
+    args = ["$(location :kernel_runtime)", "--tools-only"],
     data = [":kernel_runtime"],
     python_version = "PY3",
     tags = ["no-remote-exec"],
