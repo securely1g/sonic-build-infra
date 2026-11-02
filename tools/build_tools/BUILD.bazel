@@ -306,6 +306,36 @@ alias(
     for tool in ["make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]
 ]
 
+# DocBook's man backend uses OpenSP and SGMLS Perl modules, not a host Jade
+# installation or the PDF/TeX programs required by its other backends.
+build_tools_runtime(
+    name = "docbook_runtime_amd64",
+    architecture = "amd64",
+    profile = "docbook",
+    exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    packages = [
+        "@build_make_amd64//:data.tar.xz",
+        "@build_tools//docbook-utils:data",
+    ] + ["@build_tools//" + tool for tool in [
+        "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "grep",
+        "coreutils", "dash", "docbook", "opensp", "libsgmls-perl", "sgmlspl",
+    ]],
+)
+
+alias(
+    name = "docbook_runtime",
+    actual = ":docbook_runtime_amd64",
+    target_compatible_with = ["@platforms//cpu:x86_64"],
+    visibility = ["//visibility:public"],
+)
+
+build_tool(
+    name = "docbook2man",
+    tool = "docbook2man",
+    runtime = ":docbook_runtime",
+    visibility = ["//visibility:public"],
+)
+
 # foreign_cc expands each tool target separately. Distinct labels let all
 # three tools share one runtime tree without duplicate-label expansion.
 [
@@ -618,4 +648,12 @@ py_binary(
     data = [":sphinx-build"],
     deps = ["@rules_python//python/runfiles"],
     visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "docbook_runtime_test",
+    srcs = ["docbook_runtime_test.py"],
+    args = ["$(location :docbook_runtime)", "$(location :docbook2man)"] + ["$(location @wpa_man_" + name + "//file)" for name in ["wpa_background", "wpa_cli", "wpa_passphrase", "wpa_supplicant", "wpa_supplicant_conf"]],
+    data = [":docbook_runtime", ":docbook2man"] + ["@wpa_man_" + name + "//file" for name in ["wpa_background", "wpa_cli", "wpa_passphrase", "wpa_supplicant", "wpa_supplicant_conf"]],
+    target_compatible_with = ["@platforms//cpu:x86_64"],
 )

@@ -139,6 +139,8 @@ apt.install(
             "debianutils",
             "dh-python",
             "diffutils",
+            "docbook",
+            "docbook-utils",
             "doxygen",
             "findutils",
             "flex",
@@ -157,6 +159,8 @@ apt.install(
             "libelf1t64",
             "libgcc-s1",
             "libprotobuf-dev",
+            "libsgmls-perl",
+            "sgmlspl",
             "libssl-dev",
             "libssl3t64",
             "libtool",
@@ -167,6 +171,7 @@ apt.install(
             "m4",
             "mawk",
             "openssl",
+            "opensp",
             "pahole",
             "perl",
             "pkgconf",
@@ -1138,3 +1143,41 @@ bazel_dep(name = "pigz", version = "2.8.bcr.2")
 bazel_dep(name = "rules_gzip", version = "1.0.0")
 bazel_dep(name = "rules_multirun", version = "0.14.0")
 bazel_dep(name = "toolchain_utils", version = "1.0.2")
+
+# Real SONiC manuals exercise the declared SGML compiler without building WPA.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_file(
+    name = "wpa_man_wpa_background",
+    urls = ["https://raw.githubusercontent.com/securely1g/sonic-wpa-supplicant/6ca19c73b9c868782b59a0d7adc6ff34de5bbdba/wpa_supplicant/doc/docbook/wpa_background.sgml"],
+    sha256 = "418d8ba990695b7f05611ecb1a8e2e08db66c12f09d7b3e62465ac9561b6afb2",
+    downloaded_file_path = "wpa_background.sgml",
+)
+
+http_file(
+    name = "wpa_man_wpa_cli",
+    urls = ["https://raw.githubusercontent.com/securely1g/sonic-wpa-supplicant/6ca19c73b9c868782b59a0d7adc6ff34de5bbdba/wpa_supplicant/doc/docbook/wpa_cli.sgml"],
+    sha256 = "d1a73abc52acd3f3d7ff25ab232d66bb5bc6f4bd936486350ae0d0866c9dd586",
+    downloaded_file_path = "wpa_cli.sgml",
+)
+
+http_file(
+    name = "wpa_man_wpa_passphrase",
+    urls = ["https://raw.githubusercontent.com/securely1g/sonic-wpa-supplicant/6ca19c73b9c868782b59a0d7adc6ff34de5bbdba/wpa_supplicant/doc/docbook/wpa_passphrase.sgml"],
+    sha256 = "ac5bc057c20dfacbf9d276c682d6cd800d5cce2fd4b002c4b9cdb2e5e8539480",
+    downloaded_file_path = "wpa_passphrase.sgml",
+)
+
+http_file(
+    name = "wpa_man_wpa_supplicant",
+    urls = ["https://raw.githubusercontent.com/securely1g/sonic-wpa-supplicant/6ca19c73b9c868782b59a0d7adc6ff34de5bbdba/wpa_supplicant/doc/docbook/wpa_supplicant.sgml"],
+    sha256 = "c9a7c4e58d2565dc7fe9051dab19b49feef1ef1cb66a4d3b734fb590e691d501",
+    downloaded_file_path = "wpa_supplicant.sgml",
+)
+
+http_file(
+    name = "wpa_man_wpa_supplicant_conf",
+    urls = ["https://raw.githubusercontent.com/securely1g/sonic-wpa-supplicant/6ca19c73b9c868782b59a0d7adc6ff34de5bbdba/wpa_supplicant/doc/docbook/wpa_supplicant.conf.sgml"],
+    sha256 = "beaaa9115d9e26080ea3a4405748276d9c65a307fcd21147352133e58b6b9829",
+    downloaded_file_path = "wpa_supplicant.conf.sgml",
+)
