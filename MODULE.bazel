@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.25",
+    version = "0.0.26",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -156,12 +156,14 @@ apt.install(
             "libtool",
             "libtool-bin",
             "libxml-simple-perl",
+            "libxml2-utils",
             "libzstd1",
             "lz4",
             "m4",
             "mawk",
             "openssl",
             "pahole",
+            "patch",
             "perl",
             "pkgconf",
             "protobuf-compiler",
@@ -175,6 +177,7 @@ apt.install(
             "ss-dev",
             "thrift-compiler",
             "util-linux",
+            "xsltproc",
             "xz-utils",
             "zlib1g",
             "zstd",

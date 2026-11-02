@@ -86,7 +86,31 @@ def main():
         assert all(not p.startswith(("/usr/", "/lib/")) for p in python), python
         perl = json.loads(run("perl", ["-MJSON::PP", "-MXML::Simple", "-MData::Dumper", "-MGetopt::Long", "-e", 'print encode_json(\\%INC)']))
         assert all(str(runtime) in p for p in perl.values()), perl
+        # Framework CLI owns normal-diff patches and XSD/XSLT inputs. Exercise
+        # the real shared tools after relocation with no worker tools on PATH.
+        (work / "patched.txt").write_text("before\n")
+        (work / "change.diff").write_text("1c1\n< before\n---\n> after\n")
+        run("patch", ["--batch", "--forward", "--fuzz=0", "patched.txt", "change.diff"])
+        assert (work / "patched.txt").read_text() == "after\n"
+        reverse = subprocess.run([str(tools / "patch"), "--batch", "--forward", "--fuzz=0",
+                                  "patched.txt", "change.diff"], cwd=work, env=env, capture_output=True)
+        assert reverse.returncode != 0 and (work / "patched.txt").read_text() == "after\n"
+        (work / "schema.xsd").write_text(
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">'
+            '<xs:element name="value" type="xs:integer"/></xs:schema>')
+        (work / "input.xml").write_text('<value>42</value>')
+        run("xmllint", ["--nonet", "--noout", "--schema", "schema.xsd", "input.xml"])
+        (work / "invalid.xml").write_text('<value>invalid</value>')
+        invalid = subprocess.run([str(tools / "xmllint"), "--nonet", "--noout", "--schema",
+                                  "schema.xsd", "invalid.xml"], cwd=work, env=env, capture_output=True)
+        assert invalid.returncode != 0, invalid
+        (work / "transform.xsl").write_text(
+            '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">'
+            '<xsl:output method="text"/><xsl:template match="/">'
+            '<xsl:value-of select="value"/></xsl:template></xsl:stylesheet>')
+        assert run("xsltproc", ["--nonet", "transform.xsl", "input.xml"]) == b"42"
         manifest = json.loads((runtime / "toolchain.json").read_text())
+        assert all(name in manifest["tools"] for name in ("patch", "xmllint", "xsltproc"))
         graph = run("dot", ["-Tsvg"], data=b"digraph G { a -> b }\n")
         assert b"<svg" in graph and b"a" in graph
         metadata = root / "relocated-metadata"
@@ -97,7 +121,8 @@ def main():
         print(json.dumps({"architecture": platform.machine(), "profile": manifest["profile"],
                           "relocated": True, "empty_path": True, "autotools": True,
                           "protobuf_cpp_python_grpc": True, "thrift_cpp": True,
-                          "graphviz_svg": True, "private_python": python, "private_perl": perl}, indent=2))
+                          "patch_apply_reject_reverse": True, "xml_schema_reject_invalid": True,
+                          "xslt_transform": True, "graphviz_svg": True, "private_python": python, "private_perl": perl}, indent=2))
 
 
 if __name__ == "__main__":

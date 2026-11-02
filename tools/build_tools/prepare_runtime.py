@@ -141,7 +141,8 @@ def prepare_configure(root: Path, architecture: str, loader: Path, libraries: li
                      "thrift", "python3", "dot", "bash", "dash", "sed", "mawk", "find", "xargs",
                      "basename", "cat", "chmod", "cp", "cut", "dirname", "echo", "expr", "head", "install",
                      "ln", "mkdir", "mv", "od", "printf", "readlink", "realpath", "rm", "rmdir",
-                     "sleep", "sort", "tail", "test", "touch", "tr", "uname", "wc", "cmp", "diff"):
+                     "sleep", "sort", "tail", "test", "touch", "tr", "uname", "wc", "cmp", "diff",
+                     "patch", "xmllint", "xsltproc"):
             tools[name] = root / "usr/bin" / name
         for name in ("automake", "aclocal"):
             candidates = sorted((root / "usr/bin").glob(name + "-[0-9]*"))
@@ -305,6 +306,10 @@ fi
             script += 'pkgdatadir="$root/usr/share/libtool"\naclocaldir="$root/usr/share/aclocal"\nexport pkgdatadir aclocaldir\n'
             script += 'exec "$root/bin/sh" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         else:
+            if name in ("xmllint", "xsltproc"):
+                # A caller supplies schemas/stylesheets explicitly. Never consult
+                # the worker's mutable /etc/xml/catalog as a hidden build input.
+                script += 'XML_CATALOG_FILES=\nexport XML_CATALOG_FILES\n'
             script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + str(binary.relative_to(root)) + '" "$@"\n'
         write_launcher(root, name, script, executable)
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip()
