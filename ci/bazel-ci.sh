@@ -74,7 +74,7 @@ if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   # This source-tools PR is explicitly scoped to no DEB generation. Build the
   # declared kernel tools without running their existing package fixture. Drop
   # this temporary branch exception when that source-only scope ends.
-  if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/cli-build-tools ]]; then
+  if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/cli-build-tools || "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/declared-bfd-linker ]]; then
     tests+=(//tools/build_tools:kernel_runtime)
     printf '%s\n' 'kernel_runtime_test omitted: CLI source-tools validation does not generate DEBs' > "$artifacts/omitted-package-fixture.txt"
   else

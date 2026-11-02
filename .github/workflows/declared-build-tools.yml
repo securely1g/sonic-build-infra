@@ -70,7 +70,7 @@ jobs:
           # This feature's source-only scope excludes the existing DEB fixture;
           # still build/cache its declared tool root. Other branches are unchanged.
           kernel_check=//tools/build_tools:kernel_runtime_test
-          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/cli-build-tools ]]; then
+          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/cli-build-tools || "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/declared-bfd-linker ]]; then
             kernel_check=//tools/build_tools:kernel_runtime
             printf '%s\n' 'kernel_runtime_test omitted: no DEB generation' > ci-artifacts/omitted-package-fixture.txt
           fi

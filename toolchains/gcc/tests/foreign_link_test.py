@@ -10,6 +10,7 @@ binary = next(Path(p).absolute() for p in sys.argv[1:] if p.endswith("/bin/probe
 root = binary.parent.parent
 assert subprocess.check_output([root / "bin/probe"], text=True) == "declared GCC link succeeded\n"
 assert subprocess.check_output([root / "bin/probe-static-math"], text=True) == "declared GCC link succeeded\n"
+assert subprocess.check_output([root / "bin/probe-bfd"], text=True) == "declared GCC link succeeded\n"
 elf = binary.read_bytes()
 assert elf[:6] == b"\x7fELF\x02\x01"
 assert struct.unpack_from("<H", elf, 18)[0] == {"x86_64": 62, "aarch64": 183}[platform.machine()]
@@ -60,3 +61,23 @@ for library in ["libm-2.41.a", "libmvec.a"]:
     assert paths and all(p.startswith(next(iter(sysroots)) + "/usr/lib/" + triplet + "/") for p in paths), paths
     assert all(p in static_dependencies for p in paths), library
     print("static math:", paths[0])
+
+# Explicit -fuse-ld=bfd must use the same downloaded compiler runtime even
+# with only a failing host-linker canary on PATH, matching Common's CGo link.
+bfd = (root / "share/linker-bfd.txt").read_text().strip()
+assert bfd == str(Path(linker).with_name("ld.bfd")), (linker, bfd)
+bfd_execution = (root / "share/linker-bfd-execution.txt").read_text()
+bfd_commands = [line.split()[0] for line in bfd_execution.splitlines() if line.startswith("/")]
+assert bfd in bfd_commands, (bfd, bfd_commands, bfd_execution)
+assert not any(command.startswith(("/usr/", "/lib/", "/bin/")) for command in bfd_commands), bfd_commands
+assert "HOST_BFD_CANARY" not in bfd_execution, bfd_execution
+bfd_map = (root / "share/probe-bfd.map").read_text()
+bfd_inputs = re.findall(r"^LOAD (.+)$", bfd_map, re.MULTILINE)
+bfd_dependencies = (root / "share/probe-bfd.d").read_text()
+assert not any(p.startswith(("/usr/", "/lib/", "/lib64/")) for p in bfd_inputs), bfd_inputs
+assert not re.search(r"(?:^|\s)/(?:usr/|lib/|lib64/)", bfd_dependencies), bfd_dependencies
+for library in ["libgcc_s.so", "libgcc_s.so.1", "libc.so.6", "libm.so.6"]:
+    paths = [p for p in bfd_inputs if p.endswith("/" + library)]
+    assert paths and all(p.startswith(next(iter(sysroots)) + "/") for p in paths), (library, paths)
+    assert all(p in bfd_dependencies for p in paths), library
+print("explicit BFD linker:", bfd)
