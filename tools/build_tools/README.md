@@ -1,5 +1,28 @@
 # Declared build-time tools
 
+For native AMD64, `:docbook2man` generates manpages from one DocBook SGML input.
+It uses the same OpenSP parser, SGMLS Perl converter and DocBook data as Debian's
+`docbook-utils` man backend. Set `SOURCE_DATE_EPOCH` to the source timestamp;
+missing timestamps and malformed SGML fail. The tool does not use host Jade,
+SGML catalogs, Perl modules or PDF/TeX programs. The separate `:docbook_runtime`
+tree supports `rules_foreign_cc` through its relocatable `bin/docbook2man`.
+
+SONiC wpa-supplicant's native recipe runs `docbook2man` on the five manuals
+shipped in `wpasupplicant`, including `wpa_cli.sgml` and `wpa_supplicant.conf.sgml`.
+`docbook_runtime_test` uses those exact files at source revision `6ca19c73` and
+compares every generated manual byte with the unchanged Debian backend, then
+checks relocation and invalid inputs. This is a build tool; it does not produce
+a Debian package or change the compiler's target sysroot. ARM and other DocBook
+output formats are outside this addition.
+
+`docbook-utils` stays in the shared `build_tools` APT set. This runtime selects
+only its `:data` payload plus the declared OpenSP/SGMLS dependencies; it does
+not execute its Jade, HTML or TeX backends. The kernel runtime retains its
+maintained package roots and their complete dependency closure through the
+separate kernel-runtime subset prerequisite. Adding DocBook tools therefore
+does not add Jade, TeX/PDF or browser packages to that runtime. Both consumers
+still use the same shared execution-tool package set.
+
 Use these executable targets for generators that need Aspell or Doxygen:
 
 | Target | Behavior |
@@ -441,3 +464,27 @@ Framework build. They are not compiler sysroot or execution-tool inputs.
 valid/invalid XSD input and an XSLT transformation after relocating the runtime
 with an empty PATH. Existing native AMD64/ARM64 CI retains that coverage and the
 fresh-output-base cache check; local validation is recorded per architecture.
+
+## Kernel runtime package boundary
+
+`kernel_roots.bzl` fixes the execution package roots consumed by
+`kernel_runtime` to the maintained 17a1e555 selection: 63 AMD64 roots and
+62 ARM64 roots from the same shared `build_tools` APT set. Each root retains
+its declared transitive dependencies, and the existing cross-target ABI data,
+controls and native library metadata remain unchanged. The existing
+`dpkg_status` rule generates status for that selected subset.
+
+This is a conservative compatibility boundary, not a minimal kernel toolset.
+New shared generators do not automatically enter the kernel rootfs; extend
+the explicit roots when an actual kernel consumer requires another tool.
+For example, DocBook's SGML/man tooling can use the shared package set without
+adding its unrelated Jade/TeX/PDF dependencies to the kernel compiler and
+metadata runtime. Strict runtime symlink validation remains enabled.
+
+`kernel_runtime_tools_test` reuses the existing relocated runtime test, including
+actual C/C++ compilation, native shared/static link inputs, Quilt push/pop,
+Perl XML parsing, tool execution and Debian dependency metadata. Its explicit
+`--tools-only` mode omits only the function that creates the runtime/debug DEB
+fixture. `kernel_runtime_test` retains the original full behavior. The source-only
+feature branches select the tools-only test in CI and retain the fresh-output-base
+disk-cache checks; they do not execute DEB generation.

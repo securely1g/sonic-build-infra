@@ -128,12 +128,17 @@ def write_launcher(root: Path, name: str, script: str, executable: Path) -> None
     destination.chmod(0o755)
 
 
-def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path, *, foreign: bool = False) -> None:
+def prepare_configure(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path, *, foreign: bool = False, docbook: bool = False) -> None:
     """Keep foreign_cc tools self-contained when it copies their tree artifact."""
     script_tools = ("autoconf", "autoheader", "autom4te")
     tools = {name: root / "usr/bin" / name for name in
              ("make", "m4", "pkgconf", "perl", "bison", "flex", "grep", *script_tools)}
     shell_tools = ()
+    if docbook:
+        script_tools += ("sgmlspl",)
+        for name in ("onsgmls", "sgmlspl", "cat", "date", "mktemp", "rm"):
+            tools[name] = root / "usr/bin" / name
+        tools["sh"] = root / "usr/bin/dash"
     if foreign:
         script_tools += ("autoreconf", "automake", "aclocal")
         shell_tools = ("libtoolize", "which")
@@ -296,7 +301,10 @@ else
 fi
 '''
         if name in script_tools:
-            script += 'exec "$root/bin/perl" "$root/' + str(binary.relative_to(root)) + '" '
+            script += 'exec "$root/bin/perl" '
+            if name == "sgmlspl":
+                script += '-I "$root/usr/share/perl5/sgmlspl-specs" '
+            script += '"$root/' + str(binary.relative_to(root)) + '" '
             if name == "autom4te":
                 script += '--prepend-include "$root/usr/share/autoconf" '
             if name == "aclocal":
@@ -325,7 +333,7 @@ fi
         os.utime(indexes[0], (0, 0))
     manifest = {
         "format_version": 1,
-        "profile": "foreign" if foreign else "configure",
+        "profile": "docbook" if docbook else "foreign" if foreign else "configure",
         "architecture": architecture,
         "loader": str(loader.relative_to(root)),
         "library_directories": [str(path.relative_to(root)) for path in libraries],
@@ -341,6 +349,83 @@ fi
         manifest["omitted_unresolved_symlinks"] = sorted(str(path.relative_to(root)) for path in dangling)
         for path in dangling:
             path.unlink()
+    (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if docbook:
+        prepare_docbook(root, executable)
+
+
+def prepare_docbook(root: Path, executable: Path) -> None:
+    """Run Debian's original OpenSP/SGMLS man backend with declared data."""
+    specification = root / "usr/share/perl5/sgmlspl-specs/docbook2man-spec.pl"
+    backend = root / "usr/share/docbook-utils/backends/man"
+    if not specification.is_file() or not backend.is_file():
+        raise RuntimeError("missing declared DocBook man backend")
+    # This is exactly the converter used by docbook-utils' man backend. The
+    # jw frontend additionally searches for host Jade, paper size and catalogs,
+    # although its man backend uses none of Jade's transformation routines.
+    original = backend.read_text()
+    for required in ("onsgmls $SGML_FILE", "sgmlspl $HELPER", "grep unresolved"):
+        if required not in original:
+            raise RuntimeError("unexpected DocBook man backend: " + required)
+    # OpenSP ships an optional Unicode catalog with its own restrictive
+    # SGMLDECL. Debian does not activate that unrelated syntax for DocBook.
+    # Select only DocBook DTDs and their ISO character entities.
+    catalogs = sorted(path for directory in ("docbook", "entities")
+                      for path in (root / "usr/share/sgml" / directory).rglob("catalog"))
+    if not catalogs or not any("4.2" in str(path) for path in catalogs):
+        raise RuntimeError("missing DocBook 4.2 SGML catalog")
+    # Debian catalogs can contain absolute references to their own DTD/entity
+    # files. Relocate those references; preserve all catalog declarations.
+    for directory in (root / "usr/share/sgml", root / "usr/share/xml"):
+        if not directory.exists():
+            continue
+        for path in directory.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            data = path.read_bytes()
+            if b"/usr/share/sgml/" not in data and b"/usr/share/xml/" not in data:
+                continue
+            for prefix in ("/usr/share/sgml/", "/usr/share/xml/"):
+                relative = os.path.relpath(root / prefix.lstrip("/"), path.parent) + "/"
+                data = data.replace(prefix.encode(), relative.encode())
+            path.write_bytes(data)
+    catalog_path = ":".join('$root/' + str(path.relative_to(root)) for path in catalogs)
+    script = '''#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+PATH="$root/bin"
+SGML_CATALOG_FILES="''' + catalog_path + '''"
+SGML_SEARCH_PATH="$root/usr/share/sgml"
+LC_ALL=C
+export PATH SGML_CATALOG_FILES SGML_SEARCH_PATH LC_ALL
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+if [ "$#" = 1 ] && [ "$1" = --version ]; then
+    printf '%s\\n' 'DocBook-utils man backend (OpenSP and SGMLS)'
+    exit 0
+fi
+if [ "$#" != 1 ] || [ ! -f "$1" ]; then
+    printf '%s\\n' 'Usage: docbook2man input.sgml' >&2
+    exit 2
+fi
+: "${SOURCE_DATE_EPOCH:?set SOURCE_DATE_EPOCH for reproducible manuals}"
+export SOURCE_DATE_EPOCH
+temporary=$(mktemp -d "${TMPDIR:-/tmp}/sonic-docbook.XXXXXX")
+trap 'rm -rf "$temporary"' EXIT HUP INT TERM
+onsgmls "$1" > "$temporary/document.esis"
+if ! "$root/bin/sgmlspl" "$root/usr/share/perl5/sgmlspl-specs/docbook2man-spec.pl" < "$temporary/document.esis" 2> "$temporary/errors"; then
+    cat "$temporary/errors" >&2
+    exit 1
+fi
+if grep unresolved "$temporary/errors" >/dev/null 2>&1; then
+    "$root/bin/sgmlspl" "$root/usr/share/perl5/sgmlspl-specs/docbook2man-spec.pl" < "$temporary/document.esis"
+fi
+'''
+    write_launcher(root, "docbook2man", script, executable)
+    manifest = json.loads((root / "toolchain.json").read_text())
+    manifest["tools"]["docbook2man"] = str(specification.relative_to(root))
+    manifest["sgml_catalogs"] = [str(path.relative_to(root)) for path in catalogs]
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
@@ -411,7 +496,7 @@ def main() -> None:
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--launcher", required=True, type=Path)
     parser.add_argument("--tar", action="append", default=[])
-    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign"), default="documentation")
+    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign", "docbook"), default="documentation")
     args = parser.parse_args()
     validate_launcher(args.launcher, args.architecture)
     root = Path(args.out).resolve()
@@ -419,7 +504,7 @@ def main() -> None:
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
-    if args.profile in ("configure", "foreign"):
+    if args.profile in ("configure", "foreign", "docbook"):
         # Bazel caches files inside tree outputs. Materialize directory aliases
         # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
         # a child through a directory symlink before its target is populated.
@@ -441,8 +526,8 @@ def main() -> None:
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
-    if args.profile in ("configure", "foreign"):
-        prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign")
+    if args.profile in ("configure", "foreign", "docbook"):
+        prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign", docbook=args.profile == "docbook")
         return
     if args.profile == "kerberos":
         prepare_kerberos(root, args.architecture, loader, libraries, args.launcher)

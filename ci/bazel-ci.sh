@@ -71,21 +71,21 @@ if [[ -f tar/root_owned_tar.bzl ]]; then
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test)
-  # This source-tools PR is explicitly scoped to no DEB generation. Build the
-  # declared kernel tools without running their existing package fixture. Drop
-  # this temporary branch exception when that source-only scope ends.
-  if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/cli-build-tools || "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/declared-bfd-linker ]]; then
-    tests+=(//tools/build_tools:kernel_runtime)
-    printf '%s\n' 'kernel_runtime_test omitted: CLI source-tools validation does not generate DEBs' > "$artifacts/omitted-package-fixture.txt"
-  else
-    tests+=(//tools/build_tools:kernel_runtime_test)
-  fi
+  case "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" in
+    codex/cli-build-tools|codex/declared-bfd-linker|codex/kernel-runtime-subset|codex/docbook-build-tools|codex/docbook-combined-26)
+      tests+=(//tools/build_tools:kernel_runtime_tools_test)
+      printf '%s\n' 'kernel package fixture omitted; all tool checks retained' > "$artifacts/omitted-package-fixture.txt" ;;
+    *) tests+=(//tools/build_tools:kernel_runtime_test) ;;
+  esac
   if [[ "$debian_arch" == amd64 ]]; then
     tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
   fi
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+if [[ "$debian_arch" == amd64 && -f tools/build_tools/docbook_runtime_test.py ]]; then
+  tests+=(//tools/build_tools:docbook_runtime_test)
+fi
 # Audit the actual configured graph, including imported tests, before executing
 # any action. Importing Debian archives is expected; producing DEBs is not.
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
