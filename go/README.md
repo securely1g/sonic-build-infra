@@ -29,8 +29,11 @@ python3 /path/to/sonic-build-infra/go/lock.py \
 
 The updater uses the host-compatible Go SDK selected by rules_go, as exported
 by Gazelle's plan. It disables automatic Go toolchain switching. Only missing
-ZIP digests are downloaded, through `go mod download`, preserving Go's proxy,
-authentication and checksum database behavior. The returned `h1:` must match
+ZIP digests are downloaded, through `go mod download` with a temporary module
+cache. A ZIP cached from an earlier proxy can have the same module contents but
+different archive bytes; the temporary cache ensures each new digest comes from
+the current Go proxy. Go's proxy, authentication and checksum database behavior
+is preserved. The returned `h1:` must match
 the resolved graph before any lock is replaced. Existing reviewed digests are
 reused. Removed modules are pruned; conflicting or invalid digests fail. All
 files are staged after successful resolution and verification. Network and

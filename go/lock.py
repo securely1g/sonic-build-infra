@@ -48,8 +48,10 @@ def update(plans, root, sdk, check=False):
     # module ZIP validation. This download is only performed by explicit updates.
     with tempfile.TemporaryDirectory(prefix='sonic-go-lock-') as directory:
         Path(directory, 'go.mod').write_text('module sonic.invalid/zip-lock\n')
+        # A cached ZIP from another proxy can have the same h1 but different bytes.
+        # Hash a fresh download from the selected proxy for each new lock entry.
         env = {**os.environ, 'GOWORK': 'off', 'GOTOOLCHAIN': 'local',
-               'GOMODCACHE': os.environ.get('GOMODCACHE', str(Path(directory) / 'modcache')),
+               'GOMODCACHE': str(Path(directory) / 'modcache'),
                'GOPATH': os.environ.get('GOPATH', str(Path(directory) / 'gopath'))}
         missing = sorted(set(required) - existing.keys())
         digests.update({key: existing[key] for key in required if key in existing})

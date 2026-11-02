@@ -10,6 +10,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -67,6 +69,33 @@ class LockTest(unittest.TestCase):
         plan['module_sums'] = {}; plan['zip_urls'] = {}
         lock.update([plan], self.root, self.sdk)
         self.assertEqual(json.loads(path.read_text()), {})
+
+    def test_new_lock_uses_current_proxy_zip_with_warm_go_cache(self):
+        key, h1, first_sha = self.module()
+        warm = self.root / 'warm'
+        warm.mkdir()
+        (warm / 'go.mod').write_text('module sonic.invalid/warm\n\ngo 1.20\n')
+        result = subprocess.run(
+            [str(Path(self.sdk) / 'bin/go'), 'mod', 'download', '-json', key],
+            cwd=warm, env={**os.environ, 'GOWORK': 'off', 'GOTOOLCHAIN': 'local'},
+            text=True, capture_output=True, check=True)
+        cached_zip = Path(json.loads(result.stdout)['Zip'])
+        self.assertEqual(hashlib.sha256(cached_zip.read_bytes()).hexdigest(), first_sha)
+
+        # Another proxy can encode the same module contents as different ZIP bytes.
+        current_proxy = self.root / 'current-proxy'
+        shutil.copytree(self.proxy, current_proxy)
+        current_zip = current_proxy / 'example.com/sample/@v/v1.0.0.zip'
+        with zipfile.ZipFile(current_zip, 'a') as archive:
+            archive.comment = b'current proxy'
+        current_sha = hashlib.sha256(current_zip.read_bytes()).hexdigest()
+        self.assertNotEqual(first_sha, current_sha)
+
+        plan, path = self.plan('lock.json', [(key, h1)])
+        plan['zip_urls'][key] = current_zip.as_uri()
+        with patch.dict(os.environ, {'GOPROXY': current_proxy.as_uri()}):
+            lock.update([plan], self.root, self.sdk)
+        self.assertEqual(json.loads(path.read_text()), {key: current_sha})
 
     def test_checksum_failure_preserves_all_locks(self):
         key, h1, _ = self.module()
