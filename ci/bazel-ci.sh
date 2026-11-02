@@ -83,6 +83,9 @@ if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+if [[ "$debian_arch" == amd64 && -f tools/build_tools/docbook_runtime_test.py ]]; then
+  tests+=(//tools/build_tools:docbook_runtime_test)
+fi
 # Audit the actual configured graph, including imported tests, before executing
 # any action. Importing Debian archives is expected; producing DEBs is not.
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"

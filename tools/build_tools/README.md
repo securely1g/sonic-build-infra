@@ -1,5 +1,28 @@
 # Declared build-time tools
 
+For native AMD64, `:docbook2man` generates manpages from one DocBook SGML input.
+It uses the same OpenSP parser, SGMLS Perl converter and DocBook data as Debian's
+`docbook-utils` man backend. Set `SOURCE_DATE_EPOCH` to the source timestamp;
+missing timestamps and malformed SGML fail. The tool does not use host Jade,
+SGML catalogs, Perl modules or PDF/TeX programs. The separate `:docbook_runtime`
+tree supports `rules_foreign_cc` through its relocatable `bin/docbook2man`.
+
+SONiC wpa-supplicant's native recipe runs `docbook2man` on the five manuals
+shipped in `wpasupplicant`, including `wpa_cli.sgml` and `wpa_supplicant.conf.sgml`.
+`docbook_runtime_test` uses those exact files at source revision `6ca19c73` and
+compares every generated manual byte with the unchanged Debian backend, then
+checks relocation and invalid inputs. This is a build tool; it does not produce
+a Debian package or change the compiler's target sysroot. ARM and other DocBook
+output formats are outside this addition.
+
+`docbook-utils` stays in the shared `build_tools` APT set. This runtime selects
+only its `:data` payload plus the declared OpenSP/SGMLS dependencies; it does
+not execute its Jade, HTML or TeX backends. The kernel runtime retains its
+maintained package roots and their complete dependency closure through the
+separate kernel-runtime subset prerequisite. Adding DocBook tools therefore
+does not add Jade, TeX/PDF or browser packages to that runtime. Both consumers
+still use the same shared execution-tool package set.
+
 Use these executable targets for generators that need Aspell or Doxygen:
 
 | Target | Behavior |
