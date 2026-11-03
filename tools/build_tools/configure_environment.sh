@@ -11,10 +11,11 @@ case "$LD" in
     "$EXT_BUILD_ROOT"/*) test -x "$LD" ;;
     *) echo "Selected GCC did not return a declared linker: $LD" >&2; exit 1 ;;
 esac
-# GCC copies native -I arguments into COLLECT_GCC_OPTIONS before spawning cc1.
+# GCC copies native include arguments into COLLECT_GCC_OPTIONS before spawning cc1.
 # Large CcInfo include/library closures can exceed Linux's per-string limit even
-# when argv itself fits. Forward the native include group to the preprocessor;
-# keep its precedence before existing forwarded options. Shorten absolute -L
+# when argv itself fits. Forward native -I, -iquote and -isystem options to the
+# preprocessor without changing their search classes or order. Keep their
+# precedence before existing forwarded options. Shorten absolute -L
 # directories relative to the physical working directory without changing their
 # order or forwarding them behind GCC's default library paths. Materialize the
 # launcher in this private configure tree so consumers still need only this
@@ -74,18 +75,24 @@ pending=
 for argument in "$@"; do
     case "$pending" in
         include) set -- "$@" -Xpreprocessor "-I$argument"; pending=; continue ;;
+        -iquote|-isystem)
+            set -- "$@" -Xpreprocessor "$pending" -Xpreprocessor "$argument"
+            pending=; continue ;;
         operand) pending=; continue ;;
     esac
     case "$argument" in
         -I) pending=include ;;
-        -I?*) set -- "$@" -Xpreprocessor "$argument" ;;
+        -iquote|-isystem) pending=$argument ;;
+        -I?*|-iquote?*|-isystem?*) set -- "$@" -Xpreprocessor "$argument" ;;
         *) if takes_operand "$argument"; then pending=operand; fi ;;
     esac
 done
-if test "$pending" = include; then
-    echo 'Missing compiler argument after -I' >&2
-    exit 2
-fi
+test "$pending" != include || pending=-I
+case "$pending" in
+    -I|-iquote|-isystem)
+        echo "Missing compiler argument after $pending" >&2
+        exit 2 ;;
+esac
 remaining=$original_count
 pending=
 for argument in "$@"; do
@@ -98,8 +105,8 @@ for argument in "$@"; do
                  set -- "$@" "$library_path"; pending=; continue ;;
     esac
     case "$argument" in
-        -I) pending=include ;;
-        -I?*) ;;
+        -I|-iquote|-isystem) pending=include ;;
+        -I?*|-iquote?*|-isystem?*) ;;
         -L) set -- "$@" "$argument"; pending=library ;;
         -L?*) short_library_path "${argument#-L}"
               set -- "$@" "-L$library_path" ;;

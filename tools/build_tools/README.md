@@ -386,7 +386,9 @@ preprocessors. It rejects a linker outside Bazel's execution root.
 For large target dependency closures, GCC can exceed Linux's per-string process
 limit when it copies all include and library search options into
 `COLLECT_GCC_OPTIONS`. The adapter creates a private compiler launcher that
-forwards the native `-I` group through `-Xpreprocessor`. It preserves that group's
+forwards native `-I`, `-iquote` and `-isystem` groups through `-Xpreprocessor`.
+Quote-only and system-header search classes remain unchanged, including system
+header warning suppression. It preserves those groups' original order and
 precedence before already forwarded preprocessor options. It also shortens an
 absolute `-L` directory relative to the compiler's physical working directory
 when that spelling is shorter. For example, a long Bazel execution-root prefix
@@ -408,6 +410,13 @@ and checks competing-header precedence and exact linker/output operands. It
 also reproduces the library-only `collect2` spawn failure, then links and runs
 successfully with the adapter. Competing static libraries verify search priority
 from nested and symlinked working directories, including SDK paths with spaces.
+The quote/system regression also keeps the large header and library closures in
+the actual Autoconf and recursive Libtool build. This covers the PI SDK used by
+the AMD64 gearbox image: its Debian native interfaces supply 132 quote roots and
+272 system roots, which the old ordinary-include-only launcher left in GCC's
+collected options. In the retained gearbox failure those options reached
+136,783 bytes, exceeding Linux's 131,072-byte per-string limit, although no
+individual compiler argument exceeded 394 bytes.
 
 ## Cross-compile kernel packages on AMD64
 
