@@ -1,6 +1,6 @@
 module(
     name = "sonic-rust-deps",
-    version = "0.0.4",
+    version = "0.0.5",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -18,6 +18,7 @@ rules_rust_patches.patch(
     strip = 1,
 )
 use_repo(rules_rust_patches, "rules_rust")
+
 bazel_dep(name = "platforms", version = "1.1.0")
 
 # Keep a pinned toolchain available to standalone and fresh registry consumers.

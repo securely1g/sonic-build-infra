@@ -41,47 +41,47 @@ cc_binary(
     name = "libpanic_cpp.so.7",
     testonly = True,
     srcs = ["panic_cpp.cc"],
-    linkshared = True,
     linkopts = ["-Wl,-soname,libpanic_cpp.so.7"],
+    linkshared = True,
 )
 
 cc_binary(
     name = "native_probe.so",
     testonly = True,
     srcs = ["native_probe.cc"],
-    linkshared = True,
     linkopts = ["-Wl,-soname,native_probe.so"],
+    linkshared = True,
 )
 
 # Match source-owned DSO adapters whose interface artifacts share a basename.
 genrule(
     name = "panic_cpp_interface",
+    testonly = True,
     srcs = [":libpanic_cpp.so.7"],
     outs = ["cpp/rpath.ifso"],
     cmd = "cp $(location :libpanic_cpp.so.7) $@",
-    testonly = True,
 )
 
 genrule(
     name = "panic_odd_interface",
+    testonly = True,
     srcs = [":native_probe.so"],
     outs = ["odd/rpath.ifso"],
     cmd = "cp $(location :native_probe.so) $@",
-    testonly = True,
 )
 
 cc_import(
     name = "panic_cpp",
     testonly = True,
-    shared_library = ":libpanic_cpp.so.7",
     interface_library = ":panic_cpp_interface",
+    shared_library = ":libpanic_cpp.so.7",
 )
 
 cc_import(
     name = "panic_odd",
     testonly = True,
-    shared_library = ":native_probe.so",
     interface_library = ":panic_odd_interface",
+    shared_library = ":native_probe.so",
 )
 
 rust_library(
@@ -89,7 +89,10 @@ rust_library(
     testonly = True,
     srcs = ["panic_rust.rs"],
     edition = "2021",
-    link_deps = [":panic_cpp", ":panic_odd"],
+    link_deps = [
+        ":panic_cpp",
+        ":panic_odd",
+    ],
 )
 
 rust_binary(
@@ -115,6 +118,33 @@ py_test(
     name = "panic_runtime_test",
     size = "small",
     srcs = ["panic_runtime_test.py"],
-    args = ["$(rootpath :panic_abort_probe)", "$(rootpath :panic_unwind_probe)"],
-    data = [":panic_abort_probe", ":panic_unwind_probe"],
+    args = [
+        "$(rootpath :panic_abort_probe)",
+        "$(rootpath :panic_unwind_probe)",
+    ],
+    data = [
+        ":panic_abort_probe",
+        ":panic_unwind_probe",
+    ],
+)
+
+# DASH HA serializes Common values through this same Serde graph, generates
+# prost/tonic protocols and keeps typed state in DashMap/EnumSet.
+rust_test(
+    name = "dash_ha_contract_test",
+    srcs = ["dash_ha_contract_test.rs"],
+    edition = "2021",
+    deps = [
+        "//:dashmap",
+        "//:enumset",
+        "//:prost",
+        "//:prost-build",
+        "//:serde",
+        "//:serde_json",
+        "//:serde_with",
+        "//:tokio",
+        "//:tokio-util",
+        "//:tonic",
+        "//:tonic-build",
+    ],
 )

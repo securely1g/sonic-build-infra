@@ -1,4 +1,4 @@
-# Union of third-party dependencies used by Common, SWSS and supervisor.
+# Union of third-party dependencies used by Common, SWSS, supervisor and DASH HA.
 [package]
 name = "sonic-rust-deps"
 version = "0.0.1"
@@ -58,9 +58,41 @@ tokio = { version = "1", features = ["full", "macros", "net", "rt", "rt-multi-th
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { version = "0.12" }
 tonic-health = { version = "0.12" }
-tracing = { version = "0.1", features = ["max_level_debug", "release_max_level_info"] }
+tracing = { version = "0.1", features = ["log", "max_level_debug", "release_max_level_info"] }
 tracing-log = { version = "0.2" }
 tracing-opentelemetry = { version = "0.25" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "serde"] }
 wait-timeout = { version = "0.2.1" }
 which = { version = "7.0.3" }
+
+# DASH HA source programs, original tests and protobuf generators.
+anyhow = { version = "1", features = [] }
+atomic_enum = { version = "=0.3.0" }
+better-panic = { version = "=0.3.0" }
+bollard = { version = "=0.17.1", features = ["chrono"] }
+contracts = { version = "=0.6.3", features = [] }
+dashmap = { version = "=6.0.1", features = [] }
+derivative = { version = "=2.2.0" }
+enumset = { version = "=1.1.5" }
+file-rotate = { version = "=0.7.6" }
+futures-core = { version = "0.3" }
+futures-util = { version = "0.3", features = [] }
+hex = { version = "0.4", features = [] }
+human-panic = { version = "=2.0.1" }
+hyper-util = { version = "0.1", features = ["tokio"] }
+pretty_assertions = { version = "=1.4.0", features = [] }
+proc-macro2 = { version = "1.0" }
+prost-build = { version = "=0.13.1" }
+quote = { version = "1.0" }
+serde_serializer_quick_unsupported = { version = "=0.1.2" }
+serde_with = { version = "=3.12.0", features = [] }
+signal-hook = { version = "=0.3.17" }
+strum = { version = "=0.26.3", features = ["derive"] }
+strum_macros = { version = "=0.26.4" }
+syn = { version = "2.0" }
+tabled = { version = "=0.17.0" }
+tokio-util = { version = "=0.7.14", features = ["rt"] }
+tonic-build = { version = "=0.12.1", features = [] }
+tower = { version = "0.4", features = ["util"] }
+tracing-error = { version = "0.2" }
+uuid = { version = "=1.15.1", features = ["v4"] }
