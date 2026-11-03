@@ -12,6 +12,10 @@ with tarfile.open(sys.argv[1]) as archive:
     assert len(symbols) == 1, symbols
     assert symbols[0].name.endswith("/usr/lib/debug/.build-id/ab/fixture.debug"), symbols[0].name
     assert archive.extractfile(symbols[0]).read() == b"fixture symbols\n"
+    assert symbols[0].mode == 0o644, (symbols[0].name, oct(symbols[0].mode))
+    assert symbols[0].mtime == 1672560000
     for member in members:
+        if member.isdir():
+            assert member.mode == 0o755, (member.name, oct(member.mode))
         assert member.uid == member.gid == 0, (member.name, member.uid, member.gid)
         assert member.uname == member.gname == "", (member.name, member.uname, member.gname)

@@ -67,12 +67,12 @@ if [[ -f python/wheel_layer.bzl ]]; then
   tests+=(//python:wheel_layer_test)
 fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
-  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
+  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test //tar:debug_symbols_modes_test)
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test)
   case "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" in
-    codex/cli-build-tools|codex/declared-bfd-linker|codex/kernel-runtime-subset|codex/docbook-build-tools|codex/docbook-combined-26)
+    codex/cli-build-tools|codex/declared-bfd-linker|codex/kernel-runtime-subset|codex/docbook-build-tools|codex/docbook-combined-26|codex/debug-symbol-file-modes|codex/debug-symbols-combined-26)
       tests+=(//tools/build_tools:kernel_runtime_tools_test)
       printf '%s\n' 'kernel package fixture omitted; all tool checks retained' > "$artifacts/omitted-package-fixture.txt" ;;
     *) tests+=(//tools/build_tools:kernel_runtime_test) ;;

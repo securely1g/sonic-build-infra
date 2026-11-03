@@ -41,6 +41,8 @@ def _debug_symbols_tar_impl(name, visibility, srcs):
         mutate = mutate(
             strip_prefix = _join_package(symbols_dir),
             package_dir = "./usr/lib/debug",
+            includes = [Label("//tar:debug_symbols_modes.awk")],
+            script_args = {"debug_file_mode": "0644"},
         ),
     )
     root_owned_tar(

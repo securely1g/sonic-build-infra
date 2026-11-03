@@ -21,4 +21,5 @@ for path, expected in (
 with tarfile.open(debug) as archive:
     symbols = [entry for entry in archive if entry.isfile()]
     assert symbols and all(entry.mtime == 1672560000 for entry in symbols)
+    assert all(entry.mode == 0o644 for entry in symbols)
     assert all(archive.extractfile(entry).read().startswith(b"\x7fELF") for entry in symbols)
