@@ -67,10 +67,18 @@ if [[ -f python/wheel_layer.bzl ]]; then
   tests+=(//python:wheel_layer_test)
 fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
-  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
+  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test //tar:debug_symbols_modes_test)
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
-  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test)
+  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test)
+  # This archive-only feature must not generate the kernel test's sample DEB.
+  # Keep its declared runtime available and preserve every other native check.
+  if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" == codex/debug-symbol-file-modes ]]; then
+    tests+=(//tools/build_tools:kernel_runtime)
+    printf '%s\n' 'kernel_runtime_test omitted: debug archive validation does not generate DEBs' > "$artifacts/omitted-package-fixture.txt"
+  else
+    tests+=(//tools/build_tools:kernel_runtime_test)
+  fi
   if [[ "$debian_arch" == amd64 ]]; then
     tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
   fi

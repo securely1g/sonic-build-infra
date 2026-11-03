@@ -72,6 +72,8 @@ def verify(runtime_path, debug_path, source_data, architecture):
         identifier = build_id(binary)
         symbol_name = "usr/lib/debug/.build-id/" + identifier[:2] + "/" + identifier[2:] + ".debug"
         require(set(debug) == {symbol_name}, "debug archive does not contain exactly the matching symbols")
+        require(debug[symbol_name][0].mode == 0o644,
+                "detached debug symbols must be non-executable data")
         symbols = root / symbol_name
         symbols.parent.mkdir(parents=True)
         symbols.write_bytes(debug[symbol_name][1])
