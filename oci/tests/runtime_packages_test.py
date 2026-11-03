@@ -60,6 +60,9 @@ class RuntimePackagesTest(unittest.TestCase):
         self.assertNotIn("Version", packages["libexample"])
         with self.assertRaisesRegex(ValueError, "finalized control"):
             source_definition(self.control, self.changelog)
+        self.control.write_text(self.control.read_text() + "Depends: ${misc:Depends}\n")
+        with self.assertRaisesRegex(ValueError, "finalized control cannot contain unresolved substitutions"):
+            source_definition(self.control)
 
     def test_source_control_cannot_borrow_another_sources_version(self):
         """A wrong changelog must fail instead of producing convincing wrong metadata."""

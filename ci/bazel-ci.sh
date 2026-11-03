@@ -72,7 +72,7 @@ fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test)
   case "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" in
-    codex/cli-build-tools|codex/declared-bfd-linker|codex/kernel-runtime-subset|codex/docbook-build-tools|codex/docbook-combined-26|codex/debug-symbol-file-modes|codex/debug-symbols-combined-26)
+    codex/cli-build-tools|codex/declared-bfd-linker|codex/kernel-runtime-subset|codex/docbook-build-tools|codex/docbook-combined-26|codex/debug-symbol-file-modes|codex/debug-symbols-combined-26|codex/finalized-runtime-control|codex/finalized-runtime-control-combined)
       tests+=(//tools/build_tools:kernel_runtime_tools_test)
       printf '%s\n' 'kernel package fixture omitted; all tool checks retained' > "$artifacts/omitted-package-fixture.txt" ;;
     *) tests+=(//tools/build_tools:kernel_runtime_test) ;;
