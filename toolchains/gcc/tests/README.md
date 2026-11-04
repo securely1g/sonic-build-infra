@@ -54,3 +54,20 @@ before changing directory. GCC also receives a `-B`
 directory prefix for the downloaded, CPU-specific assembler and linker aliases.
 GCC's driver accepts a filename prefix, but its `collect2` link helper searches
 directories; using the aliases keeps both stages on the declared tools.
+
+## Explicit BFD selection for Common and gNMI
+
+SWSS Common's public `//goext:swsscommon` CGo library selects
+`clinkopts = ["-fuse-ld=bfd"]`; SONiC gNMI links that library into its services.
+GCC searches for `ld.bfd` for this flag, separately from its usual `ld` lookup.
+The Debian compiler repository must expose both aliases through the same
+private loader and execution-library directory. Otherwise this source graph
+can invoke `/bin/ld.bfd` from the host even while its ordinary GCC links use
+the declared linker. No package or compiler version changes are required.
+
+The configure regression also builds and runs a C++ executable with this exact
+linker-selection flag. Its PATH contains only a failing `ld.bfd` canary. The
+receipt checks the actual BFD backend path printed by the compiler, rejects
+host tools/libraries, and verifies that the link opened libraries from the
+shared target sysroot. Existing native AMD64 and ARM64 CI runs cover the same
+wrapper implementation; cross-compiler validation remains unchanged.

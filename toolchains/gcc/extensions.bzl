@@ -35,6 +35,7 @@ _BUILD_TOOLCHAIN = """
 sonic_host_toolchain(
     name = {cc_name},
     cpu = {cpu},
+    suite = {suite},
     exec_cpu = {exec_cpu},
     tool_prefix = {tool_prefix},
     debian_gcc_major = {debian_gcc_major},
@@ -46,7 +47,9 @@ sonic_host_toolchain(
 
 sonic_binutils_toolchain(
     name = {binutils_name},
+    target_platform = {target_platform},
     cpu = {cpu},
+    suite = {suite},
     exec_cpu = {exec_cpu},
     tool_prefix = {tool_prefix},
     version = {version},
@@ -56,7 +59,7 @@ sonic_binutils_toolchain(
 
 _ACCEPTED_TOOLCHAIN_KINDS = ["gcc", "binutils"]
 
-def _toolchain_name(cpu, kind, version, exec_cpu = None):
+def _toolchain_name(cpu, kind, version, exec_cpu = None, suite = "trixie"):
     """The name of the generated `toolchain()` target for a tag.
 
     Args:
@@ -77,7 +80,7 @@ def _toolchain_name(cpu, kind, version, exec_cpu = None):
     prefix = "host_" + host
     if host != cpu:
         prefix += "_target_" + cpu
-    return "{prefix}_{kind}_{version}".format(prefix = prefix, kind = kind, version = version)
+    return "{prefix}_{kind}_{version}".format(prefix = prefix, kind = kind, version = version) + ("_" + suite if suite != "trixie" else "")
 
 def _gcc_toolchains_impl(rctx):
     build = [_BUILD_HEADER.format(
@@ -87,9 +90,10 @@ def _gcc_toolchains_impl(rctx):
 
     for toolchain in json.decode(rctx.attr.toolchains):
         build.append(_BUILD_TOOLCHAIN.format(
-            binutils_name = repr(_toolchain_name(toolchain["cpu"], "binutils", toolchain["version"], toolchain["exec_cpu"])),
-            cc_name = repr(_toolchain_name(toolchain["cpu"], "gcc", toolchain["version"], toolchain["exec_cpu"])),
+            binutils_name = repr(_toolchain_name(toolchain["cpu"], "binutils", toolchain["version"], toolchain["exec_cpu"], toolchain["suite"])),
+            cc_name = repr(_toolchain_name(toolchain["cpu"], "gcc", toolchain["version"], toolchain["exec_cpu"], toolchain["suite"])),
             cpu = repr(toolchain["cpu"]),
+            suite = repr(toolchain["suite"]),
             exec_cpu = repr(toolchain["exec_cpu"]),
             tool_prefix = repr(toolchain["tool_prefix"]),
             debian_gcc_major = repr(toolchain["debian_gcc_major"]),
@@ -119,7 +123,7 @@ def _gcc_impl(mctx):
     toolchains = {}
     for module in mctx.modules:
         for tag in module.tags.debian_toolchain:
-            key = (tag.version, tag.arch, tag.exec_arch or tag.arch)
+            key = (tag.suite, tag.version, tag.arch, tag.exec_arch or tag.arch)
             if key in toolchains:
                 fail("gcc.debian_toolchain() has duplicate version/target/exec: {}".format(key))
             toolchains[key] = tag
@@ -127,17 +131,21 @@ def _gcc_impl(mctx):
     if not toolchains:
         fail("the gcc extension needs at least one debian_toolchain() tag")
 
-    for (version, cpu, exec_cpu), tag in toolchains.items():
+    for (suite, version, cpu, exec_cpu), tag in toolchains.items():
         prefix = tag.tool_prefix or GCC_METADATA[cpu].multiarch
-        if version != "14.2.0" or tag.suite != "trixie" or prefix != GCC_METADATA[cpu].multiarch:
-            fail("Debian package toolchains require GCC 14.2.0, Trixie and the target Debian multiarch prefix")
+        if version != DEBIAN_SUITES[suite].compiler_version or prefix != GCC_METADATA[cpu].multiarch:
+            fail("Debian package toolchains require the declared suite GCC version and target Debian multiarch prefix")
         if cpu != exec_cpu and (exec_cpu, cpu) != ("x86_64", "aarch64"):
             fail("Supported Debian package toolchains are AMD64 native, ARM64 native and AMD64-to-ARM64")
         if not tag.debian_packages:
             fail("Pinned Debian compiler and execution-runtime packages are required")
         debian_gcc(
-            name = gcc_repo_name(cpu, version, exec_cpu),
+            name = gcc_repo_name(cpu, version, exec_cpu, suite),
+            suite = suite,
+            gcc_major = DEBIAN_SUITES[suite].gcc_major,
             packages = tag.debian_packages,
+            linker = tag.linker,
+            linker_files = tag.linker_files,
             target_arch = cpu,
             exec_arch = exec_cpu,
         )
@@ -149,6 +157,7 @@ def _gcc_impl(mctx):
         toolchains = json.encode([
             {
                 "cpu": cpu,
+                "suite": suite,
                 "exec_cpu": exec_cpu,
                 "tool_prefix": tag.tool_prefix or GCC_METADATA[cpu].gcc,
                 "debian_gcc_major": DEBIAN_SUITES[tag.suite].gcc_major,
@@ -156,7 +165,7 @@ def _gcc_impl(mctx):
                 "target_platform": str(tag.target_platform),
                 "version": version,
             }
-            for (version, cpu, exec_cpu), tag in toolchains.items()
+            for (suite, version, cpu, exec_cpu), tag in toolchains.items()
         ]),
     )
 
@@ -175,6 +184,12 @@ debian_toolchain = tag_class(
         "debian_packages": attr.label_list(
             doc = "Pinned Debian compiler and execution-runtime data.tar.xz archives.",
             mandatory = True,
+        ),
+        "linker": attr.label(
+            doc = "Optional exported source-file launcher in an external repository, matching this execution and target architecture; keeps the compiler and sysroot unchanged.",
+        ),
+        "linker_files": attr.label(
+            doc = "Required with linker: its complete declared execution runtime and support files.",
         ),
         "tool_prefix": attr.string(
             doc = "Target triple used by compiler binaries and private directories; defaults to the Debian multiarch prefix.",

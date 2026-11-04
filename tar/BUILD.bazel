@@ -1,8 +1,12 @@
+load("@bazel_lib//lib:expand_template.bzl", "expand_template")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
+load("@tar.bzl//tar:mtree.bzl", "mtree_mutate")
 load("@tar.bzl//tar:tar.bzl", "tar")
 load(":debug_symbols_tar.bzl", "debug_symbols_tar")
+
+exports_files(["debug_symbols_modes.awk"])
 
 py_binary(
     name = "root_owned_tar",
@@ -31,6 +35,7 @@ write_file(
 debug_symbols_tar(
     name = "ownership_fixture_tar",
     srcs = [":ownership_fixture"],
+    symlinks = {"usr/share/doc/fixture-dbgsym": "fixture"},
 )
 
 py_test(
@@ -38,6 +43,42 @@ py_test(
     srcs = ["debug_symbols_ownership_test.py"],
     args = ["$(location :ownership_fixture_tar)"],
     data = [":ownership_fixture_tar"],
+)
+
+# Check the mutation's boundary on an actual archive: file bytes and metadata,
+# directory modes and symbolic links must survive unchanged.
+expand_template(
+    name = "debug_modes_fixture_mtree",
+    out = "debug_modes_fixture.mtree",
+    data = [":ownership_fixture"],
+    substitutions = {
+        "{content}": "\n".join([
+            "symbols type=dir mode=0755 uid=17 gid=23 time=111",
+            "symbols/file.debug type=file mode=0755 uid=17 gid=23 time=222 content=$(location :ownership_fixture)",
+            "symbols/symlink.debug type=link mode=0777 uid=17 gid=23 time=333 link=file.debug",
+        ]),
+    },
+    template = ["#mtree", "{content}", ""],
+)
+
+mtree_mutate(
+    name = "debug_modes_fixture_mutated",
+    mtree = ":debug_modes_fixture_mtree",
+    includes = [":debug_symbols_modes.awk"],
+    script_args = {"debug_file_mode": "0644"},
+)
+
+tar(
+    name = "debug_modes_fixture_tar",
+    srcs = [":ownership_fixture"],
+    mtree = ":debug_modes_fixture_mutated",
+)
+
+py_test(
+    name = "debug_symbols_modes_test",
+    srcs = ["debug_symbols_modes_test.py"],
+    args = ["$(location :debug_modes_fixture_tar)"],
+    data = [":debug_modes_fixture_tar"],
 )
 
 tar(

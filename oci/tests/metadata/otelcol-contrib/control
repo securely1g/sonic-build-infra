@@ -1,0 +1,9 @@
+Package: otelcol-contrib
+Version: 0.144.0
+Section: 
+Priority: optional
+Architecture: amd64
+License: Apache 2.0
+Maintainer: The OpenTelemetry Collector maintainers <cncf-opentelemetry-maintainers@lists.cncf.io>
+Installed-Size: 333138
+Description: OpenTelemetry Collector - otelcol-contrib

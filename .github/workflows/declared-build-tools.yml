@@ -43,7 +43,6 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
-      # Use the published account-support module from the maintained registry.
       SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
     steps:
       - name: Prepare Bazel bootstrap dependencies
@@ -79,6 +78,7 @@ jobs:
             //tools/build_tools:pkgconf //tools/build_tools:perl \
             //tools/build_tools:bison //tools/build_tools:flex \
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
+            //tools/build_tools:patch //tools/build_tools:xmllint //tools/build_tools:xsltproc \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
@@ -88,9 +88,18 @@ jobs:
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
+            //tools/build_tools:test_runtime_test \
+            //tools/build_tools:perl_bookworm_test \
+            //tools/build_tools:bookworm_test_runtime_test \
             //tools/build_tools:configure_make_test \
             //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
             2>&1 | tee ci-artifacts/test.log
+          mkdir -p ci-artifacts/libtool
+          bazel --ignore_all_rc_files cquery "${flags[@]}" --output=files \
+            'set(//tools/build_tools:libtool_program //tools/build_tools:libtool_library //tools/build_tools:libtool_c_library //tools/build_tools:libtool_config //tools/build_tools:libtool_argv_validation)' \
+            > ci-artifacts/libtool/outputs.txt
+          while IFS= read -r file; do cp -L "$file" ci-artifacts/libtool/; done < ci-artifacts/libtool/outputs.txt
+          (cd ci-artifacts/libtool && sha256sum probe libprobe.so.0 libcprobe.so.0 config.log compiler-argv-validation.json > SHA256SUMS)
           bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
             'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
           test -s MODULE.bazel.lock

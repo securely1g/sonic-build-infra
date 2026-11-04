@@ -37,7 +37,7 @@ _FEATURES = [
 
 _GCC_CAPABILITIES = [Label("@rules_cc//cc/toolchains/capabilities:supports_pic")]
 
-def bin(cpu, version, tool, exec_cpu = None, tool_prefix = None):
+def bin(cpu, version, tool, exec_cpu = None, tool_prefix = None, suite = "trixie"):
     """A tool from one GCC distribution, e.g. its `objcopy`.
 
     Args:
@@ -47,12 +47,13 @@ def bin(cpu, version, tool, exec_cpu = None, tool_prefix = None):
         tool: The unprefixed tool name, e.g. `objcopy`.
         exec_cpu: Architecture running the executable; defaults to cpu.
         tool_prefix: Distribution target triple; defaults to the native prefix.
+        suite: Debian distribution containing this compiler.
 
     Returns:
         The label of that tool in the distribution's repo.
     """
     return "@{repo}//:bin/{prefix}-{tool}".format(
-        repo = gcc_repo_name(cpu, version, exec_cpu),
+        repo = gcc_repo_name(cpu, version, exec_cpu, suite),
         prefix = tool_prefix or GCC_METADATA[cpu].gcc,
         tool = tool,
     )
@@ -66,7 +67,8 @@ def sonic_host_toolchain(
         target_platform,
         visibility = None,
         exec_cpu = None,
-        tool_prefix = None):
+        tool_prefix = None,
+        suite = "trixie"):
     """Declares a GCC toolchain with separate execution and target CPUs.
 
     Called from `gcc.debian_toolchain()`.
@@ -91,15 +93,16 @@ def sonic_host_toolchain(
         visibility: Visibility of the generated `toolchain()` target.
         exec_cpu: Architecture running the compiler; defaults to cpu.
         tool_prefix: Distribution target triple; defaults to the native prefix.
+        suite: Debian distribution containing this compiler.
     """
 
     # Select the distribution by compiler version and execution/target CPUs.
     # Target-specific headers and libraries continue to use cpu.
     exec_cpu = exec_cpu or cpu
-    gcc_repo = "@" + gcc_repo_name(cpu, version, exec_cpu)
+    gcc_repo = "@" + gcc_repo_name(cpu, version, exec_cpu, suite)
 
     def _bin(tool):
-        return bin(cpu, version, tool, exec_cpu, tool_prefix)
+        return bin(cpu, version, tool, exec_cpu, tool_prefix, suite)
 
     # Support files the compiler and linker need alongside the driver.
     native.alias(

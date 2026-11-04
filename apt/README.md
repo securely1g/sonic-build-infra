@@ -149,8 +149,12 @@ manifest-only callers keep the same selector arguments and archive outputs.
 
 The adapter copies selected archives intact into one declared output directory.
 Numeric filenames preserve their order; a valid empty archive handles an empty
-selection. Bazel expands this directory for ordinary `flatten(tars=[...])`,
-which creates the tar. There is no custom tar merger or generated-manifest
+selection. Bazel expands this directory for standard
+`flatten(tars=[...], deduplicate=True)`, which creates the TAR with one entry
+per path. Shared package directories appear once; valid later non-ELF
+overrides keep their final bytes and metadata, following normal TAR overlay
+semantics. The standard rule may add a harmless `./` prefix to link targets.
+There is no custom tar merger or generated-manifest
 extension. Staging adds a copy of selected archives and its associated disk I/O.
 The `selection` output group exposes the JSON receipt.
 
@@ -188,6 +192,12 @@ AMD64 and ARM64. Its isolated workspace uses Bazel queries with downloads
 disabled to check cold metadata generation, lock-change invalidation, dependency
 cycles and invalid locks. `//apt/tests/integration:adapter_test` runs the adapter with real
 public Distroless data/control targets and standard flatten, including an empty
-selection when the base already supplies the package. These tests produce tar
-archives, not Debian packages. Image consumers additionally check the completed
+selection when the base already supplies the package.
+`//apt/tests/integration:overlap_test` selects two TAR/control fixtures with
+shared directories, symlinks, hardlinks and a later configuration override. It
+requires unique paths and exact final payload bytes, permissions, ownership,
+timestamps and link targets. This covers the Gearbox runtime APT layer case,
+where repeated package directory headers prevented Docker from loading the
+image. These tests produce TAR archives, not Debian packages. Image consumers
+additionally check the completed
 runtime/debug filesystems and installed programs.

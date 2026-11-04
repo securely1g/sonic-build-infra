@@ -19,7 +19,8 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-# Use maintained main and record the effective endpoint with the module lock.
+# Default to maintained main; Draft validation may select one exact candidate.
+# Record the effective endpoint with the generated module lock.
 registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
@@ -41,6 +42,7 @@ tests=(
   //apt:inputs_test
   //apt:dependencies_test
   //apt/tests/integration:adapter_test
+  //apt/tests/integration:overlap_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
@@ -61,6 +63,15 @@ tests=(
   //toolchains/gcc/tests:foreign_link_test
   //cc/tests:transitive_runtime_test
   //cc/tests:shared_library_layout_test
+  //cc/tests/runtime_context:layout_test
+  //cc/tests/runtime_test:native_test
+  //cc/tests/runtime_test:contract_test
+  //cc/tests/runtime_test:origin_contract_test
+  //testing:exec_test_args_test
+  //tests:hello_rpath_installation_test
+  //tests:hello_runpath_installation_test
+  //tests:installation_rpath_tar_test
+  //toolchains/gcc/tests:prefix_map_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.
@@ -68,30 +79,43 @@ if [[ -f python/wheel_layer.bzl ]]; then
   tests+=(//python:wheel_layer_test)
 fi
 if [[ -f tar/root_owned_tar.bzl ]]; then
-  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test)
+  tests+=(//tar:root_owned_tar_test //tar:debug_symbols_ownership_test //tar:debug_symbols_modes_test)
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
-  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test //tools/build_tools:kernel_runtime_test)
+  tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test
+    //tools/build_tools:kernel_runtime_test)
   if [[ "$debian_arch" == amd64 ]]; then
     tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
   fi
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+if [[ "$debian_arch" == amd64 && -f tools/build_tools/docbook_runtime_test.py ]]; then
+  tests+=(//tools/build_tools:docbook_runtime_test)
+fi
 # Audit the actual configured graph, including imported tests, before executing
-# any action. Importing Debian archives is expected; producing DEBs is not.
+# any action. Product outputs remain TARs; existing runtime tests may build
+# temporary sample Debian packages to validate the declared packaging tools.
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
 "${bazel_cmd[@]}" aquery "${flags[@]}" --output=jsonproto \
   "deps(set(${tests[*]} ${outputs[*]}))" > "$artifacts/actions.json"
-apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test)
+apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test //apt/tests/integration:overlap_test)
 apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
 "${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
   "deps(set(${apt_python_tests[*]}))" > "$artifacts/apt-python313-actions.json"
+# Explicitly exercise the individual APT library/header exports on Bookworm.
+# The same native CPU uses Trixie execution tools and a Bookworm target ABI.
+bookworm_tests=(//cc/tests/header_includes:headers_link_test
+  //toolchains/bookworm/tests:abi_test //toolchains/bookworm/tests:native_test)
+bookworm_flags=("${flags[@]}" --platforms="//platforms:${cpu}_bookworm")
+printf '%s\n' "${bookworm_tests[@]}" > "$artifacts/bookworm-targets.txt"
+"${bazel_cmd[@]}" aquery "${bookworm_flags[@]}" --output=jsonproto \
+  "deps(set(${bookworm_tests[*]}))" > "$artifacts/bookworm-actions.json"
 python3 - "$artifacts" <<'PYTHON'
 import collections, json, re, sys
 from pathlib import Path
 root = Path(sys.argv[1])
-for filename in ('actions.json', 'apt-python313-actions.json'):
+for filename in ('actions.json', 'apt-python313-actions.json', 'bookworm-actions.json'):
     graph = json.loads((root / filename).read_text())
     fragments = {item['id']: item for item in graph['pathFragments']}
     def path(identifier):
@@ -122,6 +146,9 @@ cp -aL bazel-testlogs "$artifacts/testlogs"
 "${bazel_cmd[@]}" test "${apt_python_flags[@]}" --test_output=errors \
   --build_event_json_file="$artifacts/apt-python313-tests.bep.json" "${apt_python_tests[@]}"
 cp -aL bazel-testlogs "$artifacts/apt-python313-testlogs"
+"${bazel_cmd[@]}" test "${bookworm_flags[@]}" --test_output=errors \
+  --build_event_json_file="$artifacts/bookworm-tests.bep.json" "${bookworm_tests[@]}"
+cp -aL bazel-testlogs "$artifacts/bookworm-testlogs"
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
 ./bazel-bin/tests/hello
 ./bazel-bin/tests/hello_cpp
@@ -139,6 +166,7 @@ python3 ci/verify_deploy_archives.py \
   --debug "${output_paths[//tests:hello_deploy_tar.debug_symbols]}" \
   --source-data tests/testdata/file.txt --architecture "$debian_arch" \
   > "$artifacts/deploy-archives.json"
+"${bazel_cmd[@]}" mod graph "${resolution[@]}" > "$artifacts/module-graph.txt"
 cp MODULE.bazel MODULE.bazel.lock python/wheel_requirements_lock.txt "$artifacts/"
 if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
   (

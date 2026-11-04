@@ -22,6 +22,7 @@ cc_shared_library(
 shared_library_cc_info(
     name = "shared_link",
     shared_library = ":shared",
+    runtime_deps = [":implementation"],
 )
 
 cc_library(

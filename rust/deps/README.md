@@ -124,3 +124,28 @@ full-LTO profiles on native AMD64 and ARM64. The full-LTO build uses ordinary
 rustc linking and bitcode dependencies, rather than the C++ adapter's object-only
 compilation path. Installed component and container validation remain with the
 source and image owners.
+
+## DASH HA dependencies
+
+Version 0.0.5 adds the dependencies of DASH HA's 14-crate workspace, including
+its original prost/tonic generators and tests. Common's public Serde types
+and DASH HA's serialization use one crate graph. Common retains ownership
+of its Rust library and test helpers; no SONiC Rust source is copied here.
+
+Unrelated existing package versions, sources and checksums are preserved. Newly
+required packages start from DASH HA's reviewed Cargo.lock; normal Cargo
+resolution joins compatible transitive requirements without upgrading the
+existing shared packages, apart from the required tokio-util selection described
+below. The extra `tracing/log` feature preserves DASH HA's
+selected logging adapter. `dash_ha_contract_test` exercises serialization,
+protobuf encoding, typed state and the original generator APIs. Full original
+source tests and installed programs remain the DASH HA owner's acceptance.
+
+DASH HA enables `tokio-util/rt`. The shared lock's tokio-util 0.7.17
+requires newer Tokio task APIs once that feature is enabled; its published
+minimum-version bug is recorded in
+[tokio#7732](https://github.com/tokio-rs/tokio/issues/7732). Existing
+OpenTelemetry 0.25.0 requires Tokio ~1.38.0, so this migration retains Tokio
+1.38.2 and deliberately selects DASH HA's original tokio-util 0.7.14.
+The cancellation/task-tracking regression exercises HA's actual required APIs.
+No OpenTelemetry dependency upgrade is included.

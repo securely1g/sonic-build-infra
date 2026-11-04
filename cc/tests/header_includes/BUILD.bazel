@@ -1,0 +1,31 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_shared_library")
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//testing:exec_test.bzl", "exec_test")
+
+package(default_testonly = True)
+
+alias(name = "perl", actual = "@bookworm_build_tools//libperl-dev:libperl_cc")
+
+cc_library(name = "perl_headers_objects", srcs = ["perl_headers_probe.c"], deps = [":perl"])
+cc_shared_library(name = "perl_headers_shared", deps = [":perl_headers_objects"], shared_lib_name = "libheader_probe.so", target_compatible_with = ["//platforms:bookworm"])
+
+cc_binary(
+    name = "perl_headers_probe",
+    srcs = ["perl_headers_probe.c"],
+    deps = [":perl"],
+    target_compatible_with = ["//platforms:bookworm"],
+)
+
+py_binary(
+    name = "headers_link_checker",
+    srcs = ["headers_link_test.py"],
+    main = "headers_link_test.py",
+    deps = ["//deb:elf_metadata"],
+)
+
+exec_test(
+    name = "headers_link_test",
+    runner = ":headers_link_checker",
+    srcs = [":perl_headers_probe", ":perl_headers_shared"],
+    target_compatible_with = ["//platforms:bookworm"],
+)

@@ -562,3 +562,66 @@ cc_binary(
         "static",
     ]
 ]
+
+# FRR installs private libraries outside ld.so.cache's standard directories.
+# Its deployment RPATH must survive either base-image policy, with build paths
+# filtered and the original dynamic tag/debug pairing preserved.
+[
+    strip_binary(
+        name = "hello_" + kind + "_installation_split",
+        src = ":hello_" + kind,
+        force_debug_build = True,
+        preserve_install_rpath = True,
+    )
+    for kind in ["rpath", "runpath"]
+]
+
+[
+    filegroup(
+        name = "hello_" + kind + "_installation_" + group,
+        srcs = [":hello_" + kind + "_installation_split"],
+        output_group = group,
+    )
+    for kind in ["rpath", "runpath"]
+    for group in ["stripped", "debug"]
+]
+
+[
+    py_test(
+        name = "hello_" + kind + "_installation_test",
+        srcs = ["strip_rpath_test.py"],
+        args = [
+            "$(location //toolchains/binutils:readelf)",
+            "$(location //toolchains/binutils:objcopy)",
+            "$(location :hello_" + kind + ")",
+            "$(location :hello_" + kind + "_installation_stripped)",
+            "$(location :hello_" + kind + "_installation_debug)",
+            kind.upper(),
+            "build",
+        ],
+        data = [
+            "//toolchains/binutils:objcopy",
+            "//toolchains/binutils:readelf",
+            ":hello_" + kind,
+            ":hello_" + kind + "_installation_stripped",
+            ":hello_" + kind + "_installation_debug",
+        ],
+        main = "strip_rpath_test.py",
+    )
+    for kind in ["rpath", "runpath"]
+]
+
+sonic_deploy_tar(
+    name = "installation_rpath_tar",
+    binaries = {"./usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_runpath"},
+    force_debug_build = True,
+    preserve_install_rpath = True,
+)
+
+py_test(
+    name = "installation_rpath_tar_test",
+    srcs = ["deploy_rpath_test.py"],
+    main = "deploy_rpath_test.py",
+    args = ["$(location //toolchains/binutils:readelf)", "$(location :installation_rpath_tar)"],
+    data = ["//toolchains/binutils:readelf", ":installation_rpath_tar"],
+)

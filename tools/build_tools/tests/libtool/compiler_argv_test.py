@@ -31,7 +31,8 @@ def original(command):
     return command[1:] if Path(command[0]).name == ".sonic-compiler-argv" else command
 
 
-report = {"include_cases": [], "long_commands": [], "long_library_commands": [], "library_cases": []}
+report = {"include_cases": [], "long_commands": [], "long_library_commands": [], "library_cases": [],
+          "system_include_cases": [], "long_system_commands": [], "header_warning_cases": []}
 for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++", "CXX", "CXXFLAGS")):
     compiler = shlex.split(os.environ[compiler_variable])
     flags = shlex.split(os.environ.get(flags_variable, "")) + shlex.split(os.environ.get("CPPFLAGS", ""))
@@ -48,6 +49,37 @@ for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++
         assert before == after, (arguments, before, after)
         assert after in ("FIRST", "SECOND"), after
         report["include_cases"].append({"language": language, "selected": after})
+
+    # Distroless CcInfo exports quote/system roots, rather than ordinary -I.
+    # Preserve each search class, its order and precedence over forwarded flags.
+    system_cases = [
+        (["-I" + str(second), "-iquote", str(first)], '"choice.h"', "FIRST"),
+        (["-isystem" + str(second), "-iquote" + str(first)], '"choice.h"', "FIRST"),
+        (["-isystem", str(first), "-isystem" + str(second)], "<choice.h>", "FIRST"),
+        (["-isystem" + str(second), "-isystem", str(first)], "<choice.h>", "SECOND"),
+        (["-Xpreprocessor", "-isystem" + str(forwarded), "-isystem", str(first)], "<choice.h>", "FIRST"),
+        (["-Wp,-iquote," + str(forwarded), "-iquote", str(first), "-isystem" + str(second)], '"choice.h"', "FIRST"),
+    ]
+    for arguments, header, expected_value in system_cases:
+        command = flags + ["-E", "-P", "-x", language, "-", *arguments]
+        source_text = "#include " + header + "\n"
+        before = checked(original(compiler) + command, source=source_text).stdout.strip()
+        after = checked(compiler + command, source=source_text).stdout.strip()
+        assert before == after == expected_value, (arguments, before, after)
+        report["system_include_cases"].append({"language": language, "selected": after})
+
+    warning_header = first / "warning.h"
+    warning_header.write_text("static inline int warn(int unused) { return 1; }\n")
+    for kind in ("-isystem", "-iquote"):
+        command = flags + [kind, str(first), "-Werror=unused-parameter", "-fsyntax-only", "-x", language, "-"]
+        source_text = '#include "warning.h"\nint main(void) { return warn(1) - 1; }\n'
+        before = run(original(compiler) + command, source=source_text)
+        after = run(compiler + command, source=source_text)
+        expected_success = kind == "-isystem"
+        assert (before.returncode == 0) == (after.returncode == 0) == expected_success, (kind, before.stderr, after.stderr)
+        if not expected_success:
+            assert "unused" in before.stderr and "unused" in after.stderr
+        report["header_warning_cases"].append({"language": language, "kind": kind, "success": expected_success})
 
     # Keep response-file groups in GCC's control: a hidden native include must
     # retain its precedence over an existing explicitly forwarded include.
@@ -74,6 +106,24 @@ for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++
     checked([str(output)])
     report["long_commands"].append({"language": language, "search_argument_bytes": sum(map(len, long_flags)),
                                     "original_failed_e2big": True, "adapted_compiled_and_ran": True})
+
+    # PI's current Debian SDK has 132 -iquote and 272 -isystem arguments plus
+    # its library closure. None is individually too long, but GCC collects them
+    # into one oversized environment string. Exercise both joined/split forms.
+    system_flags = []
+    for index in range(500):
+        option = "-iquote" if index % 3 == 0 else "-isystem"
+        directory = prefix + "/headers-" + str(index)
+        system_flags.extend([option, directory] if index % 2 else [option + directory])
+    arguments = flags + system_flags + [library] * (90000 // len(library)) + [
+        "-x", language, str(source), "-o", str(output)] + shlex.split(os.environ.get("LDFLAGS", ""))
+    before = run(original(compiler) + arguments)
+    assert before.returncode != 0 and "Argument list too long" in before.stderr, before.stderr[-16000:]
+    checked(compiler + arguments)
+    checked([str(output)])
+    report["long_system_commands"].append({"language": language,
+        "include_argument_bytes": sum(map(len, system_flags)), "original_failed_e2big": True,
+        "adapted_compiled_and_ran": True})
 
     # A library-only closure still overflows COLLECT_GCC_OPTIONS after native
     # includes have been handled. Use distinct directories under a long shared
@@ -162,5 +212,33 @@ response_arguments = ["-L" + absolute, "@untouched-response-file"]
 captured = checked([launcher, str(capture), *response_arguments], cwd=nested).stdout.splitlines()
 assert captured == response_arguments, (captured, response_arguments)
 report["library_path_arguments_preserved"] = True
+
+# Paired operands and response files are opaque; they must not become headers.
+arguments = ["-o", "-isystem-output", "-Xlinker", "-iquote-linker", "-iquote", "quote one",
+             "-isystemsystem-one", "-iquotequote-two", "-isystem", "system two", "-include", "-isystem-input"]
+expected = ["-Xpreprocessor", "-iquote", "-Xpreprocessor", "quote one", "-Xpreprocessor", "-isystemsystem-one",
+            "-Xpreprocessor", "-iquotequote-two", "-Xpreprocessor", "-isystem", "-Xpreprocessor", "system two",
+            *arguments[:4], *arguments[-2:]]
+assert checked([launcher, str(capture), *arguments]).stdout.splitlines() == expected
+for missing in ("-I", "-iquote", "-isystem"):
+    result = run([launcher, str(capture), missing])
+    assert result.returncode == 2 and "Missing compiler argument after " + missing in result.stderr
+response_arguments = ["-iquotequote", "-isystem", "system", "@untouched-response-file"]
+assert checked([launcher, str(capture), *response_arguments]).stdout.splitlines() == response_arguments
+report["system_operands_and_response_files_preserved"] = True
+
+# Keep the real Autoconf preprocessor/compiler probes and recursive Libtool
+# builds under the same large native-header closure after the small checks.
+# Each environment value stays below Linux's per-string exec limit.
+configure_flags = []
+while sum(len(arg) + 1 for arg in configure_flags) < 75000:
+    index = len(configure_flags)
+    option = "-iquote" if index % 3 == 0 else "-isystem"
+    configure_flags.append(option + prefix + "/configure-" + str(index))
+os.environ["CPPFLAGS"] = os.environ.get("CPPFLAGS", "") + " " + " ".join(configure_flags)
+os.environ["LDFLAGS"] = os.environ.get("LDFLAGS", "") + " " + " ".join([library] * (90000 // len(library)))
+assert len(os.environ["CPPFLAGS"].encode()) < 131000
+assert len(os.environ["LDFLAGS"].encode()) < 131000
+report["autoconf_native_header_arguments"] = len(configure_flags)
 Path("compiler-argv-validation.json").write_text(json.dumps(report, indent=2) + "\n")
 os.execv(sys.argv[1], sys.argv[1:])

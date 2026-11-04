@@ -122,6 +122,9 @@ def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = No
     flatten(
         name = name + "_flatten",
         tars = [":" + name + "_selection"],
+        # Package archives share directory headers. Preserve normal TAR
+        # overlay semantics while emitting each OCI path only once.
+        deduplicate = True,
         visibility = ["//visibility:private"],
     )
     _selected_layer(name = name, layer = ":" + name + "_flatten", selection = ":" + name + "_selection", **kwargs)

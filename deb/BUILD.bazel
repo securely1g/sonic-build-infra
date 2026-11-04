@@ -8,3 +8,15 @@ py_binary(
     srcs = ["md5sums_from_tar.py"],
     visibility = ["//visibility:public"],
 )
+
+load("@rules_python//python:py_library.bzl", "py_library")
+
+# ELF inspection shared by execution-runtime and native linking checks.
+py_library(
+    name = "elf_metadata",
+    srcs = ["elf_metadata.py"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(["elf_metadata.py"], visibility = ["//tools/build_tools:__pkg__"])

@@ -1,5 +1,13 @@
 # Deterministic tar packages
 
+Debug symbol archives from `debug_symbols_tar`, `sonic_deploy_tar` and the OCI
+debug layer store regular symbol files as `0644`, matching Debian's detached
+debug data. The standard `tar.bzl` mtree mutation pipeline changes only file
+modes; directory modes, links, contents, timestamps and
+ownership retain their existing behavior. `//tar:debug_symbols_ownership_test`
+checks the public debug archive, and `//tar:debug_symbols_modes_test` checks
+these metadata boundaries on an actual tar archive.
+
 `sonic_deploy_tar` uses the standard `tar()` rule with
 `default_mtime = "1672560000"`, matching tar.bzl's automatic manifests. This
 fallback prevents the filesystem timestamps of rebuilt or restored files from

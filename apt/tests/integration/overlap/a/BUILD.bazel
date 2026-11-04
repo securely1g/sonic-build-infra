@@ -1,0 +1,11 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "data",
+    srcs = ["//apt/tests/integration:overlap_a.data.tar"],
+)
+
+filegroup(
+    name = "control",
+    srcs = ["//apt/tests/integration:overlap_a.control.tar"],
+)

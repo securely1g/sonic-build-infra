@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 
+from python.runfiles import runfiles
+
 
 def main():
     source = Path(sys.argv[1]).resolve()
@@ -82,11 +84,66 @@ def main():
         (work / "probe.thrift").write_text("struct Request { 1: string name }\nservice Echo { Request send(1: Request request) }\n")
         run("thrift", ["--gen", "cpp", "probe.thrift"])
         assert (work / "gen-cpp/Echo.cpp").is_file()
+        executable = Path(run("python3", ["-c", "import sys; print(sys.executable)"]).decode().strip())
+        assert executable == tools / "python3", executable
+        (work / "test_declared_runtime.py").write_text("def test_declared_runtime():\n    assert 6 * 7 == 42\n")
+        pytest_result = run("python3", ["-m", "pytest", "-q", "-p", "no:cacheprovider", "test_declared_runtime.py"])
+        assert b"1 passed" in pytest_result, pytest_result
+        sphinx_source = work / "sphinx-source"
+        sphinx_source.mkdir()
+        (sphinx_source / "conf.py").write_text('project = "Declared Sphinx"\n')
+        (sphinx_source / "index.rst").write_text('Declared Sphinx\n===============\n\nPrivate runtime documentation.\n')
+        run("sphinx-build", ["-q", "-b", "html", str(sphinx_source), str(work / "sphinx-html")])
+        assert b"Private runtime documentation" in (work / "sphinx-html/index.html").read_bytes()
+        # Public tools must also run through standard merged runfiles, even
+        # when a manifest locates the executable outside any runfiles tree.
+        resolver = runfiles.Create()
+        public_tool = resolver.Rlocation("sonic-build-infra/tools/build_tools/sphinx-build")
+        standalone_tool = root / "sphinx-build"
+        standalone_tool.symlink_to(Path(public_tool).absolute())
+        manifest = root / "tools.manifest"
+        manifest.write_text("probe/sphinx-build " + str(standalone_tool) + "\n")
+        manifest_resolver = runfiles.CreateManifestBased(str(manifest))
+        public_env = dict(env, **resolver.EnvVars())
+        public_output = work / "public-sphinx-html"
+        result = subprocess.run([
+            manifest_resolver.Rlocation("probe/sphinx-build"), "-q", "-b", "html",
+            str(sphinx_source), str(public_output),
+        ], cwd=work, env=public_env, capture_output=True)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert b"Private runtime documentation" in (public_output / "index.html").read_bytes()
+        (work / "probe.texi").write_text('\\input texinfo\n@setfilename probe.info\n@node Top\n@top Declared Texinfo\n\nPrivate runtime manual.\n@bye\n')
+        run("makeinfo", ["--no-split", "--output=probe.info", "probe.texi"])
+        assert b"Private runtime manual" in (work / "probe.info").read_bytes()
         python = json.loads(run("python3", ["-c", "import json,sys;print(json.dumps(sys.path))"]))
         assert all(not p.startswith(("/usr/", "/lib/")) for p in python), python
         perl = json.loads(run("perl", ["-MJSON::PP", "-MXML::Simple", "-MData::Dumper", "-MGetopt::Long", "-e", 'print encode_json(\\%INC)']))
         assert all(str(runtime) in p for p in perl.values()), perl
+        # Framework CLI owns normal-diff patches and XSD/XSLT inputs. Exercise
+        # the real shared tools after relocation with no worker tools on PATH.
+        (work / "patched.txt").write_text("before\n")
+        (work / "change.diff").write_text("1c1\n< before\n---\n> after\n")
+        run("patch", ["--batch", "--forward", "--fuzz=0", "patched.txt", "change.diff"])
+        assert (work / "patched.txt").read_text() == "after\n"
+        reverse = subprocess.run([str(tools / "patch"), "--batch", "--forward", "--fuzz=0",
+                                  "patched.txt", "change.diff"], cwd=work, env=env, capture_output=True)
+        assert reverse.returncode != 0 and (work / "patched.txt").read_text() == "after\n"
+        (work / "schema.xsd").write_text(
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">'
+            '<xs:element name="value" type="xs:integer"/></xs:schema>')
+        (work / "input.xml").write_text('<value>42</value>')
+        run("xmllint", ["--nonet", "--noout", "--schema", "schema.xsd", "input.xml"])
+        (work / "invalid.xml").write_text('<value>invalid</value>')
+        invalid = subprocess.run([str(tools / "xmllint"), "--nonet", "--noout", "--schema",
+                                  "schema.xsd", "invalid.xml"], cwd=work, env=env, capture_output=True)
+        assert invalid.returncode != 0, invalid
+        (work / "transform.xsl").write_text(
+            '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">'
+            '<xsl:output method="text"/><xsl:template match="/">'
+            '<xsl:value-of select="value"/></xsl:template></xsl:stylesheet>')
+        assert run("xsltproc", ["--nonet", "transform.xsl", "input.xml"]) == b"42"
         manifest = json.loads((runtime / "toolchain.json").read_text())
+        assert all(name in manifest["tools"] for name in ("patch", "xmllint", "xsltproc"))
         graph = run("dot", ["-Tsvg"], data=b"digraph G { a -> b }\n")
         assert b"<svg" in graph and b"a" in graph
         metadata = root / "relocated-metadata"
@@ -97,7 +154,8 @@ def main():
         print(json.dumps({"architecture": platform.machine(), "profile": manifest["profile"],
                           "relocated": True, "empty_path": True, "autotools": True,
                           "protobuf_cpp_python_grpc": True, "thrift_cpp": True,
-                          "graphviz_svg": True, "private_python": python, "private_perl": perl}, indent=2))
+                          "patch_apply_reject_reverse": True, "xml_schema_reject_invalid": True,
+                          "xslt_transform": True, "graphviz_svg": True, "private_python": python, "private_perl": perl}, indent=2))
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ load("//toolchains/gcc:defs.bzl", "bin")
 load("//toolchains/gcc:gcc.bzl", "gcc_repo_name")
 load(":binutils_toolchain.bzl", "binutils_toolchain")
 
-def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = None, tool_prefix = None):
+def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = None, tool_prefix = None, suite = "trixie", target_platform = None):
     """Declares binutils that run on exec_cpu and process files for cpu.
 
     Args:
@@ -17,14 +17,16 @@ def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = N
         visibility: Visibility of the generated `toolchain()` target.
         exec_cpu: Architecture running the tools; defaults to cpu.
         tool_prefix: Distribution target triple; defaults to the native prefix.
+        suite: Debian distribution containing these tools.
+        target_platform: Optional target distribution constraint.
     """
     tools = {}
     for tool in ["objcopy", "objdump", "readelf"]:
-        source = bin(cpu, version, tool, exec_cpu, tool_prefix)
+        source = bin(cpu, version, tool, exec_cpu, tool_prefix, suite)
         cc_tool(
             name = name + "_" + tool,
             src = source,
-            data = ["@" + gcc_repo_name(cpu, version, exec_cpu) + "//:multicall_support_files"],
+            data = ["@" + gcc_repo_name(cpu, version, exec_cpu, suite) + "//:multicall_support_files"],
         )
         source = ":" + name + "_" + tool
         tools[tool] = source
@@ -40,6 +42,9 @@ def sonic_binutils_toolchain(name, cpu, version, visibility = None, exec_cpu = N
         Label("@platforms//os:linux"),
         Label("@platforms//cpu:" + cpu),
     ]
+
+    if target_platform:
+        constraints.append(target_platform)
 
     native.toolchain(
         name = name,

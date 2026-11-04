@@ -59,3 +59,36 @@ the default linker behavior, without flags that force RUNPATH. The ELF check
 requires RUNPATH, rejects RPATH, and verifies that the executable only needs
 the middle library directly. The standard native AMD64 and ARM64 CI runs both
 tests.
+
+`native_runtime_binary` and `native_runtime_test` in `//cc:runtime_test.bzl`
+execute native Linux target ELFs using the matching loader and libraries from
+explicit target Debian payload tar archives. They preserve installed PT_INTERP.
+Provide `binary` and `runtime_payloads` (including libc6 and the runtime library
+closure). Payload labels may be architecture-selecting filegroups. The wrapper
+retains the binary's runfiles and its relative ORIGIN library paths.
+Shared libraries expand ORIGIN relative to their own location. RPATH search
+paths reach indirect dependencies; RUNPATH applies only to direct dependencies.
+An execution tool attribute with `cfg = "exec"` selects the complete wrapper
+in exec configuration.
+Cross architecture binaries may be built; this interface requires matching
+execution and target CPUs to execute them. It supports library payloads, not a
+chroot filesystem or arbitrary package data requirements.
+
+Set `instrument` to a declared executable (selected in exec configuration) and
+`instrument_args` to its arguments when testing through Valgrind or a similar
+ELF instrument. The instrument receives the matching loader, its library search
+arguments, the real target ELF, and the program arguments. Its runfiles are
+included. Both the program exit and an instrument-reported error propagate to
+the caller. The runtime regression uses real Memcheck on valid and out-of-bounds
+memory accesses to verify this boundary.
+When an instrument needs a stripped library's internal symbols, include its
+matching debug package in `runtime_payloads`. Matching GNU Build-ID and
+debuglink CRC data are installed next to the declared library, so debug lookup
+continues to work after runtime relocation.
+
+The runtime regression executes real target glibc 2.41 programs, checks argument
+and nonzero exit forwarding, preserves signal termination for callers using
+waitpid/WIFSIGNALED, exercises the wrapper as an exec tool and rejects a
+missing declared libc6 payload. It addresses the observed failure where the
+system interpreter started a binary with imported target glibc and crashed
+before main.

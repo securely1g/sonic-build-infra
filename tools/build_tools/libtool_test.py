@@ -23,3 +23,11 @@ assert len(argv["long_library_commands"]) == 2
 assert all(case["original_failed_e2big"] and case["adapted_linked_and_ran"] for case in argv["long_library_commands"])
 assert len(argv["library_cases"]) == 8
 assert argv["library_path_arguments_preserved"]
+assert len(argv["system_include_cases"]) == 12
+assert len(argv["header_warning_cases"]) == 4
+assert all(case["success"] == (case["kind"] == "-isystem") for case in argv["header_warning_cases"])
+assert len(argv["long_system_commands"]) == 2
+assert all(case["original_failed_e2big"] and case["adapted_compiled_and_ran"] for case in argv["long_system_commands"])
+assert argv["system_operands_and_response_files_preserved"]
+assert argv["autoconf_native_header_arguments"] > 100
+assert "configure-" in log and "-iquote" in log and "-isystem" in log
