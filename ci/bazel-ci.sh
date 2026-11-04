@@ -40,6 +40,7 @@ tests=(
   //apt:inputs_test
   //apt:dependencies_test
   //apt/tests/integration:adapter_test
+  //apt/tests/integration:overlap_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
@@ -91,7 +92,7 @@ fi
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
 "${bazel_cmd[@]}" aquery "${flags[@]}" --output=jsonproto \
   "deps(set(${tests[*]} ${outputs[*]}))" > "$artifacts/actions.json"
-apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test)
+apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test //apt/tests/integration:overlap_test)
 apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
 "${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
   "deps(set(${apt_python_tests[*]}))" > "$artifacts/apt-python313-actions.json"

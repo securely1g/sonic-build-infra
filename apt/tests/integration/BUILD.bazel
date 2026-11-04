@@ -4,18 +4,34 @@ load(":base.bzl", "fixture_base")
 
 package(default_visibility = ["//visibility:public"])
 
-config_setting(name = "arm64", constraint_values = ["@platforms//cpu:aarch64"])
+config_setting(
+    name = "arm64",
+    constraint_values = ["@platforms//cpu:aarch64"],
+)
 
-py_binary(name = "fixture", srcs = ["fixture.py"])
+py_binary(
+    name = "fixture",
+    srcs = ["fixture.py"],
+)
+
 genrule(
     name = "fixture_lock",
-    srcs = ["@build_tools//aspell-en:data", "@build_tools//aspell-en:control"],
+    srcs = [
+        "@build_tools//aspell-en:data",
+        "@build_tools//aspell-en:control",
+    ],
     outs = ["fixture.lock.json"],
-    tools = [":fixture"],
     cmd = "$(execpath :fixture) $(execpath @build_tools//aspell-en:data) $(execpath @build_tools//aspell-en:control) $@",
+    tools = [":fixture"],
 )
+
 fixture_base(name = "base")
-py_binary(name = "selector", srcs = ["selector.py"], deps = ["//apt:lib"])
+
+py_binary(
+    name = "selector",
+    srcs = ["selector.py"],
+    deps = ["//apt:lib"],
+)
 
 # Exercise the original positional signature as well as keyword callers.
 apt_layer(
@@ -27,18 +43,24 @@ apt_layer(
     ":fixture_lock",
     ":selector",
     "added",
-    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+    architecture = select({
+        ":arm64": "arm64",
+        "//conditions:default": "amd64",
+    }),
 )
 
 apt_layer(
     name = "retained",
-    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
-    lock = ":fixture_lock",
-    dependency_set = "dictionary",
+    architecture = select({
+        ":arm64": "arm64",
+        "//conditions:default": "amd64",
+    }),
     base = ":base",
+    dependency_set = "dictionary",
+    lock = ":fixture_lock",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
     retained_manifest = ":fixture_lock",
     selector = ":selector",
-    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
     variant = "retained",
 )
 
@@ -46,35 +68,128 @@ apt_layer(
 # Make packages receive both independent JSON inputs in the sandbox.
 apt_layer(
     name = "policy_only",
-    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
-    lock = ":fixture_lock",
-    dependency_set = "dictionary",
+    architecture = select({
+        ":arm64": "arm64",
+        "//conditions:default": "amd64",
+    }),
     base = ":base",
-    selector = ":selector",
+    dependency_set = "dictionary",
+    lock = ":fixture_lock",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
     policy = "policy_only.json",
-    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
+    selector = ":selector",
     variant = "added",
 )
 
 apt_layer(
     name = "policy_and_manifest",
-    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
-    lock = ":fixture_lock",
-    dependency_set = "dictionary",
+    architecture = select({
+        ":arm64": "arm64",
+        "//conditions:default": "amd64",
+    }),
     base = ":base",
+    dependency_set = "dictionary",
+    lock = ":fixture_lock",
+    packages = {"/test/aspell-en:all=2020.12.07-0-1": "@build_tools//aspell-en"},
+    policy = "policy_and_manifest.json",
     retained_manifest = ":fixture_lock",
     selector = ":selector",
-    policy = "policy_and_manifest.json",
-    architecture = select({":arm64": "arm64", "//conditions:default": "amd64"}),
     variant = "retained",
 )
+
 [
-    filegroup(name = variant + "_receipt", srcs = [":" + variant], output_group = "selection")
+    filegroup(
+        name = variant + "_receipt",
+        srcs = [":" + variant],
+        output_group = "selection",
+    )
     for variant in ("added", "retained", "policy_only", "policy_and_manifest")
 ]
+
 py_test(
     name = "adapter_test",
     srcs = ["adapter_test.py"],
-    args = ["$(rootpath " + label + ")" for label in ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt", ":policy_only", ":policy_only_receipt", ":policy_and_manifest", ":policy_and_manifest_receipt"]],
-    data = ["@build_tools//aspell-en:data", ":added", ":retained", ":added_receipt", ":retained_receipt", ":policy_only", ":policy_only_receipt", ":policy_and_manifest", ":policy_and_manifest_receipt"],
+    args = ["$(rootpath " + label + ")" for label in [
+        "@build_tools//aspell-en:data",
+        ":added",
+        ":retained",
+        ":added_receipt",
+        ":retained_receipt",
+        ":policy_only",
+        ":policy_only_receipt",
+        ":policy_and_manifest",
+        ":policy_and_manifest_receipt",
+    ]],
+    data = [
+        ":added",
+        ":added_receipt",
+        ":policy_and_manifest",
+        ":policy_and_manifest_receipt",
+        ":policy_only",
+        ":policy_only_receipt",
+        ":retained",
+        ":retained_receipt",
+        "@build_tools//aspell-en:data",
+    ],
+)
+
+# Two independently selected TARs share parent directories. Test the public
+# adapter itself, including its selection receipt, without creating DEBs.
+py_binary(
+    name = "overlap_fixture",
+    srcs = ["overlap_fixture.py"],
+)
+
+genrule(
+    name = "overlap_inputs",
+    outs = [
+        "overlap_a.data.tar",
+        "overlap_a.control.tar",
+        "overlap_b.data.tar",
+        "overlap_b.control.tar",
+        "overlap.lock.json",
+    ],
+    cmd = "$(execpath :overlap_fixture) $(@D)",
+    tools = [":overlap_fixture"],
+)
+
+apt_layer(
+    name = "overlap_layer",
+    architecture = select({
+        ":arm64": "arm64",
+        "//conditions:default": "amd64",
+    }),
+    base = ":base",
+    dependency_set = "dictionary",
+    lock = ":overlap.lock.json",
+    packages = {
+        "/test/apt-overlap-a:all=1.0": "//apt/tests/integration/overlap/a",
+        "/test/apt-overlap-b:all=1.0": "//apt/tests/integration/overlap/b",
+    },
+    retained_manifest = ":overlap.lock.json",
+    selector = ":selector",
+    variant = "added",
+)
+
+filegroup(
+    name = "overlap_receipt",
+    srcs = [":overlap_layer"],
+    output_group = "selection",
+)
+
+py_test(
+    name = "overlap_test",
+    srcs = ["overlap_test.py"],
+    args = ["$(rootpath " + label + ")" for label in [
+        ":overlap_a.data.tar",
+        ":overlap_b.data.tar",
+        ":overlap_layer",
+        ":overlap_receipt",
+    ]],
+    data = [
+        ":overlap_a.data.tar",
+        ":overlap_b.data.tar",
+        ":overlap_layer",
+        ":overlap_receipt",
+    ],
 )
