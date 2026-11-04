@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', 'ci/source_mirrors.cfg', 'ci/tests/debian_transport_test.py', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', 'ci/source_mirrors.cfg', 'ci/tests/debian_transport_test.py', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
@@ -61,6 +61,22 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Check downloader configuration
+        run: python3 -B ci/tests/debian_transport_test.py
+      - name: Fetch the verified shared downloader configuration
+        env:
+          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg
+          SOURCE_MIRRORS_SHA256: ddd6f40504a30e138a62be0d728e1a352391d0f781c927eaf4ea45c44d8a0720
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/declared-tools-downloads.cfg"
+          curl --fail --location --retry 3 --max-time 60 --output "$config.tmp" "$SOURCE_MIRRORS_URL"
+          printf '%s  %s\n' "$SOURCE_MIRRORS_SHA256" "$config.tmp" | sha256sum --check --strict
+          mv "$config.tmp" "$config"
+          mkdir -p ci-artifacts
+          cp "$config" ci-artifacts/source-mirrors.cfg
+          printf '%s\n' "$SOURCE_MIRRORS_URL" > ci-artifacts/source-mirrors-url.txt
+          sha256sum ci-artifacts/source-mirrors.cfg > ci-artifacts/source-mirrors.sha256
       - name: Build executable tools and exercise sandboxed invocation
         run: |
           set -euo pipefail
@@ -79,7 +95,7 @@ jobs:
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
-                 --downloader_config="$PWD/ci/source_mirrors.cfg" \
+                 --downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg" \
                  '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
                  --repository_cache="$RUNNER_TEMP/configure-tools-repository-cache" \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)

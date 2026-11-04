@@ -625,3 +625,15 @@ size, recursive-directory path handling and literal argument boundaries. BMv2
 owns the conversion from its shell-quoted `LDFLAGS` to this vector. This changes
 an input shared by PI, BMv2, LLDP, sFlow and Framework klish; their foreign-build
 actions may rerun even when existing Bazel caches are reused.
+
+### Verified downloads in source CI
+
+The `Bazel` and `Declared build tools` workflows run in Trixie containers on
+GitHub-hosted AMD64 and ARM64 runners. They use the public configuration from
+the merged SONiC registry mirror setup. Each workflow verifies the downloaded
+file's SHA256 before invoking Bazel, including for its fresh-output cache
+check. Package integrity comes from the checksums in the existing package
+locks.
+
+See [the source CI configuration](../../ci/README.md) for the pinned downloader
+file and the recorded artifacts.

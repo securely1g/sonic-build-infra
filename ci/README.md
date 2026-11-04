@@ -21,14 +21,12 @@ plus BCR. It checks the committed APT lock before building, generates
 `MODULE.bazel.lock`, and records the resolved module graph and endpoint with the
 CI evidence; the generated module lock remains ignored.
 
-Source, declared-tool and sysroot checks pass `ci/source_mirrors.cfg` explicitly.
-For Debian snapshot package archives and indexes, Bazel tries
-`snapshot-cloudflare.debian.org` before the original `snapshot.debian.org` URL.
-This policy covers both `archive/debian` and `archive/debian-security`.
-Downloads retain their existing checksum verification; package versions,
-snapshot timestamps and locked checksums are unchanged. The fresh-output cache
-check uses the same downloader policy.
-Artifacts retain the downloader configuration alongside the other input evidence.
+The GitHub-hosted AMD64 and ARM64 source workflows download and verify the
+[registry's public downloader configuration](https://github.com/securely1g/sonic-bazel-registry/blob/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg).
+Both source workflows pass its absolute path to Bazel, including sysroot
+validation, the nested shared-API workspace and the fresh-output cache check.
+CI artifacts record the public file, its URL and its SHA256. Local source checks
+default to the checked-in `ci/source_mirrors.cfg`.
 
 Distroless patches, upstream regressions and package-import consumer tests live
 with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).
