@@ -26,6 +26,31 @@ cat > "$sonic_driver" <<'SONIC_COMPILER_ARGV'
 set -eu
 compiler=$1
 shift
+# Only the owner-generated vector beside this launcher uses this transport.
+# Ordinary GCC response files remain opaque. Expand before the existing -L
+# shortening, so recursive Make/Libtool keeps its own working directory and
+# GCC still receives library searches in their original driver order.
+linker_response="${0%/*}/.sonic-linker-arguments"
+remaining=$#
+while test "$remaining" -gt 0; do
+    argument=$1
+    shift
+    remaining=$((remaining - 1))
+    if test "$argument" = "@$linker_response"; then
+        {
+            IFS= read -r response_format
+            test "$response_format" = sonic-linker-arguments-v1 || {
+                echo "Invalid private linker argument response" >&2
+                exit 2
+            }
+            while IFS= read -r response_argument || test -n "$response_argument"; do
+                set -- "$@" "$response_argument"
+            done
+        } < "$linker_response"
+    else
+        set -- "$@" "$argument"
+    fi
+done
 # Response files may contain native includes. Preserve their driver ordering
 # rather than partially rewriting a group whose contents are not visible here.
 for argument in "$@"; do

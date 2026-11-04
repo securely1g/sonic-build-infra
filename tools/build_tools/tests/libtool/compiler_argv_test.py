@@ -32,7 +32,8 @@ def original(command):
 
 
 report = {"include_cases": [], "long_commands": [], "long_library_commands": [], "library_cases": [],
-          "system_include_cases": [], "long_system_commands": [], "header_warning_cases": []}
+          "system_include_cases": [], "long_system_commands": [], "header_warning_cases": [],
+          "private_linker_commands": []}
 for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++", "CXX", "CXXFLAGS")):
     compiler = shlex.split(os.environ[compiler_variable])
     flags = shlex.split(os.environ.get(flags_variable, "")) + shlex.split(os.environ.get("CPPFLAGS", ""))
@@ -146,6 +147,21 @@ for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++
     report["long_library_commands"].append({"language": language, "search_argument_bytes": sum(map(len, libraries)),
                                             "original_failed_e2big": True, "adapted_linked_and_ran": True})
 
+    # Owners can keep oversized LDFLAGS out of the environment, while the same
+    # driver still shortens paths for each recursive Make/Libtool directory.
+    linker_response = Path(compiler[0]).parent / ".sonic-linker-arguments"
+    linker_response.write_text("sonic-linker-arguments-v1\n" + "\n".join(libraries) + "\n")
+    private_arguments = flags + ["@" + str(linker_response), str(obj), "-o", str(output)]
+    checked(compiler + private_arguments, cwd=long_cwd)
+    checked([str(output)], cwd=long_cwd)
+    diagnostic = checked(compiler + ["-###", *private_arguments], cwd=long_cwd)
+    collected = [len(line.encode()) for line in diagnostic.stderr.splitlines()
+                 if line.startswith("COLLECT_GCC_OPTIONS=")]
+    assert collected and max(collected) < 131072, collected
+    report["private_linker_commands"].append({"language": language,
+        "search_argument_bytes": sum(map(len, libraries)),
+        "max_collect_gcc_options_bytes": max(collected), "linked_and_ran": True})
+
 # Prove that native -L precedence over linker-forwarded paths remains intact.
 # Each archive exports the same symbol with a different value, so choosing a
 # different library changes the executable's exit status.
@@ -226,6 +242,25 @@ for missing in ("-I", "-iquote", "-isystem"):
 response_arguments = ["-iquotequote", "-isystem", "system", "@untouched-response-file"]
 assert checked([launcher, str(capture), *response_arguments]).stdout.splitlines() == response_arguments
 report["system_operands_and_response_files_preserved"] = True
+
+# Only the exact private sibling vector is interpreted. Literal empty, space,
+# backslash and option-like operands retain their positions; other @files stay
+# opaque even after private-vector expansion.
+private_response = Path(launcher).parent / ".sonic-linker-arguments"
+private_tokens = ["-Wl,-z,now", "", "literal with space", "back\\slash", "-Xlinker", "-Loperand"]
+private_response.write_text("sonic-linker-arguments-v1\n" + "\n".join(private_tokens) + "\n")
+private_argument = "@" + str(private_response)
+assert checked([launcher, str(capture), "before", private_argument, "after"], cwd=nested).stdout.splitlines() == [
+    "before", *private_tokens, "after"]
+assert checked([launcher, str(capture), "-L" + absolute, private_argument,
+                "@untouched-response-file"], cwd=nested).stdout.splitlines() == [
+    "-L" + absolute, *private_tokens, "@untouched-response-file"]
+private_response.write_text("not-the-private-format\n-Lunexpected\n")
+rejected = run([launcher, str(capture), private_argument], cwd=nested)
+assert rejected.returncode == 2 and "Invalid private linker argument response" in rejected.stderr
+assert rejected.stdout == ""
+private_response.unlink()
+report["private_linker_argument_boundaries_preserved"] = True
 
 # Keep the real Autoconf preprocessor/compiler probes and recursive Libtool
 # builds under the same large native-header closure after the small checks.

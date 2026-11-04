@@ -507,3 +507,25 @@ Framework build. They are not compiler sysroot or execution-tool inputs.
 valid/invalid XSD input and an XSLT transformation after relocating the runtime
 with an empty PATH. Existing native AMD64/ARM64 CI retains that coverage and the
 fresh-output-base cache check; local validation is recorded per architecture.
+
+## Oversized linker arguments
+
+BMv2's AMD64 source build can pass more than 136 KiB through `LDFLAGS`, which
+Linux rejects before GCC starts. An owner can write one literal argument per
+line after `sonic-linker-arguments-v1` in `.sonic-linker-arguments`, beside the
+existing generated compiler launcher, and pass that exact file as an `@` argument.
+The launcher expands only this private vector before its existing per-directory
+library-path shortening. Ordinary GCC response files remain opaque. Arguments
+containing newlines are not supported by this private transport.
+
+The existing Libtool regression covers C and C++ links, compiler environment
+size, recursive-directory path handling and literal argument boundaries. BMv2
+owns the conversion from its shell-quoted `LDFLAGS` to this vector. This changes
+an input shared by PI, BMv2, LLDP, sFlow and Framework klish; their foreign-build
+actions may rerun even when existing Bazel caches are reused.
+
+The exact `securely1g/sonic-build-infra` Draft branch
+`codex/compiler-linker-argument-transport` uses the existing
+`kernel_runtime_tools_test` instead of the sample-DEB runtime test. All other
+native tests and normal branch behavior remain unchanged. Remove this review
+exception before marking the PR Ready.

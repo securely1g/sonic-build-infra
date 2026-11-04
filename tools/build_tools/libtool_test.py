@@ -31,3 +31,8 @@ assert all(case["original_failed_e2big"] and case["adapted_compiled_and_ran"] fo
 assert argv["system_operands_and_response_files_preserved"]
 assert argv["autoconf_native_header_arguments"] > 100
 assert "configure-" in log and "-iquote" in log and "-isystem" in log
+
+assert len(argv["private_linker_commands"]) == 2
+assert all(case["linked_and_ran"] and case["max_collect_gcc_options_bytes"] < 131072
+           for case in argv["private_linker_commands"])
+assert argv["private_linker_argument_boundaries_preserved"]
