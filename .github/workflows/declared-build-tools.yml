@@ -44,7 +44,6 @@ jobs:
       BAZEL_ARCH: ${{ matrix.bazel_arch }}
       BAZEL_SHA: ${{ matrix.bazel_sha }}
       SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
-      SONIC_REVIEW_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
     steps:
       - name: Prepare Bazel bootstrap dependencies
         run: |
@@ -72,15 +71,6 @@ jobs:
                  --host_platform="//platforms:$PLATFORM" \
                  '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
-          kernel_runtime_test=//tools/build_tools:kernel_runtime_test
-          # This Draft review does not authorize the sample Debian package producer.
-          # Keep every other branch's normal runtime fixture and every tool check intact.
-          if [[ "${GITHUB_EVENT_NAME:-}" == pull_request &&
-                "${GITHUB_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-                "${SONIC_REVIEW_HEAD_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-                "${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ]]; then
-            kernel_runtime_test=//tools/build_tools:kernel_runtime_tools_test
-          fi
           bazel --ignore_all_rc_files build "${flags[@]}" \
             --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
             //tools/build_tools:aspell //tools/build_tools:doxygen \
@@ -102,7 +92,7 @@ jobs:
             //tools/build_tools:perl_bookworm_test \
             //tools/build_tools:bookworm_test_runtime_test \
             //tools/build_tools:configure_make_test \
-            //tools/build_tools:prepare_rootfs_test "$kernel_runtime_test" \
+            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
             2>&1 | tee ci-artifacts/test.log
           mkdir -p ci-artifacts/libtool
           bazel --ignore_all_rc_files cquery "${flags[@]}" --output=files \
@@ -120,7 +110,7 @@ jobs:
             --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
             --execution_log_sort=false \
             //tools/build_tools:configure_runtime_test //tools/build_tools:foreign_runtime_test \
-            "$kernel_runtime_test" \
+            //tools/build_tools:kernel_runtime_test \
             2>&1 | tee ci-artifacts/cache-test.log
           python3 - <<'PYTHON'
           import json

@@ -31,15 +31,6 @@ bazel_cmd=(bazel --ignore_all_rc_files)
 # Exercise cold repository setup and lock-change invalidation with queries only.
 # The workflow runs this on both native AMD64 and ARM64 hosts.
 python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
-kernel_runtime_test=//tools/build_tools:kernel_runtime_test
-# This Draft review does not authorize the sample Debian package producer.
-# Keep every other branch's normal runtime fixture and every tool check intact.
-if [[ "${GITHUB_EVENT_NAME:-}" == pull_request &&
-      "${GITHUB_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-      "${SONIC_REVIEW_HEAD_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-      "${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ]]; then
-  kernel_runtime_test=//tools/build_tools:kernel_runtime_tools_test
-fi
 tests=(
   //deps:alternatives_test
   //oci/tests:runtime_packages_test //oci/tests:runtime_packages_rule_test
@@ -91,7 +82,7 @@ if [[ -f tar/root_owned_tar.bzl ]]; then
 fi
 if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
   tests+=(//tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_debian_test
-    "$kernel_runtime_test")
+    //tools/build_tools:kernel_runtime_test)
   if [[ "$debian_arch" == amd64 ]]; then
     tests+=(//tools/build_tools:kernel_cross_runtime_arm64_test //tools/build_tools:kernel_cross_runtime_armhf_test)
   fi

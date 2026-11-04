@@ -523,9 +523,3 @@ size, recursive-directory path handling and literal argument boundaries. BMv2
 owns the conversion from its shell-quoted `LDFLAGS` to this vector. This changes
 an input shared by PI, BMv2, LLDP, sFlow and Framework klish; their foreign-build
 actions may rerun even when existing Bazel caches are reused.
-
-The exact `securely1g/sonic-build-infra` Draft branch
-`codex/compiler-linker-argument-transport` uses the existing
-`kernel_runtime_tools_test` instead of the sample-DEB runtime test. All other
-native tests and normal branch behavior remain unchanged. Remove this review
-exception before marking the PR Ready.
