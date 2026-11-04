@@ -529,3 +529,28 @@ The exact `securely1g/sonic-build-infra` Draft branch
 `kernel_runtime_tools_test` instead of the sample-DEB runtime test. All other
 native tests and normal branch behavior remain unchanged. Remove this review
 exception before marking the PR Ready.
+
+### Shared verified downloads in declared-tool CI
+
+The declared-build-tools workflow explicitly downloads the combined downloader
+configuration from [registry PR228](https://github.com/securely1g/sonic-bazel-registry/pull/228)
+at commit `18e7c652222449b906a17c2fd948e37bcad3324e`, verifies SHA256
+`fa60a63fd62f11e3c097905a3ff2a5dc4b25bd7ba42ebc9877fe7ea4dd1d3ee2`,
+and passes its absolute path through the existing Bazel flags array. This covers
+build, test, output queries and the fresh-output-root cache check even though
+those commands use `--ignore_all_rc_files`. The config and its identity are
+retained with the workflow evidence. Other source workflows do not inherit it.
+
+In [source PR82](https://github.com/securely1g/sonic-build-infra/pull/82), the
+AMD64 tools build stopped fetching the locked
+`python3-tomli_2.2.1-2+b1_amd64.deb` after its snapshot returned HTTP 504. The shared
+config tries the official Debian pool first, then the original snapshot, with
+the unchanged required package checksum. It also preserves the pigz mirror.
+It does not rewrite dated indexes, change package versions or guarantee that
+historical packages remain available in the official pool.
+
+The exact owned Draft branch `codex/declared-tools-debian-transport` uses the
+same existing tools-only kernel test as the linker-argument review in both
+source CI entry points. All other branches keep their existing sample-package
+tests; every other tool, native, cross-architecture and cache check remains.
+This is CI configuration only and does not change the source package recipe.

@@ -62,6 +62,27 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Check downloader configuration and review scope
+        run: python3 -B ci/tests/debian_transport_test.py
+      - name: Fetch the verified shared downloader configuration
+        env:
+          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/18e7c652222449b906a17c2fd948e37bcad3324e/ci/source_mirrors.cfg
+          SOURCE_MIRRORS_SHA256: fa60a63fd62f11e3c097905a3ff2a5dc4b25bd7ba42ebc9877fe7ea4dd1d3ee2
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/declared-tools-downloads.cfg"
+          upstream="$RUNNER_TEMP/source-mirrors.verified.cfg"
+          mkdir -p ci-artifacts
+          curl --fail --location --retry 3 --max-time 60 --output "$upstream" "$SOURCE_MIRRORS_URL"
+          printf '%s  %s\n' "$SOURCE_MIRRORS_SHA256" "$upstream" | sha256sum --check --strict
+          test -f ci/debian-content-routes.cfg && test ! -L ci/debian-content-routes.cfg
+          cat ci/debian-content-routes.cfg "$upstream" > "$config.tmp"
+          mv "$config.tmp" "$config"
+          cp "$upstream" ci-artifacts/source-mirrors.upstream.cfg
+          cp ci/debian-content-routes.cfg ci-artifacts/debian-content-routes.cfg
+          cp "$config" ci-artifacts/source-mirrors.cfg
+          printf '%s\n' "$SOURCE_MIRRORS_URL" > ci-artifacts/source-mirrors-url.txt
+          sha256sum ci-artifacts/source-mirrors.upstream.cfg ci-artifacts/debian-content-routes.cfg ci-artifacts/source-mirrors.cfg > ci-artifacts/source-mirrors.sha256
       - name: Build executable tools and exercise sandboxed invocation
         run: |
           set -euo pipefail
@@ -70,6 +91,7 @@ jobs:
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
+                 --experimental_downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg" \
                  '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
           kernel_runtime_test=//tools/build_tools:kernel_runtime_test
@@ -78,7 +100,8 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME:-}" == pull_request &&
                 "${GITHUB_REPOSITORY:-}" == securely1g/sonic-build-infra &&
                 "${SONIC_REVIEW_HEAD_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-                "${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ]]; then
+                ("${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ||
+                 "${GITHUB_HEAD_REF:-}" == codex/declared-tools-debian-transport) ]]; then
             kernel_runtime_test=//tools/build_tools:kernel_runtime_tools_test
           fi
           bazel --ignore_all_rc_files build "${flags[@]}" \

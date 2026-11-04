@@ -24,6 +24,16 @@ git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
 registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
+# Explicit CI transport must also reach the nested shared-API workspace.
+# Keep ordinary local callers without a selected configuration unchanged.
+if [[ -n "${SONIC_BAZEL_DOWNLOADER_CONFIG:-}" ]]; then
+  downloader_config=$SONIC_BAZEL_DOWNLOADER_CONFIG
+  if [[ "$downloader_config" != /* || ! -f "$downloader_config" || -L "$downloader_config" ]]; then
+    echo 'Selected downloader configuration must be an absolute regular non-symlink file' >&2
+    exit 1
+  fi
+  resolution+=(--experimental_downloader_config="$downloader_config")
+fi
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
        '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$')
@@ -37,7 +47,8 @@ kernel_runtime_test=//tools/build_tools:kernel_runtime_test
 if [[ "${GITHUB_EVENT_NAME:-}" == pull_request &&
       "${GITHUB_REPOSITORY:-}" == securely1g/sonic-build-infra &&
       "${SONIC_REVIEW_HEAD_REPOSITORY:-}" == securely1g/sonic-build-infra &&
-      "${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ]]; then
+      ("${GITHUB_HEAD_REF:-}" == codex/compiler-linker-argument-transport ||
+       "${GITHUB_HEAD_REF:-}" == codex/declared-tools-debian-transport) ]]; then
   kernel_runtime_test=//tools/build_tools:kernel_runtime_tools_test
 fi
 tests=(
