@@ -14,7 +14,7 @@
         "trixie-updates"
       ],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     },
     {
@@ -30,7 +30,7 @@
         "trixie-security"
       ],
       "uris": [
-        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+        "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
       ]
     },
     {
@@ -46,7 +46,7 @@
         "bookworm-updates"
       ],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     },
     {
@@ -61,7 +61,7 @@
         "bookworm-security"
       ],
       "uris": [
-        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+        "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
       ]
     }
   ],

@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "d101f5b714fc8344a9df71cae516d9e877977e51372476a9fa4b2cbd4fdff87e",
+    "digest": "ccef9238c7e8e5c886f6ab5dbc43506c48a80ca93baf4def698133244457c634",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -2700,7 +2700,7 @@
             "trixie-updates"
           ],
           "uris": [
-            "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+            "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
           ]
         },
         {
@@ -2716,7 +2716,7 @@
             "trixie-security"
           ],
           "uris": [
-            "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+            "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
           ]
         },
         {
@@ -2732,7 +2732,7 @@
             "bookworm-updates"
           ],
           "uris": [
-            "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+            "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
           ]
         },
         {
@@ -2747,7 +2747,7 @@
             "bookworm-security"
           ],
           "uris": [
-            "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+            "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
           ]
         }
       ],
@@ -4387,35 +4387,65 @@
     }
   },
   "facts": {
+    "bookworm-security/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "bookworm-security/main/amd64/Contents/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+    "bookworm-security/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-6Pinz3i5IYmpZ2+nncpGqxcK1675DYSFGMt9wzZPBdU=",
     "bookworm-security/main/amd64/Packages/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-6Pinz3i5IYmpZ2+nncpGqxcK1675DYSFGMt9wzZPBdU=",
+    "bookworm-security/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "bookworm-security/main/arm64/Contents/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+    "bookworm-security/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-VeCITAdzPI3yxziL74t4+LN38uCI5O/Hq5/kbAKMtiI=",
     "bookworm-security/main/arm64/Packages/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-VeCITAdzPI3yxziL74t4+LN38uCI5O/Hq5/kbAKMtiI=",
+    "bookworm-updates/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-lmDWdrwh5ycGQ8sA7B+/j7oRAfml7aV+K4D1wyOCs1c=",
     "bookworm-updates/main/amd64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-lmDWdrwh5ycGQ8sA7B+/j7oRAfml7aV+K4D1wyOCs1c=",
+    "bookworm-updates/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-h+fpQEf7f7b0zuzHAi1L7lW2YDHMKnZm0xlvPgqruEY=",
     "bookworm-updates/main/amd64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-h+fpQEf7f7b0zuzHAi1L7lW2YDHMKnZm0xlvPgqruEY=",
+    "bookworm-updates/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-FlVOi6qHqyTw7uH4T/C/lwbsrBiNzrsvRJDvwv9nwwY=",
     "bookworm-updates/main/arm64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-FlVOi6qHqyTw7uH4T/C/lwbsrBiNzrsvRJDvwv9nwwY=",
+    "bookworm-updates/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-Xf1SMXBxaFrW5YxO8HIBKLfbaGJAefg74CvfVfB6wHA=",
     "bookworm-updates/main/arm64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-Xf1SMXBxaFrW5YxO8HIBKLfbaGJAefg74CvfVfB6wHA=",
+    "bookworm/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-fnIhS0zvUg+gf8QP+XXGC8RQHspjCM9c2YBMAIEbd2s=",
     "bookworm/main/amd64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-fnIhS0zvUg+gf8QP+XXGC8RQHspjCM9c2YBMAIEbd2s=",
+    "bookworm/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-ngtaq7JGWz0uen/if5kThGJ3gz96KCbndnrMz/W1iMU=",
     "bookworm/main/amd64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-ngtaq7JGWz0uen/if5kThGJ3gz96KCbndnrMz/W1iMU=",
+    "bookworm/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-GIVa3b/OyzD8d7expG9ZVo4a1I45GHq+g2Qt4J0Rd6M=",
     "bookworm/main/arm64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-GIVa3b/OyzD8d7expG9ZVo4a1I45GHq+g2Qt4J0Rd6M=",
+    "bookworm/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-LdsXN2kujEXFPo1XwM5M0hx4xXA7gwwyJrFCNWagbAA=",
     "bookworm/main/arm64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-LdsXN2kujEXFPo1XwM5M0hx4xXA7gwwyJrFCNWagbAA=",
+    "trixie-security/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "trixie-security/main/amd64/Contents/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+    "trixie-security/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-J4u+nBRPQN26KvOcnRUTSd4jdUK5DovsYX9j7MunTLo=",
     "trixie-security/main/amd64/Packages/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-J4u+nBRPQN26KvOcnRUTSd4jdUK5DovsYX9j7MunTLo=",
+    "trixie-security/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "trixie-security/main/arm64/Contents/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+    "trixie-security/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-FalCR0feEcC9bEFNOKMvmVVEuuvagkVY4rLauAt0DCo=",
     "trixie-security/main/arm64/Packages/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-FalCR0feEcC9bEFNOKMvmVVEuuvagkVY4rLauAt0DCo=",
+    "trixie-security/main/armhf/Contents/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "trixie-security/main/armhf/Contents/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+    "trixie-security/main/armhf/Packages/https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z": "sha256-BhNi/vcQ8YEDKL3bo7nEnVgoOFEqc3aANwix5K3LVLk=",
     "trixie-security/main/armhf/Packages/https://snapshot.debian.org/archive/debian-security/20260726T121236Z": "sha256-BhNi/vcQ8YEDKL3bo7nEnVgoOFEqc3aANwix5K3LVLk=",
+    "trixie-updates/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-2xYdCcacT7thCckLlK30jiKx9FmV7OU0hZQqp2P3DFo=",
     "trixie-updates/main/amd64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-2xYdCcacT7thCckLlK30jiKx9FmV7OU0hZQqp2P3DFo=",
+    "trixie-updates/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-EAEss4TcJhNYbXs9OR2SpWN8n6o2AXI5c58qYQmg1F8=",
     "trixie-updates/main/amd64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-EAEss4TcJhNYbXs9OR2SpWN8n6o2AXI5c58qYQmg1F8=",
+    "trixie-updates/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-R6fTF7tUMBVSxGlLO8zVU5iW9Otpdp6ttBLDJOcfkKw=",
     "trixie-updates/main/arm64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-R6fTF7tUMBVSxGlLO8zVU5iW9Otpdp6ttBLDJOcfkKw=",
+    "trixie-updates/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-/ncdWNSvOdu5QULW885XjTQMaxNkwXLZ6H8ih73EmUs=",
     "trixie-updates/main/arm64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-/ncdWNSvOdu5QULW885XjTQMaxNkwXLZ6H8ih73EmUs=",
+    "trixie-updates/main/armhf/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-voFXkouNv9k3wEwASmMrh9Da5mQloY7wMkUkZ+FbcgE=",
     "trixie-updates/main/armhf/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-voFXkouNv9k3wEwASmMrh9Da5mQloY7wMkUkZ+FbcgE=",
+    "trixie-updates/main/armhf/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-yesVo4AHeravE9vG+3aVjouWuTnNyw6ZnI5YLmGbD9Y=",
     "trixie-updates/main/armhf/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-yesVo4AHeravE9vG+3aVjouWuTnNyw6ZnI5YLmGbD9Y=",
+    "trixie/main/amd64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-VNJ/NDObu2kiAJlIrqi+JJTlOfWsl3/A9OGI68vaq3U=",
     "trixie/main/amd64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-VNJ/NDObu2kiAJlIrqi+JJTlOfWsl3/A9OGI68vaq3U=",
+    "trixie/main/amd64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-OrToEc9PPlozXTgsWMwZ2F8avnpO9GiRYMofY3+g6bM=",
     "trixie/main/amd64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-OrToEc9PPlozXTgsWMwZ2F8avnpO9GiRYMofY3+g6bM=",
+    "trixie/main/arm64/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-ZgS4GHfXUqUjr6S4PH44dRRMju0oPtBAxU5qSNLQN1c=",
     "trixie/main/arm64/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-ZgS4GHfXUqUjr6S4PH44dRRMju0oPtBAxU5qSNLQN1c=",
+    "trixie/main/arm64/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-dT2nUbvHpnn0i9G2I//UR5y2hhxCYRgoTHbrgpCeSQg=",
     "trixie/main/arm64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-dT2nUbvHpnn0i9G2I//UR5y2hhxCYRgoTHbrgpCeSQg=",
+    "trixie/main/armhf/Contents/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-cgZUvvcVHctdkhjtMvqsmcGjRY+p5lZbrsd1uq2scMA=",
     "trixie/main/armhf/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-cgZUvvcVHctdkhjtMvqsmcGjRY+p5lZbrsd1uq2scMA=",
+    "trixie/main/armhf/Packages/https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z": "sha256-1FlEKsRxlQYV+n5iZ3YbzhamPXVtKdFJVq4xVpSngQ8=",
     "trixie/main/armhf/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-1FlEKsRxlQYV+n5iZ3YbzhamPXVtKdFJVq4xVpSngQ8="
   },
   "packages": {
@@ -162769,7 +162799,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     },
     "bookworm-security": {
@@ -162782,7 +162812,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+        "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
       ]
     },
     "bookworm-updates": {
@@ -162795,7 +162825,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     },
     "trixie": {
@@ -162809,7 +162839,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     },
     "trixie-security": {
@@ -162823,7 +162853,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+        "https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z"
       ]
     },
     "trixie-updates": {
@@ -162837,7 +162867,7 @@
       ],
       "types": [],
       "uris": [
-        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+        "https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z"
       ]
     }
   },
