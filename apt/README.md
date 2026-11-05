@@ -6,6 +6,13 @@ reviewed production graph, shared by Docker/rootfs payloads, target development
 libraries and execution tools. A package identity is stored once; dependency
 sets select their required packages and architecture contexts.
 
+The canonical sources use the SONiC mirror at
+`https://packages.trafficmanager.net/snapshot/debian/20260727T000818Z`
+and `https://packages.trafficmanager.net/snapshot/debian-security/20260727T000824Z`
+for both Trixie and Bookworm. Lock regeneration records these URLs directly;
+no downloader rewrite or manual lock editing is required. Package archives and
+indexes retain checksum verification.
+
 ## Update and check
 
 Use the fixed Bazel and Distroless versions selected by the owning workspace.
