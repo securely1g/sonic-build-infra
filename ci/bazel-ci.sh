@@ -106,6 +106,7 @@ tests=(
   //cc/tests:shared_library_layout_test
   //cc/tests/runtime_context:layout_test
   //cc/tests/runtime_test:native_test
+  //cc/tests/runtime_test:preparation_test
   //cc/tests/runtime_test:contract_test
   //cc/tests/runtime_test:origin_contract_test
   //testing:exec_test_args_test

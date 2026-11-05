@@ -8,22 +8,32 @@ def _runfile(ctx, file):
 def _quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 
+def _target_machine(ctx):
+    if ctx.target_platform_has_constraint(ctx.attr._x86_64[platform_common.ConstraintValueInfo]):
+        return 62
+    elif ctx.target_platform_has_constraint(ctx.attr._aarch64[platform_common.ConstraintValueInfo]):
+        return 183
+    fail("Target runtime execution requires an x86_64 or aarch64 target platform")
+
 def _impl(ctx):
     executable = ctx.actions.declare_file(ctx.label.name)
     python = ctx.attr._python[platform_common.ToolchainInfo].py3_runtime
     if python == None or python.interpreter == None:
         fail("Native runtime execution requires a declared Python interpreter")
+    target_machine = _target_machine(ctx)
     sources = ctx.attr._metadata[PyInfo].transitive_sources.to_list()
     metadata = [source for source in sources if source.basename == "elf_metadata.py"]
     if len(metadata) != 1:
         fail("Expected the declared ELF metadata parser source")
     metadata_directory = _runfile(ctx, metadata[0]).rsplit("/", 1)[0]
-    # -E isolates only helper initialization. The target keeps the caller's
-    # environment, including embedded-Python HOME/PATH values used by clippy.
+    # This small SDK bootstrap may run under the target interpreter in a cross
+    # test. The declared private build-tool Python performs the expensive ELF
+    # preparation natively; its environment must not leak to the target.
     bootstrap = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));sys.argv[0]=sys.argv.pop(1);runpy.run_path(sys.argv[0],run_name='__main__')"
-    command = 'exec "$runfiles/%s" -E -c %s "$runfiles/%s" "$runfiles/%s" --binary "$runfiles/%s"' % (
+    command = 'exec "$runfiles/%s" -B -E -c %s "$runfiles/%s" "$runfiles/%s" --preparation-python "$runfiles/%s" --target-machine %s --binary "$runfiles/%s"' % (
         _runfile(ctx, python.interpreter), _quote(bootstrap), metadata_directory,
-        _runfile(ctx, ctx.file._runner_source), _runfile(ctx, ctx.file.binary),
+        _runfile(ctx, ctx.file._runner_source), _runfile(ctx, ctx.executable._preparation_python),
+        target_machine, _runfile(ctx, ctx.file.binary),
     )
     for payload in ctx.files.runtime_payloads:
         command += ' --payload "$runfiles/%s"' % _runfile(ctx, payload)
@@ -56,7 +66,8 @@ fi
 export RUNFILES_DIR="$runfiles"
 """ + command, is_executable = True)
     runfiles = ctx.runfiles(files = [ctx.file.binary, ctx.file._runner_source, python.interpreter] + sources + ctx.files.runtime_payloads + ctx.files.data, transitive_files = python.files)
-    targets = [ctx.attr.binary, ctx.attr._metadata] + ctx.attr.data
+    runfiles = runfiles.merge(ctx.runfiles(files = [ctx.executable._preparation_python]))
+    targets = [ctx.attr.binary, ctx.attr._metadata, ctx.attr._preparation_python] + ctx.attr.data
     if ctx.attr.instrument:
         runfiles = runfiles.merge(ctx.runfiles(files = [ctx.executable.instrument]))
         targets.append(ctx.attr.instrument)
@@ -73,7 +84,10 @@ _attrs = {
     "_runner_source": attr.label(default = Label("//cc:runtime_test.py"), allow_single_file = True, cfg = "exec"),
     "_metadata": attr.label(default = Label("//deb:elf_metadata"), providers = [PyInfo], cfg = "exec"),
     "_python": attr.label(default = Label("@rules_python//python:current_py_toolchain"), cfg = "exec"),
+    "_preparation_python": attr.label(default = Label("//tools/build_tools:python3"), executable = True, cfg = "exec"),
+    "_x86_64": attr.label(default = Label("@platforms//cpu:x86_64")),
+    "_aarch64": attr.label(default = Label("@platforms//cpu:aarch64")),
 }
 
-native_runtime_binary = rule(implementation = _impl, executable = True, attrs = _attrs, doc = "Wrap a native ELF with declared matching libc6 and library payloads; consumers may select cfg=exec.")
-native_runtime_test = rule(implementation = _impl, test = True, attrs = _attrs, doc = "Test a native ELF using declared libc6 and target library payloads. Cross targets are compile-only.")
+native_runtime_binary = rule(implementation = _impl, executable = True, attrs = _attrs, doc = "Prepare a target ELF runtime with declared execution tools, then invoke its matching loader; consumers may select cfg=exec.")
+native_runtime_test = rule(implementation = _impl, test = True, attrs = _attrs, doc = "Test a target ELF using declared libc6 and target library payloads. Cross execution requires a suitable external executor.")
