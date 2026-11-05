@@ -23,11 +23,20 @@ distributions from overwriting each other's source or file map. The existing
 merge validates their suite-qualified identities and produces one production
 lock. Ordinary imports need no partitioning or package-index access.
 
+Run maintenance scripts through Bazel rather than a worker-provided `python3`.
+`bazel run` executes them under the hermetic Python toolchains registered in
+MODULE.bazel, so every contributor and CI worker uses the same interpreter and
+dependency set. This policy applies to every script in this repository that
+runs outside of Bazel actions, including `go/lock.py` and
+`tools/rust/prepare.py`. Under `bazel run` the updater resolves its default
+`--sources`/`--requests`/`--lock` paths against `BUILD_WORKSPACE_DIRECTORY`,
+so it edits the source tree, never its runfiles copy.
+
 From the infra source directory:
 
 ```sh
-python3 apt/lock.py update --bazel /path/to/bazel-8.5.1
-python3 apt/lock.py check
+bazel run //apt:lock -- update --bazel /path/to/bazel-8.5.1
+bazel run //apt:lock -- check
 ```
 
 For a local, reviewed registry candidate use repeated `--registry` arguments
@@ -36,7 +45,7 @@ explicit settings to build, cquery and info; pass values containing a leading
 `--` using `=`. For example:
 
 ```sh
-python3 apt/lock.py update \
+bazel run //apt:lock -- update \
   --bazel /path/to/bazel-8.5.1 \
   --registry file:///path/to/sonic-bazel-registry \
   --registry https://bcr.bazel.build/ \
