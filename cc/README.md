@@ -3,6 +3,20 @@ as Go cgo and Rust `link_deps` that require `CcInfo`. It preserves the native
 producer's library paths and runfiles, including its transitive shared-library
 dependencies. It does not copy the ELF or create another `cc_import`.
 
+The obvious alternative, copying the built library and importing the copy with
+`cc_import`, links but degrades the runtime contract. `cc_import` constructs a
+new `LibraryToLink` from the file, so Bazel relocates the ELF into a second
+`_solib_*` tree: two copies of one library ship, and the producer's RUNPATH
+was computed for the original link location. The import also carries neither
+the producer's runfiles nor its transitive `dynamic_deps`, which must be
+redeclared by hand and kept in sync.
+
+Reusing the producer's existing linker input requires
+reading `CcSharedLibraryInfo`, which only a Starlark rule can do; upstream
+`cc_shared_library` deliberately provides no `CcInfo`, so this adapter fills
+that gap (see the TODO in `shared_library.bzl` about proposing it upstream in
+rules_cc).
+
 ```starlark
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
 load("@sonic_build_infra//cc:shared_library.bzl", "shared_library_cc_info")
