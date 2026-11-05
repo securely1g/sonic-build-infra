@@ -24,13 +24,13 @@ _PLATFORM_INDEPENDENT_ARGS = [
     Label("//toolchains/gcc/args:nostdinc++"),
     Label("//toolchains/gcc/args:add_build_ids"),
     Label("//toolchains/args:no_absolute_paths_for_builtins"),
-    Label("//toolchains/args:warnings"),
     Label("//toolchains/args:dpkg_buildflags"),
     Label("//toolchains/args:dpkg_buildflags_link"),
     Label("//toolchains/args:as_needed"),
 ]
 
 _FEATURES = [
+    Label("//toolchains/args:non_cgo_warnings"),
     Label("//toolchains/gcc:external_include_paths"),
     Label("@rules_cc//cc/toolchains/args:experimental_replace_legacy_action_config_features"),
 ]

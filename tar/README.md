@@ -49,3 +49,25 @@ non-root modules do not affect resolution.
 tar and deployment paths, including stripped programs, explicit zero timestamps,
 custom fallbacks and debug output. Generic manifest and changed-input-mtime
 regressions live with the tar.bzl patch. These targets produce no DEBs.
+
+## Installed ELF and debug files
+
+`sonic_deploy_tar` splits each ELF into a runtime file and matching build-id
+symbols. Keep the native binary's build-tree search paths for Bazel consumers;
+the installation step edits a writable copy before splitting it.
+
+Set `compress_debug_sections = True` when the original installation compresses
+DWARF, such as Debhelper's dbgsym flow. GNU objcopy compresses the extracted
+sections before the runtime debuglink is computed. The default `False` retains
+the existing uncompressed format. These attributes are also available on
+`//binary:strip_binary.bzl`'s `strip_binary` macro.
+
+`//tests:debug_compression_test` checks both compression policies through actual
+runtime/debug archives, verifies unchanged DWARF and executable code, checks
+build-id/debuglink pairing and executes the installed program.
+
+Set `install_rpath = "/usr/lib/<triplet>/frr"` when the original installation
+requires an exact search path. This replaces every existing entry on the
+installation ELF before splitting debug symbols and preserves DT_RPATH or
+DT_RUNPATH. An empty value keeps the existing default/preservation policy.
+The linked build-tree ELF remains unchanged.

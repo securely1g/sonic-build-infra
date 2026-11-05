@@ -12,6 +12,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import stat
 import struct
 import subprocess
 import tarfile
@@ -297,12 +298,13 @@ def library_directories(roots):
     return sorted(directories)
 
 
-def helper_substitutions(dpkg, name, root, fields, debian, provided):
+def helper_substitutions(dpkg, name, root, fields, debian, provided, control_file_helpers=()):
     """Run the standard producers of non-ELF Debian substitutions.
 
     Helpers may rewrite shebangs or generate maintainer-script fragments. Work
-    on a private copy, retain only the substitution values, and never execute
-    generated scripts or change the runtime payload being described.
+    on a private copy, by default retain only substitution values, and never execute
+    generated scripts or change the runtime payload being described. Owners may
+    opt in to retain control files by declaring their original helper argv.
     """
     needed = set(VARIABLE.findall("\n".join(fields.values())))
     commands = []
@@ -314,19 +316,22 @@ def helper_substitutions(dpkg, name, root, fields, debian, provided):
         commands.append(("dh_perl", []))
     if (debian / (name + ".templates")).exists() or (debian / "templates").exists():
         commands.append(("dh_installdebconf", []))
-    # Installed service files carry helper dependencies too. --only-scripts
-    # reads the already-staged init name without reinstalling it under the
-    # binary package name (for example syncd-vs installs /etc/init.d/syncd).
-    for script in sorted((root / "etc/init.d").glob("*")):
-        if script.is_file() and script.stat().st_mode & 0o111:
-            commands.append(("dh_installinit", ["--only-scripts", "--name=" + script.name]))
-    for relative, tool in (("usr/lib/systemd/system", "dh_installsystemd"),
-                           ("lib/systemd/system", "dh_installsystemd"),
-                           ("usr/lib/systemd/user", "dh_installsystemduser"),
-                           ("lib/systemd/user", "dh_installsystemduser")):
-        if (root / relative).is_dir() and any((root / relative).iterdir()):
-            if (tool, []) not in commands:
-                commands.append((tool, []))
+    if control_file_helpers:
+        commands.extend((command[0], command[1:]) for command in control_file_helpers)
+    else:
+        # Installed service files carry helper dependencies too. --only-scripts
+        # reads the already-staged init name without reinstalling it under the
+        # binary package name (for example syncd-vs installs /etc/init.d/syncd).
+        for script in sorted((root / "etc/init.d").glob("*")):
+            if script.is_file() and script.stat().st_mode & 0o111:
+                commands.append(("dh_installinit", ["--only-scripts", "--name=" + script.name]))
+        for relative, tool in (("usr/lib/systemd/system", "dh_installsystemd"),
+                               ("lib/systemd/system", "dh_installsystemd"),
+                               ("usr/lib/systemd/user", "dh_installsystemduser"),
+                               ("lib/systemd/user", "dh_installsystemduser")):
+            if (root / relative).is_dir() and any((root / relative).iterdir()):
+                if (tool, []) not in commands:
+                    commands.append((tool, []))
     if not commands:
         return {}
     # dh_python3 uses debian/<package> and does not implement debhelper's -P.
@@ -339,14 +344,31 @@ def helper_substitutions(dpkg, name, root, fields, debian, provided):
     variable_file.unlink(missing_ok=True)
     for tool, options in commands:
         dpkg.run(tool, "-p" + name, *options)
+    if control_file_helpers:
+        # Helpers may edit their private payload copy; only generated control
+        # files are handed back to the authoritative source-package tree.
+        for path in sorted((helper_root / "DEBIAN").iterdir()):
+            require(path.is_file() and not path.is_symlink(), "invalid generated Debian control file")
+            shutil.copy2(path, root / "DEBIAN" / path.name)
     return read_substvars(variable_file) if variable_file.exists() else {}
 
 
 def generate(*, control, changelog, module, architecture, tools, tar, output, tree,
-             packages, dependencies=(), apt_packages=(), symbols=None, substvars=None, debian_files=None, required_paths=None):
+             packages, dependencies=(), apt_packages=(), symbols=None, substvars=None, debian_files=None, required_paths=None, final_controls=None, control_file_helpers=()):
+    allowed_helpers = {"dh_systemd_enable", "dh_installinit", "dh_systemd_start",
+                       "dh_installsystemd", "dh_installdeb"}
+    require(all(isinstance(command, list) and command and
+                all(isinstance(argument, str) for argument in command) and
+                command[0] in allowed_helpers for command in control_file_helpers),
+            "invalid declared Debian control-file helper")
+    if control_file_helpers:
+        require(control_file_helpers[-1][0] == "dh_installdeb",
+                "control-file helpers must finish with dh_installdeb")
     source, stanzas, version = source_definition(control, changelog)
     require(module and set(packages) <= set(stanzas), "runtime package mapping differs from Debian control")
     require(packages, "runtime package mapping is empty")
+    final_controls = final_controls or {}
+    require(set(final_controls) <= set(packages), "final control refers to an unmapped package")
     required_paths = required_paths or {}
     require(set(required_paths) <= set(packages), "required paths refer to an unmapped package")
     symbols, substvars = symbols or {}, substvars or {}
@@ -436,10 +458,8 @@ def generate(*, control, changelog, module, architecture, tools, tar, output, tr
         for name, record in own.items():
             supplied = read_substvars(substvars.get(name))
             variables = dict(supplied)
-            # Only a source template has a recipe and unfinished helper
-            # substitutions. A finalized binary control already records those
-            # dependencies and deliberately has no changelog/compat inputs.
-            generated = (helper_substitutions(dpkg, name, record["root"], generated_stanzas[name], debian, variables)
+            # Finalized binary controls already contain helper dependencies.
+            generated = (helper_substitutions(dpkg, name, record["root"], generated_stanzas[name], debian, variables, control_file_helpers)
                          if changelog is not None else {})
             require(not set(generated) & set(variables), "duplicate generated and supplied Debian substitutions")
             variables.update(generated)
@@ -451,15 +471,21 @@ def generate(*, control, changelog, module, architecture, tools, tar, output, tr
             variables.setdefault("misc:Built-Using", "")
             require(not any(key.startswith("shlibs:") for key in variables),
                     "shlibs substitutions must be computed from the runtime payload")
+            shlibs_fields = sorted({variable[7:] for value in generated_stanzas[name].values()
+                                    for variable in VARIABLE.findall(value) if variable.startswith("shlibs:")})
             if record["native"]:
+                shlibs_args = []
+                for field in shlibs_fields:
+                    shlibs_args.extend(["-d" + field, *("-e" + str(path) for path in record["native"])])
                 data = dpkg.run("dpkg-shlibdeps", "-O", "-x" + name,
                                 "--admindir=" + dpkg.environment["DPKG_ADMINDIR"],
-                                *search, *("-e" + str(path) for path in record["native"]))
+                                *search, *shlibs_args)
                 for line in data.splitlines():
                     key, value = line.split("=", 1)
                     require(key.startswith("shlibs:"), "unexpected dpkg-shlibdeps output")
                     variables[key] = value
-            variables.setdefault("shlibs:Depends", "")
+            for field in shlibs_fields:
+                variables.setdefault("shlibs:" + field, "")
             check_substitutions(generated_stanzas[name], variables)
             variable_file = debian / (name + ".substvars")
             variable_file.write_text("".join(key + "?=" + value + "\n" for key, value in sorted(variables.items())
@@ -477,10 +503,19 @@ def generate(*, control, changelog, module, architecture, tools, tar, output, tr
                     "generated package control contains unresolved substitutions")
             record["fields"] = fields
             result[name] = {"runtime_target": record["label"],
-                            "control_fields": {key: value for key, value in fields.items() if key not in INSTALLED_FIELDS},
+                            "control_fields": {key: value for key, value in fields.items() if key not in INSTALLED_FIELDS - {"Architecture"}},
                             "payload_sha256": record["payload_sha256"]}
+            if control_file_helpers:
+                result[name]["control_files"] = {
+                    path.name: {"path": str(path.relative_to(tree)), "sha256": sha(path),
+                                "mode": format(stat.S_IMODE(path.stat().st_mode), "04o")}
+                    for path in sorted((record["root"] / "DEBIAN").iterdir())
+                }
             if name in required_paths:
                 result[name]["required_paths"] = list(required_paths[name])
+        for name, destination in final_controls.items():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((own[name]["root"] / "DEBIAN/control").read_bytes())
         # Dependencies are supplied transitively by the Starlark provider. Only
         # this action's newly staged source/APT trees belong in its manifest.
         manifest = {"schema": 1, "architecture": architecture, "packages": [
@@ -530,7 +565,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=name == "output")
     parser.add_argument("--module")
     parser.add_argument("--architecture", choices=ARCHITECTURES)
-    for name in ("package", "dependency", "apt-package", "symbols", "substvars", "merge", "debian-file", "required-path"):
+    for name in ("package", "dependency", "apt-package", "symbols", "substvars", "merge", "debian-file", "required-path", "final-control", "control-file-helper"):
         parser.add_argument("--" + name, action="append", default=[])
     args = parser.parse_args()
     if args.merge:
@@ -552,9 +587,11 @@ def main():
              module=args.module, architecture=args.architecture, packages=packages,
              dependencies=[Path(path).resolve() for path in args.dependency],
              required_paths=required_paths,
+             final_controls=named_paths(args.final_control),
              apt_packages=[tuple(Path(path).resolve() for path in value.split("=", 1)) for value in args.apt_package],
              symbols=named_paths(args.symbols), substvars=named_paths(args.substvars),
-             debian_files=named_paths(args.debian_file))
+             debian_files=named_paths(args.debian_file),
+             control_file_helpers=[json.loads(value) for value in args.control_file_helper])
 
 
 if __name__ == "__main__":

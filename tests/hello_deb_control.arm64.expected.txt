@@ -4,3 +4,4 @@ Maintainer: SONiC <sonic@example.com>
 Depends: libc6 (>= 2.34)
 Architecture: arm64
 Description: Hello test package
+Installed-Size: 5

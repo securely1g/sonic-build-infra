@@ -1,0 +1,10 @@
+Source: control-files-fixture
+Maintainer: Fixture Owner <fixture@example.invalid>
+Section: admin
+Priority: optional
+
+Package: service-fixture
+Architecture: all
+Depends: ${misc:Depends}
+Pre-Depends: ${misc:Pre-Depends}
+Description: Original service metadata fixture

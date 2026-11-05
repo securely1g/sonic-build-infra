@@ -2,10 +2,10 @@ name: Declared build tools
 
 on:
   pull_request:
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   push:
     branches: [master]
-    paths: ['toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
+    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
 
 permissions:
@@ -66,10 +66,22 @@ jobs:
           set -euo pipefail
           mkdir -p ci-artifacts
           printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
+          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD HEAD^{tree} > ci-artifacts/revisions.txt
+          printf '%s\n' "$GITHUB_RUN_ID" > ci-artifacts/github-run-id.txt
+          uname -a > ci-artifacts/uname.txt
+          dpkg --print-architecture > ci-artifacts/architecture.txt
+          cp /etc/os-release ci-artifacts/os-release
+          python3 apt/lock.py check | tee ci-artifacts/apt-lock-check.log
+          mkdir -p ci-artifacts/apt ci-artifacts/ci
+          cp apt/apt.lock.json apt/sources.json apt/requests.json ci-artifacts/apt/
+          cp ci/source_mirrors.cfg ci-artifacts/ci/
+          sha256sum MODULE.bazel apt/apt.lock.json apt/sources.json apt/requests.json ci/source_mirrors.cfg > ci-artifacts/inputs.sha256
           flags=(--registry="$SONIC_BAZEL_REGISTRY" \
                  --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
                  --host_platform="//platforms:$PLATFORM" \
+                 --downloader_config="$PWD/ci/source_mirrors.cfg" \
                  '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
+                 --repository_cache="$RUNNER_TEMP/configure-tools-repository-cache" \
                  --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
           bazel --ignore_all_rc_files build "${flags[@]}" \
             --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
@@ -78,13 +90,28 @@ jobs:
             //tools/build_tools:pkgconf //tools/build_tools:perl \
             //tools/build_tools:bison //tools/build_tools:flex \
             //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
+            //tools/build_tools:patchelf //tools/build_tools:gawk //tools/build_tools:swig \
             //tools/build_tools:patch //tools/build_tools:xmllint //tools/build_tools:xsltproc \
             //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
           cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
+          worker_tests=()
+          if [[ "$ARCHITECTURE" == amd64 ]]; then
+            worker_tests+=(//tools/build_tools:installer_worker_debs_test)
+          fi
           bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
             --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
+            //tests:host_patchelf_test //tests:source_host_tools_test \
             //tools/build_tools:runtime_test \
             //tools/build_tools:runtime_launcher_test \
+            //tools/autoconf:launcher_test \
+            //tools/autoconf:argv_paths_test \
+            //tools/autoconf/tests:declared_tools_test //tools/autoconf/tests:relocatable_pkgconfig_test \
+            //tools/build_tools:gdb_runtime_test \
+            //cc/tests/toolchain_variant:library_provider_test \
+            //cc/tests/toolchain_variant:shared_provider_test \
+            //cc/tests/toolchain_variant:symbols_provider_test \
+            //cc/tests/toolchain_variant:binary_runfiles_test \
+            //cc/tests/toolchain_variant:imported_shared_consumer_test \
             //tools/build_tools:configure_runtime_test \
             //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
             //tools/build_tools:kerberos_runtime_test \
@@ -93,6 +120,7 @@ jobs:
             //tools/build_tools:bookworm_test_runtime_test \
             //tools/build_tools:configure_make_test \
             //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
+            "${worker_tests[@]}" \
             2>&1 | tee ci-artifacts/test.log
           mkdir -p ci-artifacts/libtool
           bazel --ignore_all_rc_files cquery "${flags[@]}" --output=files \
@@ -139,6 +167,7 @@ jobs:
         if: always()
         run: |
           mkdir -p ci-artifacts
+          cp MODULE.bazel ci-artifacts/
           if [[ -f MODULE.bazel.lock ]]; then cp MODULE.bazel.lock ci-artifacts/; fi
           if [[ -d bazel-testlogs ]]; then cp -aL bazel-testlogs ci-artifacts/testlogs; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

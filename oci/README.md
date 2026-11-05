@@ -94,6 +94,47 @@ helper substitutions are generated from private copies of the staged files.
 Unknown or unresolved substitutions fail the build. Standard empty `misc`
 defaults apply only when no helper produced a value; supplied values are retained.
 
+Owners that also hand off maintainer scripts and conffiles can opt in with
+`control_file_helpers`, an ordered list of concrete helper argument lists. Keep
+original sources, including their `#DEBHELPER#` markers, in `debian_files`.
+For a recipe using the compat-10 systemd sequence and `dh_installinit -r`:
+
+```starlark
+control_file_helpers = [
+    ["dh_systemd_enable"],
+    ["dh_installinit", "-r"],
+    ["dh_systemd_start"],
+    ["dh_installdeb"],
+],
+```
+
+The owner supplies the original compatibility file, maintainer sources and
+configured service/init inputs through `debian_files`; service names and upgrade
+options remain owner data. The shared action permits only the concrete
+`dh_systemd_enable`, `dh_installinit`, `dh_systemd_start`, `dh_installsystemd` and
+`dh_installdeb` metadata helpers. Arguments are passed directly, without a shell,
+and the sequence must finish with `dh_installdeb`. Existing non-service helper
+substitutions and the declared sequence run on one private payload copy. The
+sequence replaces automatic service-helper selection for that call, and the
+final substitution values are read once.
+
+Each package then has a `control_files` JSON map. Its keys are final `DEBIAN`
+member names; values contain `path` relative to the action's analysis tree,
+`sha256` of the real file bytes, and its generated octal `mode`. Files are
+available through the existing `debian` output group and
+`RuntimePackagesInfo.trees`. The recorded mode is the packaging mode; Bazel may
+normalize physical permissions when caching a tree artifact. Only generated
+control files are retained from the private helper copy. The original runtime
+TAR and its staged payload bytes remain unchanged.
+
+An empty `control_file_helpers` list is the default and preserves the prior
+substitution-only behavior and JSON shape. These files are a separate producer
+handoff: owner metadata and installed-package policy accept the additional JSON
+field but do not run or install these scripts. A downstream packager or installer
+must explicitly consume the files. Do not install the entire dependency-analysis
+tree as a runtime layer. This action does not run maintainer scripts, create
+accounts, start services, or produce a DEB.
+
 Some source owners already provide finalized binary controls with their own
 `Version` instead of a source control and changelog. Those can omit `changelog`;
 they must contain a single package and no unresolved placeholders. Existing

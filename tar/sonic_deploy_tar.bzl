@@ -33,7 +33,7 @@ _runtime_tar = rule(
     },
 )
 
-def _sonic_deploy_tar_impl(name, force_debug_build, preserve_install_rpath, binaries = {}, srcs = [], mtree = [], debug_symlinks = {}, **kwargs):
+def _sonic_deploy_tar_impl(name, force_debug_build, preserve_install_rpath, compress_debug_sections, install_rpath, binaries = {}, srcs = [], mtree = [], debug_symlinks = {}, **kwargs):
     # We strip each binary and generate its mtree line pointing at the stripped ELF
     stripped_targets = []
     debug_targets = []
@@ -45,6 +45,8 @@ def _sonic_deploy_tar_impl(name, force_debug_build, preserve_install_rpath, bina
             name = stripped_name,
             src = binary,
             force_debug_build = force_debug_build,
+            install_rpath = install_rpath,
+            compress_debug_sections = compress_debug_sections,
             preserve_install_rpath = preserve_install_rpath,
             **propagate_common_rule_attributes(kwargs)
         )
@@ -133,6 +135,14 @@ The binary will then be replaced with its stripped version behind the scenes. Mi
 """,
             default = {},
             configurable = False,
+        ),
+        "compress_debug_sections": attr.bool(
+            default = False,
+            doc = "Compress extracted DWARF before pairing runtime ELF and symbols. Enable when the original installation contract requires compressed debug sections.",
+        ),
+        "install_rpath": attr.string(
+            default = "",
+            doc = "Set this exact installation search path before debug splitting while retaining the original RPATH/RUNPATH tag. Empty preserves the existing policy.",
         ),
         "force_debug_build": attr.bool(
             # This controls which targets the macro creates, before configuration.

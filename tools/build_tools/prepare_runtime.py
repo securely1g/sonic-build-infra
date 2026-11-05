@@ -146,7 +146,7 @@ def prepare_configure(root: Path, architecture: str, loader: Path, libraries: li
         script_tools += ("autoreconf", "automake", "aclocal", "makeinfo")
         shell_tools = ("libtoolize", "which")
         for name in ("autoreconf", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin",
-                     "thrift", "python3", "sphinx-build", "makeinfo", "dot", "bash", "dash", "sed", "mawk", "find", "xargs",
+                     "thrift", "python3", "sphinx-build", "makeinfo", "dot", "getconf", "bash", "dash", "sed", "mawk", "find", "xargs",
                      "basename", "cat", "chmod", "cp", "cut", "dirname", "echo", "expr", "head", "install",
                      "ln", "mkdir", "mv", "od", "printf", "readlink", "realpath", "rm", "rmdir",
                      "sleep", "sort", "tail", "test", "touch", "tr", "uname", "wc", "cmp", "diff",
@@ -359,7 +359,7 @@ fi
         write_launcher(root, name, script, executable)
     versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().strip()
                 for name in (("perl",) if perl_only else ("make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te")) +
-                (("autoreconf", "automake", "aclocal", "libtoolize", "protoc", "python3", "sphinx-build", "makeinfo") if foreign else ())}
+                (("autoreconf", "automake", "aclocal", "libtoolize", "protoc", "python3", "sphinx-build", "makeinfo", "getconf") if foreign else ())}
     if foreign:
         # Debian generates this plugin index in postinst. Reproduce it with the
         # declared executable, and keep relative plugin names for relocation.
@@ -527,13 +527,294 @@ unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
     (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def prepare_image(root, architecture, loader, libraries, executable):
+    """Relocate the image tools and their fixed package data into one runtime."""
+    paths = {
+        "mksquashfs": "usr/bin/mksquashfs", "unsquashfs": "usr/bin/unsquashfs",
+        "qemu-img": "usr/bin/qemu-img", "sgdisk": "usr/sbin/sgdisk",
+        "mke2fs": "usr/sbin/mke2fs", "debugfs": "usr/sbin/debugfs",
+        "mkfs.fat": "usr/sbin/mkfs.fat", "mcopy": "usr/bin/mcopy", "mmd": "usr/bin/mmd",
+        "tar-split": "usr/bin/tar-split", "grub-mkimage": "usr/bin/grub-mkimage",
+        "grub-editenv": "usr/bin/grub-editenv", "openssl": "usr/bin/openssl",
+        "bwrap": "usr/bin/bwrap", "zstd": "usr/bin/zstd",
+        "depmod": "usr/sbin/depmod", "modprobe": "usr/sbin/modprobe",
+        "busybox": "usr/bin/busybox",
+    }
+    if architecture == "amd64":
+        paths["grub-bios-setup"] = "usr/lib/grub/i386-pc/grub-bios-setup"
+        paths["qemu-system-x86_64"] = "usr/bin/qemu-system-x86_64"
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    # Debian's /bin -> usr/bin is an install alias. Wrappers need their own
+    # directory so they cannot overwrite the original ELF in usr/bin, and their
+    # adjacent scripts resolve the runtime root at bin/.. on every invocation.
+    wrappers = root / "bin"
+    if wrappers.is_symlink():
+        wrappers.unlink()
+    wrappers.mkdir(exist_ok=True)
+    for name, path in paths.items():
+        target = root / path
+        if not target.is_file():
+            raise ValueError("image tool missing from locked packages: " + path)
+        data = target.read_bytes()
+        if len(data) < 64 or data[:4] != b"\x7fELF":
+            raise ValueError("image executable is not ELF: " + path)
+        if struct.unpack_from("<H", data, 18)[0] != {"amd64": 62, "arm64": 183}[architecture]:
+            raise ValueError("image tool architecture mismatch: " + path)
+        offset = struct.unpack_from("<Q", data, 32)[0]
+        size, count = struct.unpack_from("<HH", data, 54)
+        dynamic = any(struct.unpack_from("<I", data, offset + index * size)[0] == 3 for index in range(count))
+        script = """#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+MKE2FS_CONFIG="$root/etc/mke2fs.conf"
+OPENSSL_CONF="$root/etc/ssl/openssl.cnf"
+export MKE2FS_CONFIG OPENSSL_CONF
+"""
+        suffix = ""
+        if name == "qemu-system-x86_64":
+            # QEMU's -L adds a firmware directory. Debian splits firmware
+            # between qemu-system-data, SeaBIOS and iPXE packages.
+            for directory in ("usr/share/qemu", "usr/share/seabios", "usr/lib/ipxe/qemu"):
+                if (root / directory).is_dir():
+                    suffix += ' -L "$root/' + directory + '"'
+            if not (root / "usr/share/seabios/bios-256k.bin").is_file():
+                raise ValueError("declared QEMU runtime lacks its PC BIOS")
+        if name == "qemu-system-x86_64":
+            module_directories = sorted((root / "usr/lib").glob("*/qemu"))
+            if len(module_directories) != 1:
+                raise ValueError("expected one declared native QEMU module directory")
+            script += 'QEMU_MODULE_DIR="$root/' + str(module_directories[0].relative_to(root)) + '"\nexport QEMU_MODULE_DIR\n'
+        if dynamic:
+            script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/' + path + '"' + suffix + ' "$@"\n'
+        else:
+            script += 'exec "$root/' + path + '"' + suffix + ' "$@"\n'
+        write_launcher(root, name, script, executable)
+    manifest = {"format_version": 1, "profile": "image", "architecture": architecture,
+                "loader": str(loader.relative_to(root)),
+                "library_directories": [str(path.relative_to(root)) for path in libraries], "tools": paths}
+    # Optional certificate stores and alternatives are generated by package
+    # installation, while this profile consumes package data directly. Retain
+    # an explicit audit of absent optional links instead of emitting invalid
+    # Bazel tree artifacts. Tool executables above are mandatory and validated.
+    dangling = [path for path in root.rglob("*") if path.is_symlink() and not path.exists()]
+    manifest["omitted_unresolved_symlinks"] = sorted(str(path.relative_to(root)) for path in dangling)
+    for path in dangling:
+        path.unlink()
+    (root / "toolchain.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def prepare_manuals(root, architecture, loader, libraries, executable):
+    """Keep Sphinx and Texinfo on their declared Python/Perl/data closure."""
+    wrappers = root / "bin"
+    if wrappers.is_symlink():
+        wrappers.unlink()
+    wrappers.mkdir(exist_ok=True)
+    prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
+    python = root / "usr/bin/python3"
+    perl = root / "usr/bin/perl"
+    environment = {"LANG": "C", "LC_ALL": "C", "PATH": ""}
+    builtins = run_tool(prefix + [str(perl), "-e", 'print join("\\0", @INC)'], environment=environment).decode().split("\0")
+    perl_directories = [root / path.lstrip("/") for path in builtins
+                        if path.startswith("/") and (root / path.lstrip("/")).is_dir()]
+    # Remove the interpreter's ambient host search paths, retaining explicit
+    # caller inputs and the declared core/XS modules in their original order.
+    bootstrap = root / "share/sonic-build-tools/Sonic/Manuals.pm"
+    bootstrap.parent.mkdir(parents=True, exist_ok=True)
+    quoted = ", ".join("'" + path.replace("'", "\\'") + "'" for path in builtins)
+    bootstrap.write_text("package Sonic::Manuals;\nBEGIN { my %host = map { $_ => 1 } (" + quoted + "); @INC = grep { !$host{$_} } @INC; }\n1;\n")
+    texinfo_dirs = [root / "usr/share/texinfo"] + sorted((root / "usr/lib").glob("*/texinfo"))
+    perl_directories = [bootstrap.parent.parent] + texinfo_dirs + perl_directories
+    perl_path = ":".join('$root/' + str(path.relative_to(root)) for path in perl_directories)
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    # Debian's configured module and data roots take precedence over its
+    # relocation fallback when a host Texinfo happens to be installed.
+    # Bind those configuration values to this declared installation instead.
+    for relative, original, relocated in [
+        ("docutils/__init__.py", "os.path.join('/usr/share/docutils/', suffix)",
+         'os.path.join(os.environ["SONIC_MANUALS_ROOT"], "usr/share/docutils", suffix)'),
+        ("sphinx/__init__.py", "package_dir = '/usr/share/sphinx'",
+         'package_dir = os.path.join(os.environ["SONIC_MANUALS_ROOT"], "usr/share/sphinx")'),
+    ]:
+        configuration = root / "usr/lib/python3/dist-packages" / relative
+        content = configuration.read_text()
+        if original not in content:
+            raise ValueError("unsupported documentation data setting: " + relative)
+        configuration.write_text(content.replace(original, relocated))
+    texi2any = root / "usr/bin/texi2any"
+    text = texi2any.read_text()
+    for original, relocated in {
+        "my $datadir = '/usr/share';": 'my $datadir = "$ENV{SONIC_MANUALS_ROOT}/usr/share";',
+        "my $xsdir = '/usr/lib/texinfo';": 'my $xsdir = "$ENV{SONIC_MANUALS_ROOT}/usr/lib/texinfo";',
+        "my $prefix = '/usr';": 'my $prefix = "$ENV{SONIC_MANUALS_ROOT}/usr";',
+        "eval '\"/usr/etc\"'": '"${prefix}/etc"',
+        "eval '\"/usr/share\"'": '"${prefix}/share"',
+    }.items():
+        if original not in text:
+            raise ValueError("unsupported Texinfo installation setting: " + original)
+        text = text.replace(original, relocated)
+    texi2any.write_text(text)
+    tools = {"sphinx-build": "usr/bin/sphinx-build", "makeinfo": "usr/bin/texi2any"}
+    helpers = ["perl", "python3", "bash", "gzip", "sed", "grep", "cat", "dirname", "basename", "sort", "cut", "head", "tr", "rm", "mkdir", "mv", "cp", "locale"]
+    for name in helpers:
+        path = root / "usr/bin" / name
+        if not path.is_file():
+            raise ValueError("manual tools package closure lacks " + name)
+        tools[name] = "usr/bin/" + name
+    for name, path in tools.items():
+        target = root / path
+        if not target.is_file():
+            raise ValueError("manual tool missing from locked packages: " + path)
+        script = '''#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+PATH="$root/bin"
+SONIC_MANUALS_ROOT="$root"
+LOCPATH="$root/usr/lib/locale"
+export PATH SONIC_MANUALS_ROOT LOCPATH
+'''
+        if name in ("sphinx-build", "python3"):
+            script += 'PYTHONHOME="$root/usr"\nPYTHONPATH="$root/usr/lib/python3/dist-packages"\nPYTHONNOUSERSITE=1\nexport PYTHONHOME PYTHONPATH PYTHONNOUSERSITE\n'
+            command = '"$root/' + str(python.relative_to(root)) + '" -I'
+            if name == "sphinx-build":
+                command += ' "$root/' + path + '"'
+        elif name in ("makeinfo", "perl"):
+            script += 'PERL5LIB="' + perl_path + '"\nPERL5OPT="-MSonic::Manuals"\nexport PERL5LIB PERL5OPT\n'
+            command = '"$root/' + str(perl.relative_to(root)) + '"'
+            if name == "makeinfo":
+                command += ' "$root/' + path + '"'
+        else:
+            command = '"$root/' + path + '"'
+        script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" ' + command + ' "$@"\n'
+        write_launcher(root, name, script, executable)
+    versions = {name: run_tool([str(root / "bin" / name), "--version"], environment=environment).decode().splitlines()[0]
+                for name in ("sphinx-build", "makeinfo")}
+    # Installation-created alternatives/certificate links are not inputs to
+    # these frontends. Do not emit dangling tree members into Bazel's cache.
+    dangling = [path for path in root.rglob("*") if path.is_symlink() and not path.exists()]
+    for path in dangling:
+        path.unlink()
+    (root / "toolchain.json").write_text(json.dumps({"format_version": 1, "profile": "manuals",
+        "architecture": architecture, "loader": str(loader.relative_to(root)),
+        "library_directories": [str(path.relative_to(root)) for path in libraries],
+        "tools": tools, "versions": versions,
+        "omitted_unresolved_symlinks": sorted(str(path.relative_to(root)) for path in dangling)}, indent=2) + "\n")
+
+
+
+def prepare_tcl(root: Path, architecture: str, loader: Path, libraries: list[Path], executable: Path) -> None:
+    """Expose Tcl and Expect with their declared standard library and packages."""
+    standard_library = root / "usr/share/tcltk/tcl8.6"
+    if not (standard_library / "init.tcl").is_file():
+        raise RuntimeError("Tcl packages contain no Tcl 8.6 standard library")
+    extension_indexes = sorted(root.glob("usr/lib/tcltk/*/expect*/pkgIndex.tcl"))
+    if len(extension_indexes) != 1:
+        raise RuntimeError("Tcl packages must contain one Expect package index")
+    index = extension_indexes[0]
+    original = index.read_text()
+    pattern = r"\[file join /usr lib ([a-zA-Z0-9_-]+) (libexpect\.so\.[0-9.]+)\]"
+    match = re.search(pattern, original)
+    if match is None or not (root / "usr/lib" / match[1] / match[2]).is_file():
+        raise RuntimeError("Unexpected Expect package library reference")
+    # The Debian package index uses an installation-absolute path. Keep its
+    # package/version declaration and load the same library relative to $dir.
+    relative = os.path.relpath(root / "usr/lib" / match[1] / match[2], index.parent)
+    replacement = "[file join $dir " + " ".join(Path(relative).parts) + "]"
+    index.write_text(original[:match.start()] + replacement + original[match.end():])
+    tools = {"tclsh": "usr/bin/tclsh8.6"}
+    (root / "bin").mkdir(exist_ok=True)
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    package_directory = str(extension_indexes[0].parent.parent.relative_to(root))
+    for name, path in tools.items():
+        if not (root / path).is_file():
+            raise RuntimeError(f"Tcl packages contain no {path}")
+        script = '''#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH TCL_LIBRARY TCLLIBPATH
+TCL_LIBRARY="$root/usr/share/tcltk/tcl8.6"
+TCL8_6_TM_PATH="$TCL_LIBRARY/tcl8"
+'''
+        # Tcl list quoting keeps relocated runtime paths with spaces intact.
+        script += 'TCLLIBPATH="{'+ '$root/' + package_directory + '}"\n'
+        script += 'PATH="$root/bin"\nexport TCL_LIBRARY TCLLIBPATH TCL8_6_TM_PATH PATH\n'
+        script += 'exec "$root/' + str(loader.relative_to(root)) + '" --inhibit-cache --library-path "' + library_path + '" "$root/' + path + '" "$@"\n'
+        write_launcher(root, name, script, executable)
+    # tzdata's optional localtime alias targets an installation-owned /etc
+    # file, outside the interpreter's declared standard library and packages.
+    dangling = [path for path in root.rglob("*") if path.is_symlink() and not path.exists()]
+    omitted = sorted(str(path.relative_to(root)) for path in dangling)
+    for path in dangling:
+        path.unlink()
+    (root / "toolchain.json").write_text(json.dumps({
+        "omitted_unresolved_symlinks": omitted,
+        "format_version": 1, "profile": "tcl", "architecture": architecture,
+        "loader": str(loader.relative_to(root)),
+        "library_directories": [str(path.relative_to(root)) for path in libraries],
+        "tools": tools,
+    }, indent=2) + "\n")
+
+
+def prepare_gdb(root, architecture, loader, libraries, executable):
+    """Use the locked GDB, embedded Python and data without host runtime paths."""
+    target = root / "usr/bin/gdb"
+    require_files = [target, root / "usr/share/gdb/python/gdb/__init__.py", root / "usr/lib/python3.13/os.py"]
+    if not all(path.is_file() for path in require_files):
+        raise ValueError("declared GDB runtime lacks its executable, data or Python standard library")
+    if struct.unpack_from("<H", target.read_bytes(), 18)[0] != {"amd64": 62, "arm64": 183}[architecture]:
+        raise ValueError("GDB runtime architecture mismatch")
+    wrappers = root / "bin"
+    if wrappers.is_symlink():
+        wrappers.unlink()
+    wrappers.mkdir(exist_ok=True)
+    library_path = ":".join('$root/' + str(path.relative_to(root)) for path in libraries)
+    script = """#!/bin/sh
+set -eu
+self=$0
+case "$self" in /*) ;; *) self="$PWD/$self" ;; esac
+root=$(CDPATH= cd -- "${self%/*}/.." && pwd -P)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT LD_DEBUG LD_PROFILE LD_ORIGIN_PATH
+PYTHONHOME="$root/usr"
+PYTHONPATH="$root/usr/share/gdb/python"
+PYTHONNOUSERSITE=1
+TZ=UTC
+export PYTHONHOME PYTHONPATH PYTHONNOUSERSITE TZ
+"""
+    gconv = [path for path in libraries if path.name == "gconv"]
+    if not gconv or not any((path / "UTF-32.so").is_file() for path in gconv):
+        raise ValueError("declared GDB runtime lacks its glibc character-conversion modules")
+    script += 'GCONV_PATH="' + ":".join('$root/' + str(path.relative_to(root)) for path in gconv) + '"\nexport GCONV_PATH\n'
+    script += 'exec "$root/' + str(loader.relative_to(root)) + '" --library-path "' + library_path + '" "$root/usr/bin/gdb" --data-directory="$root/usr/share/gdb" "$@"\n'
+    write_launcher(root, "gdb", script, executable)
+    # tzdata's compatibility link is normally created by package configuration.
+    # GDB runs with the explicit UTC environment above and does not consume it.
+    optional = root / "usr/share/zoneinfo/localtime"
+    omitted = []
+    if optional.is_symlink() and not optional.exists():
+        omitted.append({"path": str(optional.relative_to(root)), "target": os.readlink(optional)})
+        optional.unlink()
+    (root / "toolchain.json").write_text(json.dumps({
+        "format_version": 1, "profile": "gdb", "architecture": architecture,
+        "loader": str(loader.relative_to(root)),
+        "library_directories": [str(path.relative_to(root)) for path in libraries],
+        "tools": {"gdb": "usr/bin/gdb"}, "omitted_optional_links": omitted,
+    }, indent=2) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--launcher", required=True, type=Path)
     parser.add_argument("--tar", action="append", default=[])
-    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign", "tests", "perl", "docbook"), default="documentation")
+    parser.add_argument("--profile", choices=("documentation", "configure", "kerberos", "foreign", "image", "manuals", "tcl", "gdb", "tests", "perl", "docbook"), default="documentation")
     args = parser.parse_args()
     validate_launcher(args.launcher, args.architecture)
     root = Path(args.out).resolve()
@@ -541,7 +822,14 @@ def main() -> None:
     for payload in sorted(map(Path, args.tar)):
         extract_payload(root, payload)
 
-    if args.profile in ("configure", "foreign", "tests", "perl", "docbook"):
+    if args.profile == "image":
+        # Keep wrappers separate from the package's /bin -> usr/bin alias.
+        wrappers = root / "bin"
+        if wrappers.is_symlink():
+            wrappers.unlink()
+        wrappers.mkdir(exist_ok=True)
+
+    if args.profile in ("configure", "foreign", "manuals", "image", "tests", "perl", "docbook"):
         # Bazel caches files inside tree outputs. Materialize directory aliases
         # (notably Perl's 5.40 -> 5.40.1) so cache restoration never has to create
         # a child through a directory symlink before its target is populated.
@@ -553,7 +841,7 @@ def main() -> None:
                 target = path.resolve(strict=True)
                 # X11 packages keep a compatibility alias /usr/bin/X11 -> .;
                 # none of the declared tools uses this recursive directory.
-                if args.profile == "foreign" and path in (root / "usr/bin/X11", root / "bin/X11") and target == path.parent:
+                if args.profile in ("foreign", "image") and path in (root / "usr/bin/X11", root / "bin/X11") and target == path.parent:
                     path.unlink()
                     continue
                 if not target.is_relative_to(root) or path.is_relative_to(target):
@@ -562,6 +850,18 @@ def main() -> None:
                 shutil.copytree(target, path, symlinks=True)
     loader = loader_path(root, args.architecture)
     libraries = library_directories(root)
+    if args.profile == "gdb":
+        prepare_gdb(root, args.architecture, loader, libraries, args.launcher)
+        return
+    if args.profile == "image":
+        prepare_image(root, args.architecture, loader, libraries, args.launcher)
+        return
+    if args.profile == "manuals":
+        prepare_manuals(root, args.architecture, loader, libraries, args.launcher)
+        return
+    if args.profile == "tcl":
+        prepare_tcl(root, args.architecture, loader, libraries, args.launcher)
+        return
     prefix = [str(loader), "--library-path", os.pathsep.join(map(str, libraries))]
     if args.profile in ("configure", "foreign", "perl", "docbook"):
         prepare_configure(root, args.architecture, loader, libraries, args.launcher, foreign=args.profile == "foreign", perl_only=args.profile == "perl", docbook=args.profile == "docbook")

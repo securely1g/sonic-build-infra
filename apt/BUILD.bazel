@@ -28,4 +28,29 @@ py_test(
     deps = [":lib"],
 )
 
-exports_files(["export_inputs.py", "requirements_lock.txt"])
+exports_files([
+    "apt.lock.json",
+    "requests.json",
+    "sources.json",
+    "export_inputs.py",
+    "requirements_lock.txt",
+])
+
+py_test(
+    name = "lock_test",
+    srcs = [
+        "lock.py",
+        "tests/lock_test.py",
+    ],
+    imports = ["."],
+    main = "tests/lock_test.py",
+)
+
+py_test(
+    name = "bookworm_lock_test",
+    srcs = ["lock.py", "tests/bookworm_lock_test.py"],
+    main = "tests/bookworm_lock_test.py",
+    imports = ["."],
+    args = ["$(rootpath " + name + ")" for name in ["apt.lock.json", "sources.json", "requests.json"]],
+    data = ["apt.lock.json", "sources.json", "requests.json"],
+)

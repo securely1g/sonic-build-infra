@@ -18,6 +18,7 @@ load("//oci:debug_symbols_layer.bzl", "debug_symbols_layer")
 load("//tar:assert_tar.bzl", "assert_tar")
 load("//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 load("//toolchains:assert_cc_toolchain_features.bzl", "assert_cc_toolchain_features_test")
+load("//tools/build_tools:defs.bzl", "source_build_tool")
 load(":image_stub.bzl", "image_stub")
 
 #############################
@@ -428,6 +429,53 @@ sonic_deb(
     version = "1.0",
 )
 
+# Preserve the public scalar API when optional descriptive fields are absent or empty.
+sonic_deb(
+    name = "hello_deb_optional_omitted",
+    testonly = True,
+    data = ":hello_deb_data",
+    package = "hello-optional-omitted",
+    version = "1.0",
+)
+
+sonic_deb(
+    name = "hello_deb_optional_empty",
+    testonly = True,
+    data = ":hello_deb_data",
+    package = "hello-optional-empty",
+    version = "1.0",
+    maintainer = "",
+    description = "",
+)
+
+sonic_deb(
+    name = "hello_deb_optional_maintainer",
+    testonly = True,
+    data = ":hello_deb_data",
+    package = "hello-optional-maintainer",
+    version = "1.0",
+    maintainer = "SONiC <sonic@example.com>",
+)
+
+sonic_deb(
+    name = "hello_deb_optional_description",
+    testonly = True,
+    data = ":hello_deb_data",
+    package = "hello-optional-description",
+    version = "1.0",
+    description = "Optional fields compatibility",
+)
+
+build_test(
+    name = "hello_deb_optional_fields_build_test",
+    targets = [
+        ":hello_deb_optional_omitted",
+        ":hello_deb_optional_empty",
+        ":hello_deb_optional_maintainer",
+        ":hello_deb_optional_description",
+    ],
+)
+
 build_test(
     name = "hello_deb_build_test",
     targets = [":hello_deb"],
@@ -561,6 +609,162 @@ cc_binary(
         "runpath",
         "static",
     ]
+]
+
+py_test(
+    name = "host_patchelf_test",
+    srcs = ["host_patchelf_test.py"],
+    args = [
+        "$(location //tools/build_tools:patchelf)",
+        "$(location :hello)",
+    ],
+    data = [
+        ":hello",
+        "//tools/build_tools:patchelf",
+    ],
+)
+
+cc_library(
+    name = "source_host_library",
+    srcs = ["source_host_library.cc"],
+)
+
+[
+    cc_binary(
+        name = "source_host_" + mode + "_binary",
+        srcs = ["source_host_probe.cc"],
+        linkopts = ["-static"] if mode == "static" else [],
+        linkstatic = mode == "static",
+        deps = [":source_host_library"],
+    )
+    for mode in [
+        "dynamic",
+        "static",
+    ]
+]
+
+[
+    source_build_tool(
+        name = "source_host_" + mode,
+        testonly = True,
+        binary = ":source_host_" + mode + "_binary",
+    )
+    for mode in [
+        "dynamic",
+        "static",
+    ]
+]
+
+genrule(
+    name = "source_host_action",
+    testonly = True,
+    outs = ["source_host_action.txt"],
+    cmd = "\"$(location //tools/build_tools:gawk)\" 'BEGIN { print 7 * 6 }' > $@",
+    tools = ["//tools/build_tools:gawk"],
+)
+
+py_test(
+    name = "source_host_tools_test",
+    size = "small",
+    srcs = ["source_host_tools_test.py"],
+    args = ["$(location " + target + ")" for target in [
+        ":source_host_dynamic",
+        ":source_host_static",
+        "//tools/build_tools:gawk",
+        "//tools/build_tools:swig",
+        ":source_host_action",
+    ]],
+    data = [
+        ":source_host_action",
+        ":source_host_dynamic",
+        ":source_host_static",
+        "//tools/build_tools:gawk",
+        "//tools/build_tools:swig",
+    ],
+)
+
+# Source-built Python embedders need the same locked ABI and stdlib; the default
+# sysroot-only source runtime is intentionally unchanged for ordinary C tools.
+cc_binary(
+    name = "source_python_embed_binary",
+    srcs = ["source_python_embed.c"],
+    deps = ["@frr_deps//libpython3.13-dev:libpython3.13_cc"],
+)
+source_build_tool(
+    name = "source_python_embed",
+    binary = ":source_python_embed_binary",
+    runtime = "//tools/build_tools:foreign_runtime",
+)
+py_test(
+    name = "source_python_embed_test",
+    srcs = ["source_python_embed_test.py"],
+    args = ["$(location :source_python_embed)", "$(location //tools/build_tools:foreign_runtime)"],
+    data = [":source_python_embed", "//tools/build_tools:foreign_runtime"],
+)
+
+# Debhelper dbgsym compression is an installation choice. Keep the original
+# default and opt-in cases observable through the public TAR interface.
+sonic_deploy_tar(
+    name = "hello_debug_default",
+    binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_cpp"},
+    force_debug_build = True,
+)
+sonic_deploy_tar(
+    name = "hello_debug_compressed",
+    binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_cpp"},
+    force_debug_build = True,
+    compress_debug_sections = True,
+)
+py_test(
+    name = "debug_compression_test",
+    srcs = ["debug_compression_test.py"],
+    args = ["$(location //toolchains/binutils:readelf)"] + [
+        "$(location :hello_debug_" + mode + suffix + ")"
+        for mode in ["default", "compressed"]
+        for suffix in ["", ".debug_symbols"]
+    ],
+    data = ["//toolchains/binutils:readelf"] + [
+        ":hello_debug_" + mode + suffix
+        for mode in ["default", "compressed"]
+        for suffix in ["", ".debug_symbols"]
+    ],
+)
+
+# Exact installation paths replace all build and dependency search entries.
+[
+    sonic_deploy_tar(
+        name = "hello_" + kind + "_exact_deployment",
+        binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_" + kind},
+        install_rpath = "/opt/sonic/exact/lib",
+        force_debug_build = True,
+    )
+    for kind in ["rpath", "runpath"]
+]
+
+[
+    py_test(
+        name = "hello_" + kind + "_exact_deployment_test",
+        srcs = ["strip_rpath_test.py"],
+        main = "strip_rpath_test.py",
+        args = [
+            "$(location //toolchains/binutils:readelf)",
+            "$(location //toolchains/binutils:objcopy)",
+            "$(location :hello_" + kind + ")",
+            "$(location :hello_" + kind + "_exact_deployment)",
+            "$(location :hello_" + kind + "_exact_deployment.debug_symbols)",
+            kind.upper(),
+            "exact=/opt/sonic/exact/lib",
+            "archives",
+        ],
+        data = [
+            "//toolchains/binutils:readelf",
+            "//toolchains/binutils:objcopy",
+            ":hello_" + kind,
+            ":hello_" + kind + "_exact_deployment",
+            ":hello_" + kind + "_exact_deployment.debug_symbols",
+        ],
+    )
+    for kind in ["rpath", "runpath"]
 ]
 
 # FRR installs private libraries outside ld.so.cache's standard directories.

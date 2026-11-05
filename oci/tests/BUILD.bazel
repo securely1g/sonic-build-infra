@@ -1,3 +1,4 @@
+load("@tar.bzl//tar:tar.bzl", "tar")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//oci:accounts.bzl", "account_layer")
@@ -241,7 +242,7 @@ py_test(
         ":arm64": ["arm64"],
         "//conditions:default": ["amd64"],
     }) + [
-        "$(location @patchelf//:patchelf)",
+        "$(location //tools/build_tools:patchelf)",
         "$(location @sysroot//libc6:data)",
         "$(location @sysroot//libc6:control)",
         "$(location metadata/otelcol-contrib/control)",
@@ -257,11 +258,73 @@ py_test(
         ":metadata_library_tar",
         "//oci:runtime_packages",
         "//tools/build_tools:kernel_runtime",
-        "@patchelf",
+        "//tools/build_tools:patchelf",
         "@sysroot//libc6:control",
         "@sysroot//libc6:data",
     ] + select({
         ":arm64": ["@bsd_tar_toolchains_linux_arm64//:tar"],
         "//conditions:default": ["@bsd_tar_toolchains_linux_amd64//:tar"],
     }),
+)
+
+# A small owner-authored service package exercises the public control-file API.
+tar(
+    name = "control_files_payload",
+    testonly = True,
+    srcs = ["control_files/service-fixture.init", "control_files/service-fixture.service", "control_files/settings.conf"],
+    mtree = [
+        "./etc type=dir mode=0755 uid=0 gid=0 time=0",
+        "./etc/init.d type=dir mode=0755 uid=0 gid=0 time=0",
+        "./etc/init.d/service-fixture type=file mode=0755 uid=0 gid=0 time=0 content=$(location control_files/service-fixture.init)",
+        "./etc/service-fixture type=dir mode=0755 uid=0 gid=0 time=0",
+        "./etc/service-fixture/settings.conf type=file mode=0644 uid=0 gid=0 time=0 content=$(location control_files/settings.conf)",
+        "./usr/lib/systemd/system/service-fixture.service type=file mode=0644 uid=0 gid=0 time=0 content=$(location control_files/service-fixture.service)",
+    ],
+)
+[
+    runtime_packages(
+        name = "control_files_" + variant,
+        testonly = True,
+        control = "control_files/control",
+        changelog = "control_files/changelog",
+        packages = {"service-fixture": ":control_files_payload"},
+        debian_files = {name: "control_files/" + name for name in [
+            "compat", "service-fixture.preinst", "service-fixture.postinst", "service-fixture.postrm",
+            "service-fixture.init", "service-fixture.service",
+        ]},
+        control_file_helpers = helpers,
+    )
+    for variant, helpers in [
+        ("preserved", [["dh_systemd_enable"], ["dh_installinit", "-r"], ["dh_systemd_start"], ["dh_installdeb"]]),
+        ("restart", [["dh_systemd_enable"], ["dh_installinit"], ["dh_systemd_start"], ["dh_installdeb"]]),
+        ("default", []),
+    ]
+]
+[
+    filegroup(
+        name = "control_files_" + variant + "_tree",
+        testonly = True,
+        srcs = [":control_files_" + variant],
+        output_group = "debian",
+    )
+    for variant in ["preserved", "restart", "default"]
+]
+py_test(
+    name = "runtime_control_files_rule_test",
+    srcs = ["runtime_control_files_rule_test.py"],
+    args = [
+        "$(location :control_files_preserved)", "$(location :control_files_preserved_tree)",
+        "$(location :control_files_restart)", "$(location :control_files_restart_tree)",
+        "$(location :control_files_default)", "$(location :control_files_default_tree)",
+        "$(location :control_files_payload)",
+        "$(location control_files/service-fixture.preinst)",
+        "$(location control_files/service-fixture.postinst)",
+        "$(location control_files/service-fixture.postrm)",
+    ],
+    data = [
+        ":control_files_preserved", ":control_files_preserved_tree",
+        ":control_files_restart", ":control_files_restart_tree",
+        ":control_files_default", ":control_files_default_tree", ":control_files_payload",
+        "control_files/service-fixture.preinst", "control_files/service-fixture.postinst", "control_files/service-fixture.postrm",
+    ],
 )

@@ -53,10 +53,15 @@ def check_linker_inputs(root, runtime, work, run, architecture):
 
 def check_yacc(root, work, run):
     """Generate and execute a parser without Debian's host-path shell alias."""
-    raw = (root / "usr/bin/yacc").resolve()
+    raw = root / "usr/bin/yacc"
     original, mode = raw.read_bytes(), raw.stat().st_mode
-    raw.chmod(mode | 0o200)
+    link = os.readlink(raw) if raw.is_symlink() else None
+    directory_mode = raw.parent.stat().st_mode
+    raw.parent.chmod(directory_mode | 0o200)
+    # Replace only the relocated entry; its symlink may target a read-only input.
+    raw.unlink()
     raw.write_text('#!/bin/sh\necho "yacc used Debian host-path alias" >&2\nexit 97\n')
+    raw.chmod(mode | 0o200)
     (work / "parser.y").write_text(
         '%{\nint yylex(void) { return 0; }\nvoid yyerror(const char *s) { (void)s; }\n%}\n'
         '%%\nstart: ;\n%%\nint main(void) { return yyparse(); }\n')
@@ -66,8 +71,13 @@ def check_yacc(root, work, run):
         run(["/usr/bin/host-gcc", "y.tab.c", "-o", "parser"])
         run(["./parser"])
     finally:
-        raw.write_bytes(original)
-        raw.chmod(mode)
+        raw.unlink()
+        if link is not None:
+            raw.symlink_to(link)
+        else:
+            raw.write_bytes(original)
+            raw.chmod(mode)
+        raw.parent.chmod(directory_mode)
     return "yacc generates a parser using declared bison, m4 and skeletons"
 
 

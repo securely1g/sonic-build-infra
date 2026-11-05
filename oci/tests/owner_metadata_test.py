@@ -98,10 +98,14 @@ class OwnerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "module declaration differs"):
             self.resolve()
 
-    def test_metadata_cannot_freeze_installed_architecture(self):
+    def test_metadata_rejects_package_architecture_from_another_target(self):
         self.document["packages"]["libexample"]["control_fields"]["Architecture"] = "amd64"
-        with self.assertRaisesRegex(ValueError, "freeze installed"):
+        with self.assertRaisesRegex(ValueError, "package architecture differs"):
             self.resolve()
+
+    def test_architecture_independent_package_keeps_all(self):
+        self.document["packages"]["libexample"]["control_fields"]["Architecture"] = "all"
+        self.assertEqual(self.resolve()[0]["packages"]["libexample"]["control_fields"]["Architecture"], "all")
 
     def test_generated_metadata_must_match_target_architecture(self):
         """Do not reuse resolved AMD64 dependency metadata for ARM64 payloads."""

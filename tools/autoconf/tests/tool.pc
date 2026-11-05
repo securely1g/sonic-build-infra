@@ -1,0 +1,6 @@
+prefix=${pcfiledir}
+Name: Declared probe headers
+Description: A relocatable configure input
+Version: 1.0
+Cflags: -I${prefix}
+Libs:

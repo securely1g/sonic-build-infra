@@ -1,0 +1,67 @@
+load(":probe.bzl", "autoconf_probe")
+load(":probe_analysis_test.bzl", "native_fixture")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_binary(
+    name = "probe_runner",
+    srcs = ["probe_runner.py"],
+)
+
+exports_files(["probe.bzl"])
+
+autoconf_probe(
+    name = "launcher_fixture",
+    configure = "testdata/configure",
+    srcs = ["probe_runner.py"] + glob(["testdata/**"]),
+    # Repeated declared include flags preserve semantics while exercising the
+    # GCC COLLECT_GCC_OPTIONS limit caused by a long absolute sandbox prefix.
+    copts = ["-I."] * 2000,
+    build_triplet = "x86_64-pc-linux-gnu",
+    host_triplet = select({
+        "@platforms//cpu:aarch64": "aarch64-linux-gnu",
+        "//conditions:default": "x86_64-linux-gnu",
+    }),
+    expected_outputs = ["result.json", "a.out", "input source.o", "input source.s"],
+)
+
+py_test(
+    name = "launcher_test",
+    srcs = ["launcher_test.py"],
+    args = ["$(location :launcher_fixture)"],
+    data = [":launcher_fixture"],
+)
+
+py_test(
+    name = "argv_paths_test",
+    srcs = ["argv_paths_test.py", "probe_runner.py"],
+    main = "argv_paths_test.py",
+    imports = ["."],
+)
+
+py_test(
+    name = "probe_runner_test",
+    srcs = ["probe_runner.py", "probe_runner_test.py"],
+    main = "probe_runner_test.py",
+)
+
+autoconf_probe(
+    name = "response_fixture",
+    configure = "response_fixture.sh",
+    srcs = ["response_fixture.py"],
+    build_triplet = "controlled-native",
+    host_triplet = "controlled-native",
+    expected_outputs = ["result.json"],
+    tags = ["manual"],
+)
+
+native_fixture(name = "response_fixture_native", probe = ":response_fixture", testonly = True)
+
+py_test(
+    name = "linker_response_test",
+    srcs = ["response_fixture_test.py"],
+    args = ["$(location :response_fixture_native)"],
+    data = [":response_fixture_native"],
+    main = "response_fixture_test.py",
+)

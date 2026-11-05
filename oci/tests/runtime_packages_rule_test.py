@@ -57,7 +57,7 @@ class RuntimePackagesRuleTest(unittest.TestCase):
                 self.assertEqual(fields["Version"], "2.0")
                 self.assertEqual(fields["Maintainer"], "Example <example@example.org>")
                 self.assertNotIn("${", json.dumps(fields))
-                self.assertNotIn("Architecture", fields)
+                self.assertEqual(fields["Architecture"], document["architecture"])
         self.assertIn("libc6 (>=", packages["metadata-library"]["control_fields"]["Depends"])
         self.assertIn("metadata-library (>= 2.0)", packages["metadata-cli"]["control_fields"]["Depends"])
         self.assertEqual(packages["metadata-library"]["required_paths"], ["usr/lib/libmetadata-fixture.so.1"])
@@ -101,7 +101,7 @@ class RuntimePackagesRuleTest(unittest.TestCase):
             with tarfile.open(library) as archive:
                 member = next(item for item in archive if item.isfile() and item.name.endswith(".so.1"))
                 binary.write_bytes(archive.extractfile(member).read())
-            subprocess.run([str(patchelf.resolve()), "--set-rpath", str(execution_libc.parent), str(binary)], check=True)
+            subprocess.run([str(patchelf.absolute()), "--set-rpath", str(execution_libc.parent), str(binary)], check=True)
             payload = root / "rpath.tar"
             data = binary.read_bytes()
             with tarfile.open(payload, "w") as archive:
@@ -223,6 +223,50 @@ class RuntimePackagesRuleTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             fields = json.loads((root / "metadata.json").read_text())["packages"]["libmetadatat64"]["control_fields"]
             self.assertEqual(fields["Provides"], "libmetadata (= 2.0)")
+
+    def test_source_shlibs_substitutions_preserve_dependency_fields(self):
+        """Debian control chooses shlibs fields; real ELF dependencies follow them."""
+        cases = [
+            ("Depends: ${shlibs:Depends}", "Depends"),
+            ("Pre-Depends: ${shlibs:Pre-Depends}\nDepends: base-files", "Pre-Depends"),
+            ("Recommends: ${shlibs:Recommends}", "Recommends"),
+            ("Recommends: ${shlibs:Depends}", "Recommends"),
+            ("Pre-Depends: ${shlibs:Pre-Depends}\nDepends: base-files, ${shlibs:Depends}", "Pre-Depends"),
+        ]
+        for relationships, dependency_field in cases:
+            with self.subTest(relationships=relationships), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source_control = self.control(root, "metadata-library", relationships)
+                result = self.generate(root, source_control, library,
+                    additional=["--apt-package", str(libc_data.resolve()) + "=" + str(libc_control.resolve())])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                item = json.loads((root / "metadata.json").read_text())["packages"]["metadata-library"]
+                fields = item["control_fields"]
+                self.assertIn("libc6 (>=", fields[dependency_field])
+                if "base-files" in relationships:
+                    self.assertEqual(fields["Depends"], "base-files")
+                elif dependency_field != "Depends":
+                    self.assertNotIn("Depends", fields)
+                self.assertNotIn("${", json.dumps(fields))
+                self.assertEqual(item["payload_sha256"], hashlib.sha256(library.read_bytes()).hexdigest())
+
+    def test_non_elf_payload_has_no_shlibs_pre_dependencies(self):
+        """A source's shlibs variable resolves empty when its TAR has no ELF."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_control = self.control(root, "metadata-scripts",
+                "Pre-Depends: ${shlibs:Pre-Depends}\nDepends: base-files", architecture="all")
+            payload = root / "data.tar"
+            with tarfile.open(payload, "w") as archive:
+                data = b"plain runtime resource\n"
+                member = tarfile.TarInfo("usr/share/metadata/resource")
+                member.size, member.mode = len(data), 0o644
+                archive.addfile(member, io.BytesIO(data))
+            result = self.generate(root, source_control, payload, package="metadata-scripts")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            fields = json.loads((root / "metadata.json").read_text())["packages"]["metadata-scripts"]["control_fields"]
+            self.assertEqual(fields["Depends"], "base-files")
+            self.assertNotIn("Pre-Depends", fields)
 
 
 if __name__ == "__main__":

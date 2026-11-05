@@ -1,2 +1,16 @@
-# SWIG library extraction should be done in the consumer repo
-# See gen.bzl for swig_lib attribute configuration
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+
+py_binary(
+    name = "extract_templates",
+    srcs = ["extract_templates.py"],
+)
+
+py_test(
+    name = "extract_templates_test",
+    srcs = [
+        "extract_templates.py",
+        "extract_templates_test.py",
+    ],
+    imports = ["."],
+    main = "extract_templates_test.py",
+)

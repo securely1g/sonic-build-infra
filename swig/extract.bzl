@@ -1,44 +1,34 @@
-"""Rule to extract SWIG library files from apt package data."""
+"""Extract a fixed SWIG template tree using a declared Python executable."""
 
 def _swig_lib_extract_impl(ctx):
-    out_dir = ctx.actions.declare_directory(ctx.label.name)
-
-    # strip_components needs to account for leading ./ in tar paths
-    # e.g., ./usr/share/swig4.0/swig.swg -> strip 4 components to get swig.swg
-    strip_count = ctx.attr.strip_prefix.count("/") + 2  # +1 for leading ./, +1 for the path itself
-
-    ctx.actions.run_shell(
+    output = ctx.actions.declare_directory(ctx.label.name)
+    args = ctx.actions.args()
+    args.add_all(ctx.files.data, before_each = "--archive")
+    args.add("--prefix", ctx.attr.strip_prefix)
+    args.add("--output", output.path)
+    if ctx.attr.require_entry_point:
+        args.add("--require-entry-point")
+    tool = ctx.attr._extractor[DefaultInfo].files_to_run
+    ctx.actions.run(
+        executable = tool,
+        tools = [tool],
+        arguments = [args],
         inputs = ctx.files.data,
-        outputs = [out_dir],
-        command = """
-            set -e
-            mkdir -p {out}
-            for tar in {srcs}; do
-                tar -xzf "$tar" -C {out} --strip-components={strip} './{prefix}' 2>/dev/null || true
-            done
-        """.format(
-            out = out_dir.path,
-            srcs = " ".join([f.path for f in ctx.files.data]),
-            strip = strip_count,
-            prefix = ctx.attr.strip_prefix,
-        ),
+        outputs = [output],
         mnemonic = "SwigLibExtract",
-        progress_message = "Extracting SWIG library files",
+        progress_message = "Extracting required SWIG templates for %{label}",
     )
-
-    return [DefaultInfo(files = depset([out_dir]))]
+    return [DefaultInfo(files = depset([output]))]
 
 swig_lib_deb = rule(
     implementation = _swig_lib_extract_impl,
     attrs = {
-        "data": attr.label(
-            mandatory = True,
-            allow_files = True,
-            doc = "The apt package data tar.gz containing SWIG library files",
+        "data": attr.label(mandatory = True, allow_files = True),
+        "strip_prefix": attr.string(default = "usr/share/swig4.0"),
+        "require_entry_point": attr.bool(
+            default = False,
+            doc = "Require swig.swg for a complete template tree; leave false to extract a subtree.",
         ),
-        "strip_prefix": attr.string(
-            default = "usr/share/swig4.0",
-            doc = "Path prefix to strip when extracting (e.g., 'usr/share/swig4.0')",
-        ),
+        "_extractor": attr.label(default = Label("//swig:extract_templates"), executable = True, cfg = "exec"),
     },
 )

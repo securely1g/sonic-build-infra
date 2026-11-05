@@ -76,12 +76,14 @@ jobs:
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
+          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
       - name: Validate native Debian GCC, Clang and their shared sysroot
         run: >-
           python3 toolchains/sysroot/tests/validate.py --artifacts ci-artifacts/shared-sysroot
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
+          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
       - name: Validate Debian cross GCC and Clang with an AMD64 source generator
         if: matrix.arch == 'AMD64'
         run: >-
@@ -89,6 +91,7 @@ jobs:
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
+          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
       - name: Send ARM64 programs and their declared runtime to the native runner
         if: matrix.arch == 'AMD64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

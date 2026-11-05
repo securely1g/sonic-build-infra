@@ -5,6 +5,7 @@ Mirrors tar/assert_tar.bzl.
 """
 
 load("@bazel_lib//lib:diff_test.bzl", "diff_test")
+load("@rules_python//python:defs.bzl", "py_test")
 
 _TAR_TOOLCHAIN = "@tar.bzl//tar/toolchain:type"
 
@@ -89,7 +90,7 @@ def assert_deb_md5sums(name, deb, expected):
     )
 
 def assert_deb_control(name, deb, expected):
-    """Assert the text of a .deb's control file.
+    """Assert the fields of a .deb's control file independent of field order.
 
     Args:
         name: name of the test target.
@@ -106,9 +107,14 @@ def assert_deb_control(name, deb, expected):
                "$(BSDTAR_BIN) -xOf - ./control >$@").format(deb = deb),
         toolchains = [_TAR_TOOLCHAIN],
     )
-    diff_test(
+    expected_target = name + "_expected"
+    native.alias(name = expected_target, actual = expected, testonly = True)
+    py_test(
         name = name,
-        file1 = control,
-        file2 = expected,
+        srcs = [Label("//deb:assert_control.py")],
+        main = Label("//deb:assert_control.py"),
+        args = ["$(location %s)" % control, "$(location %s)" % expected_target],
+        data = [control, expected_target],
+        deps = [Label("//apt:lib")],
         timeout = "short",
     )

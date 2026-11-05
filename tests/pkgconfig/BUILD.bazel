@@ -1,0 +1,73 @@
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_binary", "cc_import")
+load("//cc:cc_build_pkgconfig.bzl", "cc_build_pkgconfig")
+load(":consumer_test.bzl", "ordinary_includes", "repeated_dynamic", "pkgconfig_consumer_test", "unsupported_includes_test")
+
+[
+    expand_template(
+        name = "generated_" + key,
+        template = "generated.h.in",
+        out = key + "/include/pkgfixture/generated.h",
+        substitutions = {"@OFFSET@": offset},
+    )
+    for key, offset in [("first", "39"), ("second", "31")]
+]
+[
+    cc_library(
+        name = "fixture_" + key,
+        srcs = ["fixture.c"],
+        hdrs = ["include/pkgfixture/api.h", ":generated_" + key],
+        includes = ["include", key + "/include"],
+        defines = ["FIXTURE_BASE=" + base],
+        linkopts = ["-Wl,--defsym,fixture_marker=42", "-Wl,--defsym,fixture_marker=43"],
+        alwayslink = key == "first",
+    )
+    for key, base in [("first", "3"), ("second", "11")]
+]
+[
+    cc_build_pkgconfig(
+        name = "pc_" + key,
+        dep = ":fixture_" + key,
+        package_name = module,
+        version = version,
+    )
+    for key, module, version in [("first", "pkgfixture", "1.4"), ("second", "otherfixture", "7.2")]
+]
+[
+    pkgconfig_consumer_test(
+        name = "mixed_" + key + "_test",
+        src = "consumer.c",
+        pc = ":pc_" + key,
+        apt_pc = "@frr_deps//libjson-c-dev:pkgconfig",
+        deps = [":fixture_" + key, "@frr_deps//libjson-c-dev:libjson-c_static"],
+        module = module,
+        version = version,
+        runtime = "//tools/build_tools:foreign_runtime",
+    )
+    for key, module, version in [("first", "pkgfixture", "1.4"), ("second", "otherfixture", "7.2")]
+]
+ordinary_includes(name = "ordinary")
+cc_build_pkgconfig(
+    name = "unsupported",
+    dep = ":ordinary",
+    package_name = "unsupported",
+    version = "1",
+    tags = ["manual"],
+)
+unsupported_includes_test(name = "unsupported_includes_test", target_under_test = ":unsupported")
+
+cc_binary(name = "dynamic_library", srcs = ["dynamic.c"], linkshared = True)
+cc_import(name = "dynamic_import", shared_library = ":dynamic_library")
+repeated_dynamic(name = "dynamic_repeated", dep = ":dynamic_import")
+cc_build_pkgconfig(name = "pc_dynamic", dep = ":dynamic_repeated", package_name = "dynamicfixture", version = "2")
+pkgconfig_consumer_test(
+    name = "repeated_dynamic_test",
+    src = "dynamic_consumer.c",
+    pc = ":pc_dynamic",
+    apt_pc = "@frr_deps//libjson-c-dev:pkgconfig",
+    deps = [":dynamic_repeated", "@frr_deps//libjson-c-dev:libjson-c_static"],
+    module = "dynamicfixture",
+    version = "2",
+    runtime = "//tools/build_tools:foreign_runtime",
+    native_dynamic = True,
+)

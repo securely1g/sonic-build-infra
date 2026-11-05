@@ -1,0 +1,28 @@
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
+
+# Debian check 0.15.2-3's check.pc requests libcheck_pic, shared libsubunit,
+# -pthread, -lrt and -lm. The neighboring libcheck.a is a separate variant.
+cc_import(
+    name = "check_pic",
+    static_library = select({
+        "@platforms//cpu:x86_64": "@check_amd64//:usr/lib/x86_64-linux-gnu/libcheck_pic.a",
+        "@platforms//cpu:arm64": "@check_arm64//:usr/lib/aarch64-linux-gnu/libcheck_pic.a",
+    }),
+)
+
+cc_library(
+    name = "check",
+    linkopts = [
+        "-pthread",
+        "-lrt",
+        "-lm",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":check_pic",
+        "@trixie//libsubunit-dev:libsubunit_cc",
+    ] + select({
+        "@platforms//cpu:x86_64": ["@check_amd64//:check_headers_wodeps"],
+        "@platforms//cpu:arm64": ["@check_arm64//:check_headers_wodeps"],
+    }),
+)

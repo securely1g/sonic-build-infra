@@ -1,0 +1,57 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_shared_library.bzl", "cc_shared_library")
+load("//cc:shared_library.bzl", "shared_library_cc_info")
+load("//cc:toolchain_variant.bzl", "cc_binary_toolchain_variant", "cc_toolchain_variant")
+load(":provider_test.bzl", "debug_fixture", "providers_test")
+
+cc_library(name = "library", srcs = ["library.c"], hdrs = ["library.h"])
+cc_shared_library(name = "shared", deps = [":library"])
+debug_fixture(name = "shared_with_symbols", actual = ":shared", symbols = "symbols.txt")
+cc_toolchain_variant(name = "selected_library", actual = ":library")
+cc_toolchain_variant(name = "selected_shared", actual = ":shared_with_symbols")
+shared_library_cc_info(name = "selected_shared_link", shared_library = ":selected_shared")
+cc_library(name = "public_headers", hdrs = ["library.h"])
+cc_binary(name = "consumer", srcs = ["consumer.c"], deps = [":selected_library"])
+cc_binary(name = "shared_consumer", srcs = ["consumer.c"], deps = [":selected_shared_link", ":public_headers"])
+providers_test(name = "library_provider_test", original = ":library", selected = ":selected_library")
+providers_test(name = "shared_provider_test", original = ":shared_with_symbols", selected = ":selected_shared")
+
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//tools/build_tools:defs.bzl", "source_build_tool")
+cc_binary_toolchain_variant(name = "selected_binary", actual = ":consumer")
+source_build_tool(name = "selected_binary_tool", binary = ":selected_binary")
+py_test(
+    name = "binary_runfiles_test",
+    srcs = ["binary_runfiles_test.py"],
+    args = ["$(location :selected_binary_tool)"],
+    data = [":selected_binary_tool"],
+)
+
+# A filegroup selecting one debug artifact has files_to_run.executable even
+# though consumers use it as packaging data. Preserve that native interface.
+filegroup(name = "symbols_group", srcs = [":shared_with_symbols"], output_group = "fixture_symbols")
+cc_toolchain_variant(name = "selected_symbols", actual = ":symbols_group")
+providers_test(name = "symbols_provider_test", original = ":symbols_group", selected = ":selected_symbols")
+
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+cc_import(name = "imported", shared_library = ":shared")
+cc_toolchain_variant(name = "selected_import", actual = ":imported")
+cc_library(
+    name = "bridge",
+    srcs = ["bridge.c"],
+    hdrs = ["bridge.h"],
+    deps = [":selected_import", ":public_headers"],
+)
+cc_shared_library(name = "bridge_shared", deps = [":bridge"])
+shared_library_cc_info(name = "bridge_link", shared_library = ":bridge_shared")
+cc_library(name = "bridge_headers", hdrs = ["bridge.h"])
+cc_binary(name = "bridge_consumer", srcs = ["bridge_consumer.c"], deps = [":bridge_link", ":bridge_headers"])
+source_build_tool(name = "bridge_consumer_tool", binary = ":bridge_consumer")
+py_test(
+    name = "imported_shared_consumer_test",
+    srcs = ["binary_runfiles_test.py"],
+    main = "binary_runfiles_test.py",
+    args = ["$(location :bridge_consumer_tool)"],
+    data = [":bridge_consumer_tool"],
+)

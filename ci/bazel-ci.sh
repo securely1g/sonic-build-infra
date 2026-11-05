@@ -19,11 +19,16 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-# Default to maintained main; Draft validation may select one exact candidate.
+python3 apt/lock.py check | tee "$artifacts/apt-lock-check.log"
+mkdir -p "$artifacts/apt" "$artifacts/ci"
+cp apt/apt.lock.json apt/sources.json apt/requests.json "$artifacts/apt/"
+cp ci/source_mirrors.cfg "$artifacts/ci/"
+# Use the maintained SONiC registry by default.
 # Record the effective endpoint with the generated module lock.
 registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
-resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update)
+resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update
+            --downloader_config="$root/ci/source_mirrors.cfg")
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
        '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$')
@@ -32,19 +37,53 @@ bazel_cmd=(bazel --ignore_all_rc_files)
 # The workflow runs this on both native AMD64 and ARM64 hosts.
 python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
 tests=(
+  //go:lock_test
+  //deb:assemble_test
+  //tests:hello_deb_optional_fields_build_test
   //deps:alternatives_test
   //oci/tests:runtime_packages_test //oci/tests:runtime_packages_rule_test
+  //oci/tests:runtime_control_files_rule_test
   //oci/tests:installed_packages_test
   //oci/tests:owner_metadata_test //oci/tests:installed_packages_rule_test
   //oci/tests:account_layer_test
+  //apt:lock_test
+  //apt:bookworm_lock_test
+  //python/tests:runtime_lock_test
+  //python/tests:source_package_builder_test
+  //python/tests:site_packages_test
   //apt:selection_test
   //apt:inputs_test
   //apt:dependencies_test
   //apt/tests/integration:adapter_test
+  //apt/tests/integration:static_link_test
+  //apt/tests/integration:raw_archive_labels_test
   //apt/tests/integration:overlap_test
   //tests:hello_build_test
   //tests:hello_cpp_build_test
   //tests:hello_strip_test
+  //tests:hello_rpath_preservation_test
+  //tests:hello_runpath_preservation_test
+  //tests:hello_static_preservation_test
+  //tests:hello_rpath_exact_deployment_test
+  //tests:hello_runpath_exact_deployment_test
+  //tests:source_python_embed_test
+  //tests:debug_compression_test
+  //tools/autoconf:probe_runner_test
+  //tools/autoconf:launcher_test
+  //tools/autoconf:argv_paths_test
+  //tools/autoconf/tests:declared_tools_test
+  //tools/autoconf/tests:relocatable_pkgconfig_test
+  //tools/build_tools:gdb_runtime_test
+  //cc/tests/toolchain_variant:library_provider_test
+  //cc/tests/toolchain_variant:shared_provider_test
+  //cc/tests/toolchain_variant:symbols_provider_test
+  //cc/tests/toolchain_variant:binary_runfiles_test
+  //cc/tests/toolchain_variant:imported_shared_consumer_test
+  //tools/autoconf:linker_response_test
+  //tests/pkgconfig:repeated_dynamic_test
+  //tests/pkgconfig:mixed_first_test
+  //tests/pkgconfig:mixed_second_test
+  //tests/pkgconfig:unsupported_includes_test
   //tests/debug_control:all
   //tests:cc_toolchain_supports_pic_test
   //tests:libgreet_build_test
@@ -58,6 +97,9 @@ tests=(
   //proto:protoc_version_test
   //python:py_native_library_test
   //swig/tests:defines_test
+  //swig:extract_templates_test
+  //tools/build_tools:image_runtime_test
+  //tools/build_tools:manual_runtime_test
   //tests:deploy_tar_timestamps_test
   //toolchains/gcc/tests:foreign_link_test
   //cc/tests:transitive_runtime_test
@@ -89,15 +131,24 @@ if [[ -f tools/build_tools/prepare_rootfs.py ]]; then
 fi
 outputs=(//tests:hello //tests:hello_cpp //tests:hello_deploy_tar //tests:hello_deploy_tar.debug_symbols
   //tar:timestamp_default_tar //tests:timestamp_deploy_tar //tests:timestamp_deploy_tar.debug_symbols)
+if [[ "$debian_arch" == amd64 ]]; then
+  tests+=(//tools/build_tools:installer_worker_debs_test)
+fi
 if [[ "$debian_arch" == amd64 && -f tools/build_tools/docbook_runtime_test.py ]]; then
   tests+=(//tools/build_tools:docbook_runtime_test)
 fi
 # Audit the actual configured graph, including imported tests, before executing
-# any action. Product outputs remain TARs; existing runtime tests may build
-# temporary sample Debian packages to validate the declared packaging tools.
+# any action. The dedicated DEB compatibility test intentionally creates DEBs;
+# keep it in the test suite and audit the ordinary production graph separately.
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
+audit_tests=()
+for target in "${tests[@]}"; do
+  if [[ "$target" != //tests:hello_deb_optional_fields_build_test ]]; then
+    audit_tests+=("$target")
+  fi
+done
 "${bazel_cmd[@]}" aquery "${flags[@]}" --output=jsonproto \
-  "deps(set(${tests[*]} ${outputs[*]}))" > "$artifacts/actions.json"
+  "deps(set(${audit_tests[*]} ${outputs[*]}))" > "$artifacts/actions.json"
 apt_python_tests=(//apt:dependencies_test //apt:selection_test //apt:inputs_test //apt/tests/integration:adapter_test //apt/tests/integration:overlap_test)
 apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_version=3.13)
 "${bazel_cmd[@]}" aquery "${apt_python_flags[@]}" --output=jsonproto \
@@ -137,15 +188,15 @@ for filename in ('actions.json', 'apt-python313-actions.json', 'bookworm-actions
     (root / filename.replace('actions.json', 'action-audit.json')).write_text(json.dumps(receipt, indent=2) + '\n')
     assert not receipt['deb_outputs'] and not forbidden, receipt
 PYTHON
-"${bazel_cmd[@]}" test "${flags[@]}" --test_output=errors \
+"${bazel_cmd[@]}" test "${flags[@]}" --nocache_test_results --test_output=errors \
   --build_event_json_file="$artifacts/tests.bep.json" "${tests[@]}"
 # Include external test labels and their canonical repository paths in artifacts.
 cp -aL bazel-testlogs "$artifacts/testlogs"
 # The image consumer runs Python 3.13; retain its separate hub/runfiles proof.
-"${bazel_cmd[@]}" test "${apt_python_flags[@]}" --test_output=errors \
+"${bazel_cmd[@]}" test "${apt_python_flags[@]}" --nocache_test_results --test_output=errors \
   --build_event_json_file="$artifacts/apt-python313-tests.bep.json" "${apt_python_tests[@]}"
 cp -aL bazel-testlogs "$artifacts/apt-python313-testlogs"
-"${bazel_cmd[@]}" test "${bookworm_flags[@]}" --test_output=errors \
+"${bazel_cmd[@]}" test "${bookworm_flags[@]}" --nocache_test_results --test_output=errors \
   --build_event_json_file="$artifacts/bookworm-tests.bep.json" "${bookworm_tests[@]}"
 cp -aL bazel-testlogs "$artifacts/bookworm-testlogs"
 "${bazel_cmd[@]}" build "${flags[@]}" --build_event_json_file="$artifacts/build.bep.json" "${outputs[@]}"
@@ -178,7 +229,7 @@ if [[ -f tests/shared_api_consumer/MODULE.bazel ]]; then
         done
       done
     done
-    "${bazel_cmd[@]}" test "${resolution[@]}" --jobs=4 --test_output=errors \
+    "${bazel_cmd[@]}" test "${resolution[@]}" --jobs=4 --nocache_test_results --test_output=errors \
       --build_event_json_file="$artifacts/shared-api.bep.json" "${fixture_tests[@]}"
     if "${bazel_cmd[@]}" query "${resolution[@]}" @unsafe//:files > "$artifacts/unsafe-sysroot.log" 2>&1; then
       echo 'Unsafe archive was unexpectedly accepted' >&2; exit 1

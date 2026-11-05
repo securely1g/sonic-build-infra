@@ -29,6 +29,7 @@ def _strip_binary_rule_impl(ctx):
     args.add(binutils.objcopy.executable)
     args.add(binutils.readelf.executable)
     args.add(ctx.executable._patchelf)
+    args.add(ctx.executable._gawk)
 
     ctx.actions.run(
         executable = ctx.file._strip_tool,
@@ -38,12 +39,15 @@ def _strip_binary_rule_impl(ctx):
         env = {
             # If the base image is Make-built, it already has a /etc/ld.so.cache to look up installed binaries,
             # and rpaths could mess resolution order (since they have precedence over LD_LIBRARY_PATH).
+            "INSTALL_RPATH": ctx.attr.install_rpath,
             "STRIP_RPATH": "true" if ctx.attr._make_built_base[BuildSettingInfo].value and not ctx.attr.preserve_install_rpath else "false",
+            "COMPRESS_DEBUG_SECTIONS": "true" if ctx.attr.compress_debug_sections else "false",
         },
         tools = [
             binutils.readelf,
             binutils.objcopy,
             ctx.attr._patchelf[DefaultInfo].files_to_run,
+            ctx.attr._gawk[DefaultInfo].files_to_run,
         ],
         mnemonic = "StripBinary",
         progress_message = "Stripping debug info from %{label}",
@@ -81,10 +85,24 @@ _strip_binary_rule = rule(
             doc = "The script that drives objcopy to split the ELF.",
         ),
         "_patchelf": attr.label(
-            default = "@patchelf//:patchelf",
+            default = Label("//tools/build_tools:patchelf"),
             executable = True,
             cfg = "exec",
             doc = "Removes the rpath entries. binutils has no tool that edits .dynamic.",
+        ),
+        "_gawk": attr.label(
+            default = Label("//tools/build_tools:gawk"),
+            executable = True,
+            cfg = "exec",
+            doc = "Reads the ELF build-id using the declared execution runtime.",
+        ),
+        "compress_debug_sections": attr.bool(
+            default = False,
+            doc = "Compress extracted DWARF with GNU objcopy before computing the runtime debuglink. Default preserves the existing uncompressed format.",
+        ),
+        "install_rpath": attr.string(
+            default = "",
+            doc = "Set the installation ELF to this exact search path before debug splitting, preserving its RPATH/RUNPATH tag. Empty keeps the existing policy.",
         ),
         "_make_built_base": attr.label(
             default = "//config:make_built_base",

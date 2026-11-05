@@ -10,6 +10,7 @@ debug_dir="$3"
 objcopy="$4"
 readelf="$5"
 patchelf="$6"
+gawk="$7"
 strip_rpaths="${STRIP_RPATH:-false}"
 
 # objcopy rewrites in place, so work on a writable copy kept inside the action's
@@ -23,7 +24,13 @@ chmod u+w "$tmp" # Make the copy writable for patchelf
 dynamic="$("$readelf" -d "$tmp")"
 # A static ELF has no dynamic section. Even dynamic ELFs may have no rpath;
 # patchelf is unnecessary in both cases and cannot edit a static executable.
-if [[ "$dynamic" == *"(RPATH)"* || "$dynamic" == *"(RUNPATH)"* ]]; then
+if [[ -n "${INSTALL_RPATH:-}" && "$dynamic" == *"(NULL)"* ]]; then
+  rpath_flags=()
+  if [[ "$dynamic" == *"(RPATH)"* && "$dynamic" != *"(RUNPATH)"* ]]; then
+    rpath_flags+=(--force-rpath)
+  fi
+  "$patchelf" "${rpath_flags[@]}" --set-rpath "$INSTALL_RPATH" "$tmp"
+elif [[ "$dynamic" == *"(RPATH)"* || "$dynamic" == *"(RUNPATH)"* ]]; then
   if [[ "$strip_rpaths" == "true" ]]; then
     "$patchelf" --remove-rpath "$tmp"
   else
@@ -59,7 +66,7 @@ fi
 
 # The .debug file is named by the binary's build-id; that is how gdb re-finds it
 # via the .gnu_debuglink. The build-id is only known here, at action time.
-build_id="$("$readelf" -n "$tmp" | awk '/Build ID:/ { print $NF }')"
+build_id="$("$readelf" -n "$tmp" | "$gawk" '/Build ID:/ { print $NF }')"
 if [[ -z "$build_id" ]]; then
   echo "ERROR: input binary '$input' has no build-id; cannot name the debug file" >&2
   rm -f "$tmp"
@@ -73,7 +80,11 @@ debug_file="${debug_dir}/.build-id/${build_id:0:2}/${build_id:2}.debug"
 mkdir -p "$(dirname "$debug_file")"
 
 # Extract the debug info into the build-id-named file.
-"$objcopy" --only-keep-debug "$tmp" "$debug_file"
+debug_options=(--only-keep-debug)
+if [[ "${COMPRESS_DEBUG_SECTIONS:-false}" == "true" ]]; then
+  debug_options+=(--compress-debug-sections)
+fi
+"$objcopy" "${debug_options[@]}" "$tmp" "$debug_file"
 
 # Strip the debug info from the binary and point it back at the debug file.
 # objcopy records only the basename in the .gnu_debuglink.

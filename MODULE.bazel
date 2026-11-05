@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-build-infra",
-    version = "0.0.26",
+    version = "0.0.27",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -9,11 +9,12 @@ module(
 )
 
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
-bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_cc", version = "0.2.20")
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
-bazel_dep(name = "rules_python", version = "1.7.0")
+# Preserve complete source-install/wheel metadata and explicit payload modes.
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
+bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
 
 sysroot_tar = use_extension("@tar.bzl//tar:extensions.bzl", "toolchains")
 use_repo(sysroot_tar, "bsd_tar_toolchains_linux_amd64", "bsd_tar_toolchains_linux_arm64")
@@ -22,13 +23,14 @@ use_repo(sysroot_tar, "bsd_tar_toolchains_linux_amd64", "bsd_tar_toolchains_linu
 # upstream release, which sorts above its SONiC prerelease version.
 single_version_override(
     module_name = "tar.bzl",
-    version = "0.10.5-sonic.1",
+    version = "0.10.5.sonic.2",
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "aspect_rules_py", version = "1.11.2")
 bazel_dep(name = "patchelf", version = "0.18.0.bcr.1")
+bazel_dep(name = "gawk", version = "5.3.2.sonic.1")
 
 # A local module providing a cc_binary in a separate module, used only by our
 # tests to prove that we correctly package binaries from another module.
@@ -41,7 +43,7 @@ local_path_override(
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
 
 # The SONiC patch sorts above upstream 0.9.4 without a root override.
-bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.15")
+bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.17")
 
 # One multiarch directory shared by GCC and Clang on both architectures.
 # Consumers import this same repository through use_extension/use_repo.
@@ -71,254 +73,28 @@ KERNEL_TARGET_ARCHITECTURES = NATIVE_ARCHITECTURES + ["armhf"]
 # one cc and one binutils toolchain per tag.
 register_toolchains("@gcc_toolchains//:all")
 
-DEBIAN_SNAPSHOT = "https://snapshot.debian.org/archive/debian/20260727T143429Z"
-
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
-apt.sources_list(
-    architectures = KERNEL_TARGET_ARCHITECTURES,
-    components = ["main"],
-    suites = [
-        "trixie",
-        "trixie-updates",
-    ],
-    uris = [DEBIAN_SNAPSHOT],
-)
-apt.sources_list(
-    architectures = KERNEL_TARGET_ARCHITECTURES,
-    components = ["main"],
-    suites = ["trixie-security"],
-    uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
+
+# One immutable reviewed package graph serves payloads, libraries and exec tools.
+apt.sources_file(file = "//apt:sources.json")
+apt.import_lock(
+    libraries = True,
+    lock = "//apt:apt.lock.json",
+    requests = "//apt:requests.json",
+    sources = "//apt:sources.json",
 )
 
-# The cc toolchains' sysroot: libc, libstdc++ and kernel headers.
-# We keep it in a separate apt install set so that the toolchain can resolve
-# without fetching the entire closure of packages.
-apt.install(
-    dependency_set = "sysroot",
-    packages = [
-        # Expose the target ABI controls as well as the compiler headers.
-        # Runtime metadata must inspect target libraries, never build-tool copies.
-        "libc6",
-        "libc6-dev",
-        "libgcc-s1",
-        "libgcc-14-dev",
-        "libstdc++6",
-        "libstdc++-14-dev",
-        "linux-libc-dev",
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
+# Preserve historical raw-archive interfaces from the same locked packages.
+use_repo(
+    apt,
+    build_make_amd64 = "trixie_make-amd64_4.4.1-2",
+    build_make_arm64 = "trixie_make-arm64_4.4.1-2",
+    vim_amd64 = "trixie_vim-amd64_2-9.1.1230-2",
+    vim_arm64 = "trixie_vim-arm64_2-9.1.1230-2",
+    vim_runtime = "trixie_vim-runtime-amd64_2-9.1.1230-2",
 )
 
-# Build tools used by source generation. Consumers select these package
-# payloads in the execution configuration so the tools and their runtime files
-# match the machine running the generator.
-# Kernel roots also retain source Build-Depends and runtime-library control
-# metadata needed by dpkg-checkbuilddeps and dpkg-shlibdeps.
-apt.install(
-    dependency_set = "build_tools",
-    packages = [
-        name if ":" in name else name + ":" + architecture
-        for name in [
-            "aspell",
-            "aspell-en",
-            "autoconf",
-            "automake",
-            "bash",
-            "bc",
-            "bison",
-            "build-essential",
-            "comerr-dev",
-            "coreutils",
-            "cpio",
-            "dash",
-            "debhelper",
-            "debianutils",
-            "dh-python",
-            "diffutils",
-            "docbook",
-            "docbook-utils",
-            "doxygen",
-            "findutils",
-            "flex",
-            "fonts-dejavu-core",
-            "gcc-14",
-            # The ARM64 kernel builds a 32-bit compatibility vDSO with this compiler.
-            "gcc-arm-linux-gnueabihf:arm64",
-            "graphviz",
-            "grep",
-            "gzip",
-            "kernel-wedge",
-            "kmod",
-            "libc-bin",
-            "libc6",
-            "libelf-dev",
-            "libelf1t64",
-            "libgcc-s1",
-            "libprotobuf-dev",
-            "libsgmls-perl",
-            "sgmlspl",
-            "libssl-dev",
-            "libssl3t64",
-            "libtool",
-            "libtool-bin",
-            "libxml-simple-perl",
-            "libxml2-utils",
-            "libzstd1",
-            "lz4",
-            "m4",
-            "mawk",
-            "openssl",
-            "opensp",
-            "pahole",
-            "patch",
-            "perl",
-            "pkgconf",
-            "protobuf-compiler",
-            "protobuf-compiler-grpc",
-            "python3",
-            "python3-dacite",
-            "python3-jinja2",
-            "quilt",
-            "rsync",
-            "sed",
-            "ss-dev",
-            "thrift-compiler",
-            "util-linux",
-            "xsltproc",
-            "xz-utils",
-            "zlib1g",
-            "zstd",
-            "dpkg-dev",
-            "python3-dev",
-            "python3-sphinx",
-            "python3-pytest",
-            "valgrind",
-            "libc6-dbg",
-            "tcl8.6",
-            "tcl-expect",
-            "texinfo",
-        ]
-        for architecture in NATIVE_ARCHITECTURES
-        if ":" not in name or name.endswith(":" + architecture)
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
-)
-
-# The kernel's AMD64 execution tools also compile ARM64 and ARMHF targets.
-apt.install(
-    dependency_set = "build_tools",
-    packages = [
-        "gcc-14-aarch64-linux-gnu:amd64",
-        "gcc-14-arm-linux-gnueabihf:amd64",
-        "gcc-aarch64-linux-gnu:amd64",
-        "gcc-arm-linux-gnueabihf:amd64",
-    ] + [
-        name + ":" + architecture
-        for name in [
-            "libelf-dev",
-            "libelf1t64",
-            "libssl-dev",
-            "libssl3t64",
-            "libzstd-dev",
-            "libzstd1",
-            "zlib1g-dev",
-            "zlib1g",
-        ]
-        for architecture in [
-            "arm64",
-            "armhf",
-        ]
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
-)
-
-# Expose individual ABI package payloads and metadata to kernel cross builds.
-apt.install(
-    dependency_set = "sysroot",
-    packages = [
-        name + ":" + architecture
-        for name in [
-            "libc6",
-            "libc6-dev",
-            "libgcc-s1",
-            "libgcc-14-dev",
-            "libcrypt1",
-            "libcrypt-dev",
-            "linux-libc-dev",
-        ]
-        for architecture in [
-            "arm64",
-            "armhf",
-        ]
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
-)
-apt.install(
-    dependency_set = "trixie",
-    packages = [
-        name if ":" in name else name + ":" + architecture
-        for name in [
-            # do not sort
-            # debug utilities
-            "gdb",
-            "gdbserver",
-            # Needed for vim, though vim itself is fetched from the main buildimage,
-            # because we can't resolve the right virtual package from rules_distroless yet.
-            "libgpm2",
-            "strace",
-            "sshpass",
-            "openssh-client",
-            # openssh-client's shared libraries.
-            # The FIPS OpenSSH deb ships without deps, so we fetch these from apt.
-            "libedit2",
-            "libfido2-1",
-
-            # for sonic-swss-common
-            # trixie ships libyang 3, so the -dev package lost its soversion suffix.
-            "nlohmann-json3-dev",
-            "libhiredis-dev",
-            "libboost-dev",
-            "libboost-serialization-dev",
-            "uuid-dev",
-            "libzmq3-dev",
-            "libyang-dev",
-            "swig",
-            "python3-dev",
-
-            # for docker-sysmgr
-            "libdbus-1-3",
-            "libdbus-c++-1-0v5",
-            "libprotobuf32t64",
-
-            # for sonic-sysmgr
-            "libdbus-c++-bin",
-            "libdbus-c++-dev",
-        ]
-        for architecture in NATIVE_ARCHITECTURES
-        if ":" not in name or name.endswith(":" + architecture)
-    ],
-    suites = [
-        "trixie",
-        "trixie-updates",
-        "trixie-security",
-    ],
-)
+# Shared collection requests and source inputs are declared in apt/requests.json.
 use_repo(
     apt,
     # Re-export the hub repo, so that dependents on sonic-build-infra can get the whole central list
@@ -334,46 +110,64 @@ use_repo(
 
     # Build tools and their runtime dependencies, resolved per architecture.
     "build_tools",
+    "image_tools",
+    "initramfs_runtime",
+    "manual_tools",
+    "base_debug_debian",
+    "frr_deps",
 )
 
-# The `vim` .debs, because rules_distroless can't give us vim.
-#
-# `vim` is a virtual package that many packages provide, not just the one named `vim`.
-# rules_distroless resolves a name to a virtual provider before it looks for a real package,
-# so asking it for "vim" hands back vim-nox, which is a package with a bunch of extra
-# language runtimes and different configuration.
-# The Make build installs this concrete `vim` package, so we fetch those .debs directly
-# and unpack them for //deps/vim:BUILD.bazel to assemble into layers.
-# The reason why they're here instead of an `imported` file inside deps/vim is
-# that we want to use DEBIAN_SNAPSHOT, and we can't import it without building a whole extension,
-# which would be overkill.
-#
-# TODO(bazel-ready): drop all of this once rules_distroless prefers a real
-# package over a virtual one of the same name.
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+# The installer worker selects its own closure from the same locked set. These
+# names include the worker's Debian requests and Docker CE's nftables dependency.
+apt_inputs = use_repo_rule("//apt:inputs_repository.bzl", "apt_inputs")
 
-_DEB_BUILD_FILE = """exports_files(["data.tar.xz"])"""
-
-http_archive(
-    name = "vim_amd64",
-    build_file_content = _DEB_BUILD_FILE,
-    sha256 = "7050d710bbcd5dee68865d90fd95a9aa865bf16d9a3874c5bb6a4f1d69231cfe",
-    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim_9.1.1230-2_amd64.deb"],
-)
-
-http_archive(
-    name = "vim_arm64",
-    build_file_content = _DEB_BUILD_FILE,
-    sha256 = "933d4a979a78574f3e57b0ddb87088c720a4526fdd254c39394c4b70f5e59aa7",
-    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim_9.1.1230-2_arm64.deb"],
-)
-
-# vim-runtime is Architecture: all, so one copy serves every platform.
-http_archive(
-    name = "vim_runtime",
-    build_file_content = _DEB_BUILD_FILE,
-    sha256 = "5addd2e7d3aae7d1907aba6c0c16c525e78ccfc0f6ee9ef9651c139a80c97058",
-    urls = [DEBIAN_SNAPSHOT + "/pool/main/v/vim/vim-runtime_9.1.1230-2_all.deb"],
+apt_inputs(
+    name = "installer_worker_apt_inputs",
+    architecture = "amd64",
+    dependency_set = "build_tools",
+    lock = "//apt:apt.lock.json",
+    root_packages = [
+        "acl",
+        "autoconf",
+        "automake",
+        "binutils",
+        "build-essential",
+        "busybox",
+        "ca-certificates",
+        "curl",
+        "diffutils",
+        "file",
+        "findutils",
+        "gawk",
+        "git",
+        "grep",
+        "gzip",
+        "iproute2",
+        "iptables",
+        "j2cli",
+        "jq",
+        "kmod",
+        "libtool",
+        "make",
+        "mount",
+        "nftables",
+        "passwd",
+        "pigz",
+        "pkg-config",
+        "procps",
+        "psmisc",
+        "python3",
+        "sed",
+        "squashfs-tools",
+        "sudo",
+        "tar",
+        "unzip",
+        "util-linux",
+        "wget",
+        "xz-utils",
+        "zip",
+        "zstd",
+    ],
 )
 
 # Raw APT source archives used to assemble the shared compiler sysroots.
@@ -415,6 +209,14 @@ SYSROOT_PACKAGE_REPO_TEMPLATES = [
 
 use_repo(apt, "trixie_libquadmath0-amd64_14.2.0-19")
 
+# Check is a development package without the conventional -dev suffix. Export
+# its pkg-config-selected archive through //apt/check:check from the shared lock.
+use_repo(
+    apt,
+    check_amd64 = "trixie_check-amd64_0.15.2-3",
+    check_arm64 = "trixie_check-arm64_0.15.2-3",
+)
+
 # Debian compiler executables and the libraries needed to run them. Native
 # AMD64, native ARM64 and AMD64-to-ARM64 builds use the same package snapshot.
 # Target headers and libraries remain in the shared sonic_sysroot repository.
@@ -434,17 +236,6 @@ GCC_RUNTIME_PACKAGES = {
     "libjansson4": "2.14-2+b3",
     "libsframe1": "2.44-3",
 }
-
-apt.install(
-    dependency_set = "gcc_runtime",
-    include_transitive = False,
-    packages = [
-        name + ":" + arch + " (= " + version + ")"
-        for arch in NATIVE_ARCHITECTURES
-        for name, version in GCC_RUNTIME_PACKAGES.items()
-    ],
-    suites = ["trixie"],
-)
 
 GCC_RUNTIME_REPOS = {
     arch: {
@@ -496,17 +287,6 @@ NATIVE_GCC_PACKAGES = {
     for arch, platform in NATIVE_GCC_PLATFORMS.items()
 }
 
-apt.install(
-    dependency_set = "gcc_native",
-    include_transitive = False,
-    packages = [
-        name + ":" + arch + " (= " + version + ")"
-        for arch, packages in NATIVE_GCC_PACKAGES.items()
-        for name, version in packages.items()
-    ],
-    suites = ["trixie"],
-)
-
 NATIVE_GCC_REPOS = {
     arch: [
         "trixie_" + name.replace("+", "-") + "-" + arch + "_" + version
@@ -544,13 +324,6 @@ CROSS_GCC_PACKAGES = {
     "gcc-14-aarch64-linux-gnu-base": "14.2.0-19cross1",
     "binutils-aarch64-linux-gnu": "2.44-3",
 }
-
-apt.install(
-    dependency_set = "gcc_cross_amd64",
-    include_transitive = False,
-    packages = [name + ":amd64 (= " + version + ")" for name, version in CROSS_GCC_PACKAGES.items()],
-    suites = ["trixie"],
-)
 
 CROSS_GCC_REPOS = [
     "trixie_" + name.replace("+", "-") + "-amd64_" + version
@@ -628,179 +401,56 @@ register_toolchains(
     "//tools/build_tools:autoconf_toolchain",
 )
 
-# Like vim above, make must select its concrete package, not make-guile.
+# Tests use the consuming root's selected Go SDK. The development SDK below
+# registers the same reviewed version for standalone infrastructure tests.
+bazel_dep(name = "rules_go", version = "0.64.1", repo_name = "io_bazel_rules_go")
 
-http_archive(
-    name = "build_make_amd64",
-    build_file_content = _DEB_BUILD_FILE,
-    sha256 = "70a9709e665383b06068ccd423d62ea191b65355f318a25565dbf324b254cec6",
-    urls = [DEBIAN_SNAPSHOT + "/pool/main/m/make-dfsg/make_4.4.1-2_amd64.deb"],
+go_sdk = use_extension("@io_bazel_rules_go//go:extensions.bzl", "go_sdk", dev_dependency = True)
+go_sdk.download(
+    name = "go_sdk",
+    version = "1.26.7",
+)
+use_repo(go_sdk, "go_sdk")
+
+# Cargo is selected from the execution platform's Rust SDK. Consumers register
+# their own SDK; this development toolchain serves standalone infrastructure tests.
+bazel_dep(name = "rules_rs", version = "0.1.0")
+
+rust_rules = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")
+use_repo(rust_rules, "rules_rust")
+
+rust = use_extension("@rules_rs//rs:rules_rust_reexported_extensions.bzl", "rust", dev_dependency = True)
+rust.toolchain(
+    edition = "2021",
+    extra_target_triples = [
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu",
+    ],
+    versions = ["1.90.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains(
+    "@rust_toolchains//:all",
+    dev_dependency = True,
 )
 
-http_archive(
-    name = "build_make_arm64",
-    build_file_content = _DEB_BUILD_FILE,
-    sha256 = "043219839669c431def9bb410c4a827f115ee5bf377469d55c4ed905f81f73be",
-    urls = [DEBIAN_SNAPSHOT + "/pool/main/m/make-dfsg/make_4.4.1-2_arm64.deb"],
+# Bazel 8.5.1 uses the compatible rules_cc API also selected by buildimage.
+single_version_override(
+    module_name = "rules_cc",
+    version = "0.2.20",
 )
+
+register_toolchains("//tools/build_tools:gawk_toolchain")
 
 bookworm_bazel_lib_tools = use_extension("@bazel_lib//lib:extensions.bzl", "toolchains")
 use_repo(bookworm_bazel_lib_tools, "coreutils_toolchains", "zstd_toolchains")
 
 use_repo(sysroot_tar, "bsd_tar_toolchains")
 
-apt_bookworm = use_extension("//toolchains/bookworm:apt.bzl", "apt")
-
-# Bookworm target ABI and GCC12 distributions, isolated from Trixie indexes.
-apt_bookworm.sources_list(
-    architectures = NATIVE_ARCHITECTURES,
-    components = ["main"],
-    suites = [
-        "bookworm",
-        "bookworm-updates",
-    ],
-    uris = [DEBIAN_SNAPSHOT],
-)
-apt_bookworm.sources_list(
-    architectures = NATIVE_ARCHITECTURES,
-    components = ["main"],
-    suites = ["bookworm-security"],
-    uris = ["https://snapshot.debian.org/archive/debian-security/20260726T121236Z"],
-)
-apt_bookworm.install(
-    dependency_set = "bookworm_toolchains",
-    include_transitive = False,
-    packages = [
-        "binutils:amd64 (= 2.40-2)",
-        "binutils:arm64 (= 2.40-2)",
-        "binutils-aarch64-linux-gnu:amd64 (= 2.40-2)",
-        "binutils-aarch64-linux-gnu:arm64 (= 2.40-2)",
-        "binutils-common:amd64 (= 2.40-2)",
-        "binutils-common:arm64 (= 2.40-2)",
-        "binutils-x86-64-linux-gnu:amd64 (= 2.40-2)",
-        "cpp-12:amd64 (= 12.2.0-14+deb12u1)",
-        "cpp-12:arm64 (= 12.2.0-14+deb12u1)",
-        "cpp-12-aarch64-linux-gnu:amd64 (= 12.2.0-14cross1)",
-        "g++-12:amd64 (= 12.2.0-14+deb12u1)",
-        "g++-12:arm64 (= 12.2.0-14+deb12u1)",
-        "g++-12-aarch64-linux-gnu:amd64 (= 12.2.0-14cross1)",
-        "gcc-12:amd64 (= 12.2.0-14+deb12u1)",
-        "gcc-12:arm64 (= 12.2.0-14+deb12u1)",
-        "gcc-12-aarch64-linux-gnu:amd64 (= 12.2.0-14cross1)",
-        "gcc-12-aarch64-linux-gnu-base:amd64 (= 12.2.0-14cross1)",
-        "gcc-12-base:amd64 (= 12.2.0-14+deb12u1)",
-        "gcc-12-base:arm64 (= 12.2.0-14+deb12u1)",
-        "gcc-12-cross-base:amd64 (= 12.2.0-14cross1)",
-        "libasan8:amd64 (= 12.2.0-14+deb12u1)",
-        "libasan8:arm64 (= 12.2.0-14+deb12u1)",
-        "libasan8-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libatomic1:amd64 (= 12.2.0-14+deb12u1)",
-        "libatomic1:arm64 (= 12.2.0-14+deb12u1)",
-        "libatomic1-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libbinutils:amd64 (= 2.40-2)",
-        "libbinutils:arm64 (= 2.40-2)",
-        "libc-dev-bin:amd64 (= 2.36-9+deb12u14)",
-        "libc-dev-bin:arm64 (= 2.36-9+deb12u14)",
-        "libc6:amd64 (= 2.36-9+deb12u14)",
-        "libc6:arm64 (= 2.36-9+deb12u14)",
-        "libc6-arm64-cross:amd64 (= 2.36-8cross1)",
-        "libc6-dev:amd64 (= 2.36-9+deb12u14)",
-        "libc6-dev:arm64 (= 2.36-9+deb12u14)",
-        "libc6-dev-arm64-cross:amd64 (= 2.36-8cross1)",
-        "libcc1-0:amd64 (= 12.2.0-14+deb12u1)",
-        "libcc1-0:arm64 (= 12.2.0-14+deb12u1)",
-        "libcom-err2:amd64 (= 1.47.0-2+b2)",
-        "libcom-err2:arm64 (= 1.47.0-2+b2)",
-        "libcrypt-dev:amd64 (= 1:4.4.33-2)",
-        "libcrypt-dev:arm64 (= 1:4.4.33-2)",
-        "libcrypt1:amd64 (= 1:4.4.33-2)",
-        "libcrypt1:arm64 (= 1:4.4.33-2)",
-        "libctf-nobfd0:amd64 (= 2.40-2)",
-        "libctf-nobfd0:arm64 (= 2.40-2)",
-        "libctf0:amd64 (= 2.40-2)",
-        "libctf0:arm64 (= 2.40-2)",
-        "libgcc-12-dev:amd64 (= 12.2.0-14+deb12u1)",
-        "libgcc-12-dev:arm64 (= 12.2.0-14+deb12u1)",
-        "libgcc-12-dev-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libgcc-s1:amd64 (= 12.2.0-14+deb12u1)",
-        "libgcc-s1:arm64 (= 12.2.0-14+deb12u1)",
-        "libgcc-s1-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libgmp10:amd64 (= 2:6.2.1+dfsg1-1.1)",
-        "libgmp10:arm64 (= 2:6.2.1+dfsg1-1.1)",
-        "libgomp1:amd64 (= 12.2.0-14+deb12u1)",
-        "libgomp1:arm64 (= 12.2.0-14+deb12u1)",
-        "libgomp1-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libgprofng0:amd64 (= 2.40-2)",
-        "libgprofng0:arm64 (= 2.40-2)",
-        "libgssapi-krb5-2:amd64 (= 1.20.1-2+deb12u5)",
-        "libgssapi-krb5-2:arm64 (= 1.20.1-2+deb12u5)",
-        "libhwasan0:arm64 (= 12.2.0-14+deb12u1)",
-        "libhwasan0-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libisl23:amd64 (= 0.25-1.1)",
-        "libisl23:arm64 (= 0.25-1.1)",
-        "libitm1:amd64 (= 12.2.0-14+deb12u1)",
-        "libitm1:arm64 (= 12.2.0-14+deb12u1)",
-        "libitm1-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libjansson4:amd64 (= 2.14-2)",
-        "libjansson4:arm64 (= 2.14-2)",
-        "libk5crypto3:amd64 (= 1.20.1-2+deb12u5)",
-        "libk5crypto3:arm64 (= 1.20.1-2+deb12u5)",
-        "libkeyutils1:amd64 (= 1.6.3-2)",
-        "libkeyutils1:arm64 (= 1.6.3-2)",
-        "libkrb5-3:amd64 (= 1.20.1-2+deb12u5)",
-        "libkrb5-3:arm64 (= 1.20.1-2+deb12u5)",
-        "libkrb5support0:amd64 (= 1.20.1-2+deb12u5)",
-        "libkrb5support0:arm64 (= 1.20.1-2+deb12u5)",
-        "liblsan0:amd64 (= 12.2.0-14+deb12u1)",
-        "liblsan0:arm64 (= 12.2.0-14+deb12u1)",
-        "liblsan0-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libmpc3:amd64 (= 1.3.1-1)",
-        "libmpc3:arm64 (= 1.3.1-1)",
-        "libmpfr6:amd64 (= 4.2.0-1)",
-        "libmpfr6:arm64 (= 4.2.0-1)",
-        "libnsl-dev:amd64 (= 1.3.0-2)",
-        "libnsl-dev:arm64 (= 1.3.0-2)",
-        "libnsl2:amd64 (= 1.3.0-2)",
-        "libnsl2:arm64 (= 1.3.0-2)",
-        "libquadmath0:amd64 (= 12.2.0-14+deb12u1)",
-        "libssl3:amd64 (= 3.0.20-1~deb12u2)",
-        "libssl3:arm64 (= 3.0.20-1~deb12u2)",
-        "libstdc++-12-dev:amd64 (= 12.2.0-14+deb12u1)",
-        "libstdc++-12-dev:arm64 (= 12.2.0-14+deb12u1)",
-        "libstdc++-12-dev-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libstdc++6:amd64 (= 12.2.0-14+deb12u1)",
-        "libstdc++6:arm64 (= 12.2.0-14+deb12u1)",
-        "libstdc++6-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libtirpc-common:amd64 (= 1.3.3+ds-1)",
-        "libtirpc-common:arm64 (= 1.3.3+ds-1)",
-        "libtirpc-dev:amd64 (= 1.3.3+ds-1)",
-        "libtirpc-dev:arm64 (= 1.3.3+ds-1)",
-        "libtirpc3:amd64 (= 1.3.3+ds-1)",
-        "libtirpc3:arm64 (= 1.3.3+ds-1)",
-        "libtsan2:amd64 (= 12.2.0-14+deb12u1)",
-        "libtsan2:arm64 (= 12.2.0-14+deb12u1)",
-        "libtsan2-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libubsan1:amd64 (= 12.2.0-14+deb12u1)",
-        "libubsan1:arm64 (= 12.2.0-14+deb12u1)",
-        "libubsan1-arm64-cross:amd64 (= 12.2.0-14cross1)",
-        "libzstd1:amd64 (= 1.5.4+dfsg2-5)",
-        "libzstd1:arm64 (= 1.5.4+dfsg2-5)",
-        "linux-libc-dev:amd64 (= 6.1.177-1)",
-        "linux-libc-dev:arm64 (= 6.1.177-1)",
-        "linux-libc-dev-arm64-cross:amd64 (= 6.1.4-1cross1)",
-        "rpcsvc-proto:amd64 (= 1.4.3-1)",
-        "rpcsvc-proto:arm64 (= 1.4.3-1)",
-        "zlib1g:amd64 (= 1:1.2.13.dfsg-1)",
-        "zlib1g:arm64 (= 1:1.2.13.dfsg-1)",
-    ],
-    suites = [
-        "bookworm",
-        "bookworm-updates",
-        "bookworm-security",
-    ],
-)
+# Bookworm archives and native library exports use the same reviewed APT lock.
 use_repo(
-    apt_bookworm,
+    apt,
     "bookworm-security_libgssapi-krb5-2-amd64_1.20.1-2-deb12u5",
     "bookworm-security_libgssapi-krb5-2-arm64_1.20.1-2-deb12u5",
     "bookworm-security_libk5crypto3-amd64_1.20.1-2-deb12u5",
@@ -1113,33 +763,12 @@ gcc.debian_toolchain(
 )
 
 # Target-side debug symbols must match the selected target loader, not exec tools.
-apt_bookworm.install(
-    dependency_set = "bookworm_target_debug",
-    packages = ["libc6-dbg"],
-    suites = ["bookworm", "bookworm-updates", "bookworm-security"],
-    include_transitive = True,
-)
-use_repo(apt_bookworm, "bookworm_target_debug")
+use_repo(apt, "bookworm_target_debug")
 
 # One shared Bookworm execution set preserves Perl's XS ABI and the original
 # instrumentation versions. Consumers select runtime subsets from this set;
 # Trixie execution tools remain in the existing build_tools dependency set.
-apt_bookworm.install(
-    dependency_set = "bookworm_build_tools",
-    packages = [
-        "perl",
-        "perl-base",
-        "perl-modules-5.36",
-        "libperl-dev",
-        "valgrind",
-        "libc6-dbg",
-        "tcl8.6",
-        "tcl-expect",
-    ],
-    suites = ["bookworm", "bookworm-updates", "bookworm-security"],
-    include_transitive = True,
-)
-use_repo(apt_bookworm, "bookworm_build_tools")
+use_repo(apt, "bookworm_build_tools")
 
 # Deterministic compression uses the existing native BCR pigz toolchain.
 bazel_dep(name = "pigz", version = "2.8.bcr.2")

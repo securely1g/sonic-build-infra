@@ -1,0 +1,20 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load(":doxygen.bzl", "doxygen")
+
+exports_files(["doxygen.bzl"])
+
+doxygen(
+    name = "api_documentation",
+    template = "tests/Doxyfile.in",
+    srcs = ["tests/api.c"],
+    substitutions = {"@INPUT@": "$(location tests/api.c)"},
+)
+
+py_test(
+    name = "doxygen_test",
+    visibility = ["//visibility:public"],
+    srcs = ["tests/doxygen_test.py"],
+    args = ["$(location :api_documentation)"],
+    data = [":api_documentation"],
+    main = "tests/doxygen_test.py",
+)

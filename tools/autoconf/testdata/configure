@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+for argument in "$@"; do
+    case "$argument" in --srcdir=*) source_dir="${argument#--srcdir=}" ;; esac
+done
+exec python3 "$source_dir/compile_checks.py" "$source_dir"

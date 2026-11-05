@@ -2,11 +2,29 @@
 # See sonic_deb.bzl for the public `sonic_deb` macro.
 
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
 
 py_binary(
     name = "md5sums_from_tar",
     srcs = ["md5sums_from_tar.py"],
     visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "assemble",
+    srcs = ["assemble.py"],
+    deps = ["//apt:lib"],
+)
+
+exports_files(["assert_control.py"])
+
+py_test(
+    name = "assemble_test",
+    srcs = [
+        "assemble.py",
+        "assemble_test.py",
+    ],
+    deps = ["//apt:lib"],
 )
 
 load("@rules_python//python:py_library.bzl", "py_library")

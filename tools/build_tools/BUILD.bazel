@@ -1,14 +1,54 @@
+load("//binary:keep_debug_info.bzl", "keep_debug_info")
 load("@bazel_skylib//rules:select_file.bzl", "select_file")
+load("@gawk//:toolchain.bzl", "gawk_toolchain")
+load("@installer_worker_apt_inputs//:apt_inputs.bzl", "APT_INPUTS")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_distroless//apt:defs.bzl", "dpkg_status")
 load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
 load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
-load("@rules_python//python:defs.bzl", "py_test")
-load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "check_build_tools", "python_runtime")
+load("@rules_python//python:defs.bzl", "py_test", "py_binary")
+load(":defs.bzl", "build_tool", "build_tools_rootfs", "build_tools_runtime", "check_build_tools", "python_runtime", "source_build_tool", "source_runtime")
 
 load(":kernel_roots.bzl", "KERNEL_TOOL_ROOTS")
 
 python_runtime(name = "python_runtime", visibility = ["//visibility:public"])
+
+# The metadata repository projects these roots and dependencies from the one
+# shared lock. Explicit architecture aliases keep this worker target on AMD64.
+_INSTALLER_WORKER_PACKAGES = APT_INPUTS["build_tools"]["amd64"]
+
+filegroup(
+    name = "installer_worker_debs_amd64",
+    srcs = [
+        _INSTALLER_WORKER_PACKAGES[key] + "/amd64:deb"
+        for key in sorted(_INSTALLER_WORKER_PACKAGES)
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "installer_worker_manifest_amd64",
+    srcs = ["@installer_worker_apt_inputs//:apt_manifest.json"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "installer_worker_debs_test",
+    srcs = ["installer_worker_debs_test.py"],
+    args = [
+        "$(location :installer_worker_manifest_amd64)",
+        "$(locations :installer_worker_debs_amd64)",
+    ],
+    data = [
+        ":installer_worker_debs_amd64",
+        ":installer_worker_manifest_amd64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 cc_binary(
     name = "runtime_launcher",
@@ -72,7 +112,10 @@ _KERNEL_CROSS_LIBRARIES = [
     "zlib1g",
 ]
 
-_KERNEL_CROSS_ARCHITECTURES = ["arm64", "armhf"]
+_KERNEL_CROSS_ARCHITECTURES = [
+    "arm64",
+    "armhf",
+]
 
 _KERNEL_CROSS_PACKAGES = [
     "@sysroot//" + name + "/" + architecture
@@ -167,15 +210,14 @@ alias(
     for architecture in _KERNEL_CROSS_ARCHITECTURES
 ]
 
-
 py_test(
     name = "prepare_rootfs_test",
     srcs = [
+        "kernel_debian.py",
+        "prepare_kernel.py",
         "prepare_rootfs.py",
         "prepare_rootfs_test.py",
         "prepare_runtime.py",
-        "prepare_kernel.py",
-        "kernel_debian.py",
     ],
     imports = ["."],
     main = "prepare_rootfs_test.py",
@@ -184,7 +226,10 @@ py_test(
 
 py_test(
     name = "kernel_debian_test",
-    srcs = ["kernel_debian.py", "kernel_debian_test.py"],
+    srcs = [
+        "kernel_debian.py",
+        "kernel_debian_test.py",
+    ],
     imports = ["."],
     main = "kernel_debian_test.py",
     visibility = ["//visibility:public"],
@@ -278,13 +323,28 @@ check_build_tools(
     build_tools_runtime(
         name = "configure_runtime_" + architecture,
         architecture = architecture,
-        profile = "configure",
-        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
-        packages = ["@build_make_" + architecture + "//:data.tar.xz"] + [
-            "@build_tools//" + tool for tool in ["m4", "pkgconf", "perl", "bison", "flex", "autoconf", "grep"]
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
         ],
+        packages = ["@build_make_" + architecture + "//:data"] + [
+            "@build_tools//" + tool
+            for tool in [
+                "m4",
+                "pkgconf",
+                "perl",
+                "bison",
+                "flex",
+                "autoconf",
+                "grep",
+            ]
+        ],
+        profile = "configure",
     )
-    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
 ]
 
 alias(
@@ -299,11 +359,22 @@ alias(
 [
     build_tool(
         name = tool,
-        tool = tool,
         runtime = ":configure_runtime",
+        tool = tool,
         visibility = ["//visibility:public"],
     )
-    for tool in ["make", "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "autoheader", "autom4te"]
+    for tool in [
+        "make",
+        "m4",
+        "pkgconf",
+        "perl",
+        "bison",
+        "flex",
+        "autoconf",
+        "autoheader",
+        "autom4te",
+        "grep",
+    ]
 ]
 
 # DocBook's man backend uses OpenSP and SGMLS Perl modules, not a host Jade
@@ -343,15 +414,20 @@ build_tool(
         name = tool + "_runtime",
         srcs = [":configure_runtime"],
     )
-    for tool in ["make", "m4", "pkgconfig", "autoconf"]
+    for tool in [
+        "make",
+        "m4",
+        "pkgconfig",
+        "autoconf",
+    ]
 ]
 
 [
     native_tool_toolchain(
         name = toolchain_type + "_tool",
-        target = ":" + toolchain_type + "_runtime",
-        path = "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool,
         env = {variable: "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool},
+        path = "$(execpath :" + toolchain_type + "_runtime)/bin/" + tool,
+        target = ":" + toolchain_type + "_runtime",
     )
     for toolchain_type, tool, variable in [
         ("make", "make", "MAKE"),
@@ -364,12 +440,17 @@ build_tool(
 [
     toolchain(
         name = toolchain_type + "_toolchain",
+        exec_compatible_with = ["@platforms//os:linux"],
         toolchain = ":" + toolchain_type + "_tool",
         toolchain_type = "@rules_foreign_cc//toolchains:" + toolchain_type + "_toolchain",
-        exec_compatible_with = ["@platforms//os:linux"],
         visibility = ["//visibility:public"],
     )
-    for toolchain_type in ["make", "m4", "pkgconfig", "autoconf"]
+    for toolchain_type in [
+        "make",
+        "m4",
+        "pkgconfig",
+        "autoconf",
+    ]
 ]
 
 py_test(
@@ -407,16 +488,19 @@ py_test(
 # Compile one small upstream-style project through the registered toolchains.
 filegroup(
     name = "configure_probe_sources",
-    srcs = ["tests/configure", "tests/probe.c"],
+    srcs = [
+        "tests/configure",
+        "tests/probe.c",
+    ],
 )
 
 configure_make(
     name = "configure_probe",
-    lib_source = ":configure_probe_sources",
     build_data = [":configure_runtime"],
     configure_in_place = True,
     env = {"PERL": "$(execpath :configure_runtime)/bin/perl"},
     features = ["-sanitize_pwd"],
+    lib_source = ":configure_probe_sources",
     out_static_libs = ["libprobe.a"],
 )
 
@@ -440,13 +524,25 @@ py_test(
     build_tools_runtime(
         name = "kerberos_runtime_" + architecture,
         architecture = architecture,
-        profile = "kerberos",
-        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
         packages = ["@build_tools//" + tool for tool in [
-            "comerr-dev", "ss-dev", "mawk", "sed", "grep", "coreutils", "diffutils",
+            "comerr-dev",
+            "ss-dev",
+            "mawk",
+            "sed",
+            "grep",
+            "coreutils",
+            "diffutils",
         ]],
+        profile = "kerberos",
     )
-    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
 ]
 
 alias(
@@ -461,18 +557,29 @@ alias(
 [
     build_tool(
         name = tool,
-        tool = tool,
         runtime = ":kerberos_runtime",
+        tool = tool,
         visibility = ["//visibility:public"],
     )
-    for tool in ["compile_et", "mk_cmds"]
+    for tool in [
+        "compile_et",
+        "mk_cmds",
+    ]
 ]
 
 py_test(
     name = "kerberos_runtime_test",
     srcs = ["kerberos_runtime_test.py"],
-    args = ["$(location :kerberos_runtime)", "$(location :compile_et)", "$(location :mk_cmds)"],
-    data = [":kerberos_runtime", ":compile_et", ":mk_cmds"],
+    args = [
+        "$(location :kerberos_runtime)",
+        "$(location :compile_et)",
+        "$(location :mk_cmds)",
+    ],
+    data = [
+        ":compile_et",
+        ":kerberos_runtime",
+        ":mk_cmds",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -482,19 +589,53 @@ py_test(
     build_tools_runtime(
         name = "foreign_runtime_" + architecture,
         architecture = architecture,
-        profile = "foreign",
-        exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:" + cpu],
-        packages = ["@build_make_" + architecture + "//:data.tar.xz"] + [
-            "@build_tools//" + tool for tool in [
-                "m4", "pkgconf", "perl", "bison", "flex", "autoconf", "automake",
-                "libtool", "libtool-bin", "coreutils", "diffutils", "grep", "sed", "mawk",
-                "findutils", "bash", "dash", "protobuf-compiler", "protobuf-compiler-grpc",
-                "thrift-compiler", "python3", "python3-sphinx", "python3-pytest", "texinfo", "libxml-simple-perl", "graphviz", "fonts-dejavu-core", "debianutils",
-                "patch", "libxml2-utils", "xsltproc",
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = ["@build_make_" + architecture + "//:data"] + [
+            "@build_tools//" + tool
+            for tool in [
+                "m4",
+                "pkgconf",
+                "perl",
+                "bison",
+                "flex",
+                "autoconf",
+                "automake",
+                "libtool",
+                "libtool-bin",
+                "libc-bin",
+                "coreutils",
+                "diffutils",
+                "grep",
+                "sed",
+                "mawk",
+                "findutils",
+                "bash",
+                "dash",
+                "protobuf-compiler",
+                "protobuf-compiler-grpc",
+                "thrift-compiler",
+                "python3",
+                "python3-sphinx",
+                "python3-pytest",
+                "texinfo",
+                "libxml-simple-perl",
+                "graphviz",
+                "fonts-dejavu-core",
+                "debianutils",
+                "patch",
+                "libxml2-utils",
+                "xsltproc",
             ]
         ] + ["@build_tools//libprotobuf-dev:data"],
+        profile = "foreign",
     )
-    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
 ]
 
 alias(
@@ -507,15 +648,42 @@ alias(
 )
 
 [
-    build_tool(name = tool, tool = tool, runtime = ":foreign_runtime", visibility = ["//visibility:public"])
-    for tool in ["autoreconf", "automake", "aclocal", "libtoolize", "protoc", "grpc_cpp_plugin", "grpc_python_plugin", "thrift", "python3", "sphinx-build", "makeinfo", "dot", "patch", "xmllint", "xsltproc"]
+    build_tool(
+        name = tool,
+        runtime = ":foreign_runtime",
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "autoreconf",
+        "automake",
+        "aclocal",
+        "libtoolize",
+        "protoc",
+        "grpc_cpp_plugin",
+        "grpc_python_plugin",
+        "thrift",
+        "python3",
+        "dot",
+        "getconf",
+        "patch",
+        "xmllint",
+        "xsltproc",
+    ]
 ]
 
 py_test(
     name = "foreign_runtime_test",
     srcs = ["foreign_runtime_test.py"],
-    args = ["$(location :foreign_runtime)", "$(location :metadata_runtime)"],
-    data = [":foreign_runtime", ":metadata_runtime", ":sphinx-build"],
+    args = [
+        "$(location :foreign_runtime)",
+        "$(location :metadata_runtime)",
+    ],
+    data = [
+        ":foreign_runtime",
+        ":metadata_runtime",
+        ":sphinx-build",
+    ],
     deps = ["@rules_python//python/runfiles"],
     visibility = ["//visibility:public"],
 )
@@ -536,35 +704,399 @@ filegroup(
 
 configure_make(
     name = "libtool_fixture",
-    lib_source = ":libtool_sources",
+    build_data = [
+        ":foreign_runtime",
+        ":configure_environment.sh",
+    ],
     configure_command = "configure.sh",
-    configure_prefix = "/bin/sh",
     configure_in_place = True,
-    features = ["-sanitize_pwd"],
+    configure_prefix = "/bin/sh",
     env = {
         "PATH": "$(execpath :foreign_runtime)/bin:$$PATH",
         "BAZEL_FOREIGN_TOOLS": "$(execpath :foreign_runtime)",
         "BAZEL_CONFIGURE_ENV": "$(execpath :configure_environment.sh)",
     },
-    build_data = [":foreign_runtime", ":configure_environment.sh"],
+    features = ["-sanitize_pwd"],
+    lib_source = ":libtool_sources",
     out_binaries = ["probe"],
-    out_shared_libs = ["libprobe.so.0", "libcprobe.so.0"],
-    out_data_files = ["config.log", "compiler-argv-validation.json"],
+    out_data_files = [
+        "config.log",
+        "compiler-argv-validation.json",
+    ],
+    out_shared_libs = [
+        "libprobe.so.0",
+        "libcprobe.so.0",
+    ],
     postfix_script = "cp config.log compiler-argv-validation.json $$INSTALLDIR/",
 )
 
-select_file(name = "libtool_program", srcs = ":libtool_fixture", subpath = "libtool_fixture/bin/probe")
-select_file(name = "libtool_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libprobe.so.0")
-select_file(name = "libtool_c_library", srcs = ":libtool_fixture", subpath = "libtool_fixture/lib/libcprobe.so.0")
-select_file(name = "libtool_config", srcs = ":libtool_fixture", subpath = "libtool_fixture/config.log")
-select_file(name = "libtool_argv_validation", srcs = ":libtool_fixture", subpath = "libtool_fixture/compiler-argv-validation.json")
+select_file(
+    name = "libtool_program",
+    srcs = ":libtool_fixture",
+    subpath = "libtool_fixture/bin/probe",
+)
+
+select_file(
+    name = "libtool_library",
+    srcs = ":libtool_fixture",
+    subpath = "libtool_fixture/lib/libprobe.so.0",
+)
+
+select_file(
+    name = "libtool_c_library",
+    srcs = ":libtool_fixture",
+    subpath = "libtool_fixture/lib/libcprobe.so.0",
+)
+
+select_file(
+    name = "libtool_config",
+    srcs = ":libtool_fixture",
+    subpath = "libtool_fixture/config.log",
+)
+
+select_file(
+    name = "libtool_argv_validation",
+    srcs = ":libtool_fixture",
+    subpath = "libtool_fixture/compiler-argv-validation.json",
+)
 
 py_test(
     name = "libtool_test",
     srcs = ["libtool_test.py"],
-    args = ["$(location :libtool_program)", "$(location :libtool_library)", "$(location :libtool_c_library)", "$(location :libtool_config)", "$(location :libtool_argv_validation)"],
-    data = [":libtool_program", ":libtool_library", ":libtool_c_library", ":libtool_config", ":libtool_argv_validation"],
+    args = [
+        "$(location :libtool_program)",
+        "$(location :libtool_library)",
+        "$(location :libtool_c_library)",
+        "$(location :libtool_config)",
+        "$(location :libtool_argv_validation)",
+    ],
+    data = [
+        ":libtool_argv_validation",
+        ":libtool_c_library",
+        ":libtool_config",
+        ":libtool_library",
+        ":libtool_program",
+    ],
     visibility = ["//visibility:public"],
+)
+
+# Tools for actual rootfs, filesystem, disk and initramfs consumers.
+[
+    build_tools_runtime(
+        name = "image_runtime_" + architecture,
+        architecture = architecture,
+        packages = ["@image_tools//" + package for package in [
+            "squashfs-tools",
+            "qemu-utils",
+            "gdisk",
+            "dosfstools",
+            "mtools",
+            "tar-split",
+            "grub-common",
+            "openssl",
+            "bubblewrap",
+            "zstd",
+            "kmod",
+            "e2fsprogs",
+            "coreutils",
+            "bash",
+            "dash",
+        ]] + ["@initramfs_runtime//busybox"] + ([
+            "@image_tools//grub-pc-bin",
+            "@image_tools//grub-efi-amd64-bin",
+            "@image_tools//qemu-system-x86",
+            "@image_tools//seabios",
+        ] if architecture == "amd64" else []),
+        profile = "image",
+        target_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "image_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":image_runtime_amd64",
+        "@platforms//cpu:aarch64": ":image_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = tool,
+        runtime = ":image_runtime",
+        target_compatible_with = ["@platforms//cpu:x86_64"] if tool in [
+            "grub-bios-setup",
+            "qemu-system-x86_64",
+        ] else [],
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in [
+        "mksquashfs",
+        "unsquashfs",
+        "qemu-img",
+        "sgdisk",
+        "mke2fs",
+        "debugfs",
+        "mkfs.fat",
+        "mcopy",
+        "mmd",
+        "tar-split",
+        "grub-mkimage",
+        "grub-editenv",
+        "grub-bios-setup",
+        "qemu-system-x86_64",
+        "openssl",
+        "bwrap",
+        "zstd",
+        "depmod",
+        "modprobe",
+        "busybox",
+    ]
+]
+
+# Execute public wrappers, including their runfiles and relocated runtime.
+_IMAGE_RUNTIME_TEST_TOOLS = [
+    "mksquashfs",
+    "unsquashfs",
+    "qemu-img",
+    "sgdisk",
+    "mke2fs",
+    "debugfs",
+    "mkfs.fat",
+    "mcopy",
+    "tar-split",
+    "grub-mkimage",
+    "grub-editenv",
+    "openssl",
+    "bwrap",
+    "zstd",
+    "depmod",
+    "modprobe",
+    "busybox",
+]
+
+py_test(
+    name = "image_runtime_test",
+    srcs = ["image_runtime_test.py"],
+    args = ["--tool=" + name + "=$(location :" + name + ")" for name in _IMAGE_RUNTIME_TEST_TOOLS] + select({
+        "@platforms//cpu:x86_64": [
+            "--tool=grub-bios-setup=$(location :grub-bios-setup)",
+            "--tool=qemu-system-x86_64=$(location :qemu-system-x86_64)",
+        ],
+        "//conditions:default": [],
+    }),
+    data = [":" + name for name in _IMAGE_RUNTIME_TEST_TOOLS] + select({
+        "@platforms//cpu:x86_64": [
+            ":grub-bios-setup",
+            ":qemu-system-x86_64",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Documentation frontends retain their execution-side interpreters and data.
+[
+    build_tools_runtime(
+        name = "manual_runtime_" + architecture,
+        architecture = architecture,
+        packages = ["@manual_tools//" + name for name in [
+            "python3-sphinx",
+            "texinfo",
+            "python3",
+            "perl",
+            "coreutils",
+            "sed",
+            "grep",
+            "gzip",
+            "bash",
+            "libc-bin",
+        ]],
+        profile = "manuals",
+        target_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+    )
+    for architecture, cpu in [
+        ("amd64", "x86_64"),
+        ("arm64", "aarch64"),
+    ]
+]
+
+alias(
+    name = "manual_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":manual_runtime_amd64",
+        "@platforms//cpu:aarch64": ":manual_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = name,
+        runtime = ":manual_runtime",
+        tool = name,
+        visibility = ["//visibility:public"],
+    )
+    for name in [
+        "sphinx-build",
+        "makeinfo",
+        "gzip",
+    ]
+]
+
+py_test(
+    name = "manual_runtime_test",
+    srcs = ["manual_runtime_test.py"],
+    args = [
+        "$(location :sphinx-build)",
+        "$(location :makeinfo)",
+    ],
+    data = [
+        ":makeinfo",
+        ":sphinx-build",
+    ],
+    main = "manual_runtime_test.py",
+    visibility = ["//visibility:public"],
+)
+
+source_runtime(
+    name = "source_runtime",
+    visibility = ["//visibility:public"],
+)
+
+[
+    source_build_tool(
+        name = tool,
+        binary = binary,
+        visibility = ["//visibility:public"],
+    )
+    for tool, binary in [
+        ("patchelf", "@patchelf//:patchelf"),
+        ("gawk", "@gawk//:gawk"),
+        ("swig", "@swig//:swig"),
+    ]
+]
+
+gawk_toolchain(
+    name = "gawk_tool",
+    binary = ":gawk",
+)
+
+toolchain(
+    name = "gawk_toolchain",
+    exec_compatible_with = ["@platforms//os:linux"],
+    toolchain = ":gawk_tool",
+    toolchain_type = "@gawk//:toolchain_type",
+)
+
+# Tcl's standard library and Expect extension travel with their interpreter.
+[
+    build_tools_runtime(
+        name = "tcl_runtime_" + architecture,
+        architecture = architecture,
+        exec_compatible_with = [
+            "@platforms//os:linux",
+            "@platforms//cpu:" + cpu,
+        ],
+        packages = ["@build_tools//tcl8.6", "@build_tools//tcl-expect"],
+        profile = "tcl",
+    )
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+
+alias(
+    name = "tcl_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":tcl_runtime_amd64",
+        "@platforms//cpu:aarch64": ":tcl_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+[
+    build_tool(
+        name = tool,
+        runtime = ":tcl_runtime",
+        tool = tool,
+        visibility = ["//visibility:public"],
+    )
+    for tool in ["tclsh"]
+]
+
+py_test(
+    name = "tcl_runtime_test",
+    srcs = ["tcl_runtime_test.py"],
+    args = ["$(location :tclsh)"],
+    data = [":tclsh"],
+    visibility = ["//visibility:public"],
+)
+
+# Source package tests require GDB's real source-line lookup. Reuse the same
+# reviewed package closure as the base image's debug collection.
+[
+    build_tools_runtime(
+        name = "gdb_runtime_" + architecture,
+        architecture = architecture,
+        packages = ["@base_debug_debian//gdb"],
+        profile = "gdb",
+        runtime_launcher = ":runtime_launcher",
+        target_compatible_with = ["@platforms//cpu:" + cpu],
+    )
+    for architecture, cpu in [("amd64", "x86_64"), ("arm64", "aarch64")]
+]
+
+alias(
+    name = "gdb_runtime",
+    actual = select({
+        "@platforms//cpu:x86_64": ":gdb_runtime_amd64",
+        "@platforms//cpu:aarch64": ":gdb_runtime_arm64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+build_tool(
+    name = "gdb",
+    runtime = ":gdb_runtime",
+    tool = "gdb",
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "gdb_fixture_raw",
+    srcs = ["tests/gdb_fixture.c"],
+    copts = ["-g"],
+    testonly = True,
+)
+
+keep_debug_info(
+    name = "gdb_fixture",
+    src = ":gdb_fixture_raw",
+    testonly = True,
+)
+
+filegroup(
+    name = "gdb_execution_runtime",
+    srcs = [":gdb"],
+    output_group = "runtime",
+    testonly = True,
+)
+
+py_test(
+    name = "gdb_runtime_test",
+    srcs = ["gdb_runtime_test.py"],
+    args = ["$(rootpath :gdb)", "$(rootpath :gdb_fixture)", "$(rootpath :gdb_execution_runtime)"],
+    data = [":gdb", ":gdb_fixture", ":gdb_execution_runtime"],
 )
 
 # Execution-side instrumentation is independent of source-generator runtimes.
@@ -575,7 +1107,7 @@ py_test(
 alias(name = "test_runtime", actual = select({"@platforms//cpu:x86_64": ":test_runtime_amd64", "@platforms//cpu:aarch64": ":test_runtime_arm64"}), visibility = ["//visibility:public"])
 [
     build_tool(name = tool, tool = tool, runtime = ":test_runtime", visibility = ["//visibility:public"])
-    for tool in ["valgrind", "tclsh"]
+    for tool in ["valgrind"]
 ]
 
 cc_binary(name = "test_runtime_probe", srcs = ["test_runtime_probe.c"])

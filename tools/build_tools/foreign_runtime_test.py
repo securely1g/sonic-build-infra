@@ -1,6 +1,7 @@
 """Exercise declared autotools, interface generators and their private runtime."""
 
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -13,7 +14,7 @@ from python.runfiles import runfiles
 
 def main():
     source = Path(sys.argv[1]).resolve()
-    with tempfile.TemporaryDirectory(prefix="foreign-tools-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="foreign-tools-", dir=os.environ.get("TEST_TMPDIR")) as tmp:
         root = Path(tmp)
         runtime = root / "relocated-runtime"
         # Materialize Bazel's per-file sandbox input links before moving the
@@ -39,6 +40,10 @@ def main():
             assert (runtime / "usr/bin" / name).read_bytes().startswith(b"\x7fELF"), name
         assert run("sh", ["-c", "printf declared-shell"]) == b"declared-shell"
         assert run("awk", ["BEGIN { print 42 }"]) == b"42\n"
+        # configure scripts inspect the execution ABI through libc-bin's
+        # getconf; both declared execution architectures are 64-bit.
+        assert run("getconf", ["LONG_BIT"]) == b"64\n"
+        assert b"GLIBC 2.41" in run("getconf", ["--version"])
 
         (work / "configure.ac").write_text(
             "AC_INIT([foreign-probe],[1.0])\nAM_INIT_AUTOMAKE([foreign])\n"

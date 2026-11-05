@@ -1,0 +1,5 @@
+control-files-fixture (1.0-1) unstable; urgency=medium
+
+  * Independent metadata fixture.
+
+ -- Fixture Owner <fixture@example.invalid>  Thu, 01 Jan 1970 00:00:00 +0000

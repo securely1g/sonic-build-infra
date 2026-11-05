@@ -1,203 +1,142 @@
-# Automatically keep base packages with ordinary Distroless inputs
+# One APT source configuration, lock and package collections
 
-`selection.py` keeps packages already supplied by the base image or the image's
-declared Make package manifest. It adds the remaining packages from the reviewed
-dependency set. Distroless supplies the package archives and assembles the layer
-using its existing APIs; no APT patch is needed.
+`apt/sources.json` is the editable source baseline. `apt/requests.json` owns the
+package requests for all collections. `apt/apt.lock.json` is the **single**
+reviewed production graph, shared by Docker/rootfs payloads, target development
+libraries and execution tools. A package identity is stored once; dependency
+sets select their required packages and architecture contexts.
 
-## Directory layout
+## Update and check
 
-- `sonic_apt/` contains the shared Python package, imported as `sonic_apt`.
-  Its pinned dependency hub supports the infrastructure Python 3.11 runtime
-  and the image Python 3.13 runtime using the same universal wheel.
-- `tests/` contains its unit tests.
-- `tests/integration/` contains Bazel/Distroless integration tests and their
-  fixtures, including the isolated repository-generation check.
-- The `.bzl` files in this directory expose the Bazel rules; `export_inputs.py`
-  is the command-line entry point for exporting reviewed package declarations.
+Use the fixed Bazel and Distroless versions selected by the owning workspace.
+The shared updater invokes the Distroless resolver and its `export_lock` target
+in an isolated preparation workspace; it does not implement another Debian
+resolver. Existing package identities, URLs and hashes remain fixed. Reviewed
+extracted data/control hashes are preserved when the source DEB is unchanged.
 
-## Example: tcpdump and FIPS OpenSSL
+Bookworm's compiler/sysroot, matching libc debug symbols and Perl/instrumentation
+collections share this same lock. During an explicit update, collections whose
+requested suites overlap are resolved together. Disjoint Bookworm and Trixie
+suite families use separate preparation workspaces because the upstream live
+index keys omit the suite. This prevents equal package versions in different
+distributions from overwriting each other's source or file map. The existing
+merge validates their suite-qualified identities and produces one production
+lock. Ordinary imports need no partitioning or package-index access.
 
-The Orchagent snapshot supplies tcpdump 4.99.5-2 and Debian `libssl3t64`
-3.5.6-1~deb13u2. Its config-engine base already contains `libssl3t64`
-3.5.7-1~deb13u2+fips. Copying the entire dependency set would overwrite the
-base's `libssl.so.3` and `libcrypto.so.3`.
-
-The selector reads the base's `/var/lib/dpkg/status`, finds the package name
-`libssl3t64`, and skips that candidate. It adds tcpdump and libpcap when their
-names are absent. The FIPS library bytes stay unchanged.
-
-**A retained package must satisfy the final image's dependency requirements.**
-After selecting additions, the helper validates every known base, Make-retained
-and newly selected package's `Depends` and `Pre-Depends` against that final set.
-It reads dependency fields from the base's dpkg status and the declared package
-control archives, using pinned `python-debian` parsing and Debian version order.
-An older base that fails a required version stops the build; selection never
-upgrades it automatically. A different version from the lock remains valid when
-it satisfies the actual requirement, as with the FIPS OpenSSL example.
-
-The check supports conjunctions, alternative dependencies, versioned and
-unversioned virtual `Provides`, and one target architecture plus `all`.
-Architecture-qualified dependencies support the explicit target and `:any`
-with `Multi-Arch: allowed`. Malformed expressions, foreign architectures and
-unsupported source-only restrictions or qualifiers fail explicitly. Checks also
-cover the dependencies of retained packages, not only newly added packages.
-
-`Pre-Depends` is checked for package presence and version constraints. Tar
-assembly does not establish installation order, configured state of added
-packages or maintainer-script execution. `Conflicts`, `Breaks`, optional
-relationships and runtime ABI compatibility are outside this check; installed
-image tests remain necessary. Hash, unsafe-path and inherited-library collision
-errors still fail the build.
-
-## Ordinary package inputs
-
-Keep the canonical `apt.lock.json` with reviewed package identities, source
-hashes and extracted data/control hashes. Two adapters expose those inputs to
-Bazel:
-
-- `export_inputs.py` generates the checked-in `apt_inputs.MODULE.bazel`, which
-  calls standard `apt.install` with exact versions and architectures for every
-  candidate in the reviewed dependency sets.
-- The `apt_inputs` repository rule reads that same lock during Bazel setup and
-  generates `apt_inputs.bzl` in an external repository. It maps lock keys to
-  public package labels such as `@image_apt//tcpdump`; the layer adapter uses
-  their existing `:data` and `:control` targets.
-
-These are exports of one canonical lock, not another lock or a manually curated
-list of packages missing from the base. They include base packages such as
-OpenSSL; the selector still removes those automatically during the build.
-Distroless uses the root/dependency module's pinned snapshot sources and its
-normal resolver/importer. The selection action verifies the complete candidate
-set and the reviewed extracted-content hashes before choosing payloads.
-
-Generate the MODULE declaration after an intentional lock update:
+From the infra source directory:
 
 ```sh
-python3 PATH_TO_INFRA/apt/export_inputs.py \
-  --lock dockers/my-image/bazel/apt.lock.json \
-  --module dockers/my-image/bazel/apt_inputs.MODULE.bazel
+python3 apt/lock.py update --bazel /path/to/bazel-8.5.1
+python3 apt/lock.py check
 ```
 
-Commit the lock and MODULE declaration together. `--check` verifies the
-declaration without changing it; the image's owner tests should perform the same
-check. In the root MODULE, include it and declare the metadata repository:
+For a local, reviewed registry candidate use repeated `--registry` arguments
+(the first registry wins). `--bazel-startup-option` and `--bazel-option` forward
+explicit settings to build, cquery and info; pass values containing a leading
+`--` using `=`. For example:
+
+```sh
+python3 apt/lock.py update \
+  --bazel /path/to/bazel-8.5.1 \
+  --registry file:///path/to/sonic-bazel-registry \
+  --registry https://bcr.bazel.build/ \
+  --bazel-startup-option=--batch \
+  --bazel-startup-option=--output_base=/tmp/apt-lock-output \
+  --work-dir /tmp/apt-lock-prepare
+```
+
+The preparation directory retains each partition's generated MODULE, resolver inputs and
+`resolve.log`. A failed resolution or validation leaves the production lock
+unchanged. The result is validated before an atomic replacement of the lock.
+`check` reads the current source/request documents and validates their recorded
+input digest, the selected resolver version, package identities and dependency
+closure. It never resolves, downloads or rewrites the lock.
+
+An intentionally authorized source change uses `--allow-source-change` after
+editing the single source configuration. An intentionally authorized change of
+existing package versions uses `--allow-version-change`. These switches do not
+silently permit changing the checksum of an existing package identity. Inspect
+and review all such changes. `--resolved-lock` accepts a retained output of the
+selected resolver for offline validation; `merge` only migrates reviewed old
+graphs and must be followed by a real `update` before the result passes `check`.
+
+The lock records `_inputs.source_document`, `_inputs.requests_document`,
+resolver identity, normalized module requests and an input digest. Package
+records include exact DEB SHA256 and dependency edges. `files` records the file
+mapping needed by library export; resolver index identities remain in `facts`.
+Package dependency metadata, request changes and source changes are tracked even
+when package versions remain unchanged. Existing pinned vim/make archive hashes
+are also checked through the request document's `pinned_packages` records.
+The debug collections explicitly select the previously resolved `vim-nox` identity
+so a separate pinned `vim` tool cannot change their alternative selection.
+Updating collections preserves existing unrelated package records. Image collections
+keep their original amd64/arm64 request contexts even though the shared source
+also supplies the existing armhf compilation/sysroot collections.
+
+## Ordinary consumption
+
+Normal builds import the lock, validate its source/request binding and select
+collections. They do not refresh the source indexes or choose new versions.
+For example, root MODULE code can select a payload collection:
 
 ```starlark
-include("//dockers/my-image/bazel:apt_inputs.MODULE.bazel")
-
-apt_inputs = use_repo_rule("@sonic_build_infra//apt:inputs_repository.bzl", "apt_inputs")
-apt_inputs(
-    name = "my_image_apt_inputs",
-    lock = "//dockers/my-image/bazel:apt.lock.json",
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.import_lock(
+    lock = "@sonic_build_infra//apt:apt.lock.json",
+    sources = "@sonic_build_infra//apt:sources.json",
+    requests = "@sonic_build_infra//apt:requests.json",
+    dependency_sets = ["orchagent_debian", "orchagent_debug_debian"],
 )
+use_repo(apt, "orchagent_debian", "orchagent_debug_debian")
 ```
 
-Bazel regenerates the label mapping when the lock changes. The repository rule
-only reads JSON and writes metadata: it executes no programs, resolves no
-dependencies, and downloads or extracts no packages. It checks the complete
-dependency closure, package identities, architectures and duplicate names.
-Keep the package request recipe used for intentional refreshes separate from
-these resolved inputs. The export command does not resolve a fresh lock or add
-extracted-content hashes.
+Library consumers use the same lock with `libraries = True`. That keeps the
+original Distroless CcInfo/export implementation and supplies locked filemaps;
+consumers reference the exported library in `deps`. Execution tools use the
+same package graph in the execution configuration and carry their loader,
+interpreters, runtime libraries, templates and child tools in runfiles.
 
-Generated Bazel files start with `AUTO-GENERATED. DO NOT EDIT MANUALLY.` and
-name their generator. Generated JSON inputs and selection receipts carry the
-same notice in `_generated` metadata because JSON does not support comments.
-Keep that metadata in reviewed package locks too, with the package-resolution
-and hash-preparation origin. Change package requests through the documented
-refresh procedure and regenerate derived files.
+`apt_inputs` reads the same lock and generates public package label mappings.
+It never resolves or downloads packages and is not another version list.
+`apt_layer` handles selection against an OCI base and uses public `data/control`
+archives. It assembles selected archives with standard
+`flatten(tars=[...], deduplicate=True)`: shared paths appear once and later
+non-ELF overrides retain their final bytes and metadata. Rootfs consumers use the same public archives through their own
+installation/assembly interface. Neither copying archives nor library export
+runs Debian maintainer scripts. Package dependencies, install behavior, accounts,
+service setup and status generation must follow the consuming image contract.
 
-## Selection and assembly
+### Select one locked root subset
 
-```starlark
-load("@sonic_build_infra//apt:apt_layer.bzl", "apt_layer")
-load("@my_image_apt_inputs//:apt_inputs.bzl", "APT_INPUTS")
+`apt_inputs` also accepts `dependency_set`, `architecture`, and `root_packages`
+together. This mode validates the complete selected set/architecture, then
+follows locked dependency keys from the requested package names. A requested
+name may already be transitive in the shared set. Omitting all three attributes
+preserves the existing full-set mapping.
 
-apt_layer(
-    name = "apt_runtime",
-    packages = APT_INPUTS["image_apt"]["amd64"],
-    lock = "//dockers/my-image/bazel:apt.lock.json",
-    dependency_set = "image_apt",
-    base = ":base_oci",
-    retained_manifest = ":native_packages_manifest",
-    selector = ":select_image_packages",
-    variant = "runtime",
-    architecture = "amd64",
-)
-```
+The subset repository emits a restricted `APT_INPUTS` mapping and
+`apt_manifest.json`. The manifest contains exactly `schema = 1`,
+`dependency_set`, `architecture`, `root_packages`, and `packages`. Its package
+object is keyed by full version-2 lock keys; each row contains `name`, `version`,
+`architecture`, ordered `urls`, `sha256`, and the locked `depends_on` keys.
+Duplicate selected archive hashes fail so a consumer can bind files to rows by
+SHA256 without relying on their filenames.
 
-The image owns its base/manifest reader and archive checks. Its selector calls
-`sonic_apt.selection.select`, then `stage_payloads(selected, output_directory)`.
-`base_packages` returns complete `Package` dependency records. Each explicitly
-Make-retained package supplies `source_sha256` and a `control` mapping containing
-its actual Debian fields, including `Package`, `Version`, `Architecture`, and
-any `Depends`, `Pre-Depends`, `Provides` or `Multi-Arch` fields. A package name and
-source hash alone are insufficient. Retained metadata must agree with an
-already inherited package of the same name.
-The command receives `--base`, `--lock`, `--retained-manifest`, `--mapping`,
-`--variant`, `--out-dir` and `--receipt`.
+For example, `sonic-build-infra` uses this mode for
+`//tools/build_tools:installer_worker_debs_amd64`. The target selects the 39
+Debian names requested by `sonic-buildimage`'s installer worker plus Docker CE's
+`nftables` dependency, then consumes public `<package>/amd64:deb` aliases.
+This is a subset of the existing `build_tools` lock, with no additional APT set
+or resolver. See the [worker target contract](../tools/build_tools/README.md#locked-installer-worker-packages).
 
-An image can use one shared selector executable and supply its declarative
-configuration with `policy = ":apt_policy.json"`. The rule declares that JSON
-file as an action input and passes it with `--policy`; the selector owns its
-schema and validation. `retained_manifest` may be omitted for policies that
-retain no Make-produced packages. When both are supplied, the action passes
-both files separately, allowing static policy to validate a generated Make
-manifest. At least one of `policy` or `retained_manifest` is required. Existing
-manifest-only callers keep the same selector arguments and archive outputs.
+## Validation
 
-The adapter copies selected archives intact into one declared output directory.
-Numeric filenames preserve their order; a valid empty archive handles an empty
-selection. Bazel expands this directory for standard
-`flatten(tars=[...], deduplicate=True)`, which creates the TAR with one entry
-per path. Shared package directories appear once; valid later non-ELF
-overrides keep their final bytes and metadata, following normal TAR overlay
-semantics. The standard rule may add a harmless `./` prefix to link targets.
-There is no custom tar merger or generated-manifest
-extension. Staging adds a copy of selected archives and its associated disk I/O.
-The `selection` output group exposes the JSON receipt.
+`apt/tests/lock_test.py` checks source/request invalidation, graph completeness,
+merge identity/hashes, version preservation, existing extracted metadata,
+explicit source-change authorization, and failed-update file protection.
+Actual resolver/export and Docker/rootfs/library/tool consumers are separate
+integration boundaries and must be verified against the selected candidate.
 
-The receipt includes the validated final control inventory. When an image
-inherits a previous APT layer, pass that layer's `selection` receipt as the
-`apt_layer(base_package_metadata = ...)` input and forward the selector's
-`--base-package-metadata` argument to `select(base_package_metadata=...)`.
-This is required because adding tar payloads does not update dpkg status.
-The child checks the receipt against the current dpkg baseline, preserves its
-known records and validates the combined set again. For example, a debug layer
-must receive the runtime APT layer's receipt so its additions and requirements
-remain visible. The metadata is a declared build input, not a file installed
-inside the container.
-
-Group names, OCI platform checks, Make manifests and file-safety policies remain
-with the image. The shared helper keeps base/Make package names, avoids duplicate
-names and rejects unintended inherited ELF changes. Importing archive files
-does not run installation scripts or update the inherited dpkg database.
-
-## Validation and dependency
-
-Use `rules_distroless` **0.9.4.sonic.1**. It includes the existing Protobuf `.inc`
-header fix and sorts above plain 0.9.4, so that competing request needs no root
-override. The dotted registry entry preserves the code and patches from
-0.9.4-sonic.1. No local archive patches are required.
-
-`//apt:dependencies_test` checks Debian version order, alternatives, virtual
-providers, supported architecture qualifiers and malformed metadata.
-`//apt:selection_test` checks retention, content hashes, file collisions,
-control identities and inherited dependency inventories.
-`//apt:inputs_test` checks export consistency, the complete dependency set and
-archive staging. Source CI also runs
-`python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel` on native
-AMD64 and ARM64. Its isolated workspace uses Bazel queries with downloads
-disabled to check cold metadata generation, lock-change invalidation, dependency
-cycles and invalid locks. `//apt/tests/integration:adapter_test` runs the adapter with real
-public Distroless data/control targets and standard flatten, including an empty
-selection when the base already supplies the package.
-`//apt/tests/integration:overlap_test` selects two TAR/control fixtures with
-shared directories, symlinks, hardlinks and a later configuration override. It
-requires unique paths and exact final payload bytes, permissions, ownership,
-timestamps and link targets. This covers the Gearbox runtime APT layer case,
-where repeated package directory headers prevented Docker from loading the
-image. These tests produce TAR archives, not Debian packages. Image consumers
-additionally check the completed
-runtime/debug filesystems and installed programs.
+`//apt/tests/integration:overlap_test` checks unique archive paths and final
+payload bytes, permissions, ownership, timestamps and link targets when
+selected APT archives overlap.

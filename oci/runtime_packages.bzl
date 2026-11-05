@@ -25,6 +25,7 @@ def _runtime_packages_impl(ctx):
     tar = ctx.toolchains[tar_lib.toolchain_type]
     args = ctx.actions.args()
     args.add("--control", ctx.file.control)
+    args.add_all(ctx.attr.control_file_helpers, before_each = "--control-file-helper")
     if ctx.file.changelog:
         args.add("--changelog", ctx.file.changelog)
     args.add("--module", ctx.attr.module_name)
@@ -34,6 +35,8 @@ def _runtime_packages_impl(ctx):
     args.add("--output", output)
     args.add("--tree", tree.path)
     inputs = [ctx.file.control, ctx.file._tools] + ctx.files.changelog
+    for package, file in zip(sorted(ctx.attr.packages), ctx.outputs.final_controls):
+        args.add("--final-control", package + "=" + file.path)
     for package, target in ctx.attr.packages.items():
         payload = _single(target, "runtime TAR for " + package)
         inputs.append(payload)
@@ -67,7 +70,7 @@ def _runtime_packages_impl(ctx):
         arguments = [args],
         inputs = depset(inputs, transitive = [trees]),
         tools = tar.default.files,
-        outputs = [output, tree],
+        outputs = [output, tree] + ctx.outputs.final_controls,
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
         mnemonic = "DebianRuntimeMetadata",
         progress_message = "Derive package controls from Debian recipes and target binaries for %{label}",
@@ -75,13 +78,14 @@ def _runtime_packages_impl(ctx):
     return [
         DefaultInfo(files = depset([output])),
         RuntimePackagesInfo(metadata = output, trees = depset([tree], transitive = dependencies)),
-        OutputGroupInfo(debian = depset([tree])),
+        OutputGroupInfo(debian = depset([tree]), controls = depset(ctx.outputs.final_controls)),
     ]
 
 _runtime_packages = rule(
     implementation = _runtime_packages_impl,
     attrs = {
         "control": attr.label(allow_single_file = True, mandatory = True),
+        "final_controls": attr.output_list(mandatory = True),
         "changelog": attr.label(allow_single_file = True),
         "module_name": attr.string(mandatory = True),
         "architecture": attr.string(mandatory = True, values = ["amd64", "arm64"]),
@@ -94,6 +98,9 @@ _runtime_packages = rule(
         "symbols": attr.string_keyed_label_dict(allow_files = True),
         "substvars": attr.string_keyed_label_dict(allow_files = True),
         "debian_files": attr.string_keyed_label_dict(allow_files = True),
+        "control_file_helpers": attr.string_list(
+            doc = "Internal JSON argv for explicitly declared metadata helpers; no maintainer scripts are executed.",
+        ),
         # These are the target compiler ABI packages, not tools selected by cfg=exec.
         "_abi_data": attr.label_list(default = [Label("@sysroot//" + name + ":data") for name in ["libc6", "libgcc-s1", "libstdc++6"]]),
         "_abi_controls": attr.label_list(default = [Label("@sysroot//" + name + ":control") for name in ["libc6", "libgcc-s1", "libstdc++6"]]),
@@ -103,7 +110,7 @@ _runtime_packages = rule(
     toolchains = [tar_lib.toolchain_type],
 )
 
-def runtime_packages(name, packages, control, changelog = None, apt_packages = {}, module_name = None, architecture = None, **kwargs):
+def runtime_packages(name, packages, control, changelog = None, apt_packages = {}, module_name = None, architecture = None, control_file_helpers = [], **kwargs):
     """Generate owner metadata; package facts stay in the existing Debian files.
 
     packages maps Debian binary package names to their public runtime TAR targets.
@@ -113,12 +120,18 @@ def runtime_packages(name, packages, control, changelog = None, apt_packages = {
     dependencies supplies source-built library metadata in target configuration.
     apt_packages maps target APT data labels to their matching control labels.
     Neither input selects libraries from the execution tools' private runtime.
+    control_file_helpers optionally lists the original specific helper argv in
+    package order, ending with dh_installdeb. This retains final DEBIAN files in
+    RuntimePackagesInfo.trees and publishes relative paths, modes and SHA256 in
+    each package's control_files. The input payload is unchanged. Empty defaults
+    preserve the existing substitution-only behavior.
     changelog may be omitted only for an existing finalized binary control file.
     """
     labels = {package: native.package_relative_label(target) for package, target in packages.items()}
     _runtime_packages(
         name = name,
         packages = packages,
+        final_controls = [name + "." + package + ".control" for package in sorted(packages)],
         control = control,
         changelog = changelog,
         module_name = module_name or native.module_name(),
@@ -126,6 +139,7 @@ def runtime_packages(name, packages, control, changelog = None, apt_packages = {
             Label("@platforms//cpu:x86_64"): "amd64",
             Label("@platforms//cpu:aarch64"): "arm64",
         }),
+        control_file_helpers = [json.encode(command) for command in control_file_helpers],
         declared_targets = {package: "//" + target.package + ":" + target.name for package, target in labels.items()},
         apt_data = apt_packages.keys(),
         apt_controls = apt_packages.values(),

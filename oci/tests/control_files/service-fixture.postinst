@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+# Owner-authored logic is preserved around the standard helper marker.
+if [ "$1" = inspect-owner ]; then
+    printf "%s\n" "owner-postinst"
+fi
+#DEBHELPER#

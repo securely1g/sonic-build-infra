@@ -1,0 +1,6 @@
+[Unit]
+Description=Metadata fixture only
+[Service]
+ExecStart=/usr/bin/false
+[Install]
+WantedBy=multi-user.target

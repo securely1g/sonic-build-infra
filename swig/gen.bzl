@@ -54,14 +54,17 @@ def _swig_gen_cc_impl(ctx):
     args.add("-keyword")
     args.add("-DSWIGWORDSIZE64")  # Important for 64-bit
 
-    for define in ctx.attr.defines:
+    for define in depset(ctx.attr.defines, transitive = [compilation_context.defines]).to_list():
         args.add("-D" + define)
 
     # Get include flags (-Ipath)
-    for include in compilation_context.includes.to_list():
+    for include in depset(transitive = [
+        compilation_context.quote_includes,
+        compilation_context.includes,
+        compilation_context.external_includes,
+        compilation_context.system_includes,
+    ]).to_list():
         args.add("-I" + include)
-    for external_include in compilation_context.external_includes.to_list():
-        args.add("-I" + external_include)
 
     args.add("-o", cpp_out.path)
     args.add("-outdir", python_out.dirname)
@@ -74,10 +77,10 @@ def _swig_gen_cc_impl(ctx):
     )
 
     # Tools: SWIG + C++ toolchain (for potential headers)
-    tools = [ctx.executable._swig]
+    tools = [ctx.attr.swig[DefaultInfo].files_to_run]
 
     ctx.actions.run(
-        executable = ctx.executable._swig,
+        executable = ctx.attr.swig[DefaultInfo].files_to_run,
         arguments = [args],
         inputs = inputs,
         outputs = [cpp_out, python_out],
@@ -147,16 +150,20 @@ def _swig_gen_go_impl(ctx):
     args.add("-intgosize")
     args.add("64")
     args.add("-DSWIGWORDSIZE64")
-    for define in ctx.attr.defines:
+    for define in depset(ctx.attr.defines, transitive = [compilation_context.defines]).to_list():
         args.add("-D" + define)
 
-    for include in compilation_context.includes.to_list():
+    for include in depset(transitive = [
+        compilation_context.quote_includes,
+        compilation_context.includes,
+        compilation_context.external_includes,
+        compilation_context.system_includes,
+    ]).to_list():
         args.add("-I" + include)
-    for external_include in compilation_context.external_includes.to_list():
-        args.add("-I" + external_include)
 
     args.add("-o", cxx_out.path)
-    args.add("-oh", hdr_out.path)
+    if hdr_out:
+        args.add("-oh", hdr_out.path)
     args.add("-outdir", go_out.dirname)
     args.add(interface_file.path)
 
@@ -166,10 +173,11 @@ def _swig_gen_go_impl(ctx):
     )
 
     ctx.actions.run(
-        executable = ctx.executable._swig,
+        executable = ctx.attr.swig[DefaultInfo].files_to_run,
         arguments = [args],
         inputs = inputs,
-        outputs = [go_out, cxx_out, hdr_out],
+        outputs = [go_out, cxx_out] + ([hdr_out] if hdr_out else []),
+        tools = [ctx.attr.swig[DefaultInfo].files_to_run],
         mnemonic = "SwigGenGo",
         progress_message = "Generating Go SWIG bindings for %{label}",
         env = {
@@ -178,11 +186,11 @@ def _swig_gen_go_impl(ctx):
     )
 
     return [
-        DefaultInfo(files = depset([go_out, cxx_out, hdr_out])),
+        DefaultInfo(files = depset([go_out, cxx_out] + ([hdr_out] if hdr_out else []))),
         OutputGroupInfo(
             go = depset([go_out]),
             cxx = depset([cxx_out]),
-            hdr = depset([hdr_out]),
+            hdr = depset([hdr_out] if hdr_out else []),
         ),
     ]
 
@@ -214,11 +222,10 @@ swig_gen_go = rule(
             doc = "Output C++ wrapper file (e.g. swsscommon_wrap.cxx)",
         ),
         "hdr_out": attr.output(
-            mandatory = True,
             doc = "Output C++ wrapper header (e.g. swsscommon_wrap.h)",
         ),
-        "_swig": attr.label(
-            default = "@swig//:swig",
+        "swig": attr.label(
+            default = Label("//tools/build_tools:swig"),
             executable = True,
             cfg = "exec",
         ),
@@ -258,8 +265,8 @@ swig_gen = rule(
             mandatory = True,
             doc = "Output Python module (e.g. swsscommon.py)",
         ),
-        "_swig": attr.label(
-            default = "@swig//:swig",
+        "swig": attr.label(
+            default = Label("//tools/build_tools:swig"),
             executable = True,
             cfg = "exec",
         ),

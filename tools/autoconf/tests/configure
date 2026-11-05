@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+for argument in "$@"; do
+    case "$argument" in
+        --srcdir=*) source_directory=${argument#--srcdir=} ;;
+        --pkgconfig=*) pkgconfig_module=${argument#--pkgconfig=} ;;
+    esac
+done
+compile_et "$source_directory/probe.et"
+
+if test -n "${pkgconfig_module:-}"; then
+    pkgflags=$("$PKG_CONFIG" --cflags --libs "$pkgconfig_module")
+    eval "$CC $pkgflags -c \"$source_directory/probe-pc.c\" -o probe-pc.o"
+fi

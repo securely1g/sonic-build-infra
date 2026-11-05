@@ -153,7 +153,10 @@ def build(base, apt_receipt, controls, source_spec, sources, architecture, norma
         fields = dict(item["control_fields"])
         require(fields["Package"] == name and item.get("source_revision") and item.get("target"),
                 "source package lacks identity or provenance: " + name)
-        fields["Architecture"] = architecture
+        package_architecture = fields.get("Architecture", architecture)
+        require(package_architecture in (architecture, "all"),
+                "source package architecture differs from selected target: " + name)
+        fields["Architecture"] = package_architecture
         payload = sources[name]
         native_files = []
         with tarfile.open(payload) as archive:

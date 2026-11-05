@@ -51,8 +51,11 @@ def resolve(spec, owners, modules, source_labels, architecture):
             require(isinstance(control, dict) and control.get("Package") == name and control.get("Version") and
                     all(isinstance(k, str) and isinstance(v, str) for k, v in control.items()),
                     "invalid owner package controls: " + name)
-            require(not set(control).intersection({"Architecture", "Status", "Installed-Size", "Conffiles", "SHA256", "MD5sum"}),
-                    "owner metadata must not freeze installed architecture or payload state: " + name)
+            require(not set(control).intersection({"Status", "Installed-Size", "Conffiles", "SHA256", "MD5sum"}),
+                    "owner metadata must not freeze installed payload state: " + name)
+            package_architecture = control.get("Architecture", architecture)
+            require(package_architecture in (architecture, "all"),
+                    "owner package architecture differs from selected target: " + name)
             image = expected.get(name, {})
             require(isinstance(image, dict), "image path policy must be an object: " + name)
             require(set(image) <= {"required_paths", "path_modes", "path_owners", "required_inherited_files"},
@@ -70,7 +73,7 @@ def resolve(spec, owners, modules, source_labels, architecture):
             version = module_versions[module]
             commit = re.search(r"-([0-9a-f]{40})$", version)
             revision = commit[1] if commit else version
-            records[name] = {**image, "required_paths": required_paths, "control_fields": {**control, "Architecture": architecture},
+            records[name] = {**image, "required_paths": required_paths, "control_fields": {**control, "Architecture": package_architecture},
                              "target": source_labels[name], "source_revision": revision, "source_module": module}
             if typed_paths and producer_paths:
                 records[name]["producer_required_paths"] = list(producer_paths)

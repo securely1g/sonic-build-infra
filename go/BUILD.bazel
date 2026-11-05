@@ -1,0 +1,19 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load(":test_sdk.bzl", "test_sdk")
+
+exports_files(
+    ["lock.py"],
+    visibility = ["//visibility:public"],
+)
+
+test_sdk(name = "test_sdk")
+
+py_test(
+    name = "lock_test",
+    srcs = ["lock_test.py"],
+    data = [
+        "lock.py",
+        ":test_sdk",
+    ],
+    env = {"TEST_GO_SDK_ROOT_FILE": "$(rootpath :test_sdk)"},
+)

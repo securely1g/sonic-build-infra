@@ -1,3 +1,4 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//apt:apt_layer.bzl", "apt_layer")
 load(":base.bzl", "fixture_base")
@@ -131,6 +132,33 @@ py_test(
         ":retained_receipt",
         "@build_tools//aspell-en:data",
     ],
+)
+
+cc_test(
+    name = "static_link_test",
+    srcs = ["static_link_test.c"],
+    linkstatic = True,
+    deps = [
+        "@trixie//libc6-dev:libm_static",
+        "@trixie//zlib1g-dev:libz_static",
+    ],
+)
+
+# Raw public archive labels must stay usable and retain their original DEB bytes.
+py_test(
+    name = "raw_archive_labels_test",
+    srcs = ["raw_archive_labels_test.py"],
+    args = [
+        "$(location @" + repository + "//:" + target + ")"
+        for repository in ["build_make_amd64", "build_make_arm64", "vim_amd64", "vim_arm64", "vim_runtime"]
+        for target in ["data.tar.xz", "deb"]
+    ],
+    data = [
+        "@" + repository + "//:" + target
+        for repository in ["build_make_amd64", "build_make_arm64", "vim_amd64", "vim_arm64", "vim_runtime"]
+        for target in ["data.tar.xz", "deb"]
+    ],
+    deps = ["//apt:lib"],
 )
 
 # Two independently selected TARs share parent directories. Test the public

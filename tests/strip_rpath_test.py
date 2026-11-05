@@ -5,9 +5,29 @@ import re
 import subprocess
 import sys
 import tempfile
+import tarfile
 import zlib
 
-readelf, objcopy, original, stripped, debug_dir, expected_tag, mode = sys.argv[1:]
+readelf, objcopy, original, stripped, debug_dir, expected_tag, mode = sys.argv[1:8]
+if sys.argv[8:] == ["archives"]:
+    archive_root = tempfile.TemporaryDirectory()
+    archive_path = pathlib.Path(archive_root.name)
+    with tarfile.open(stripped) as runtime:
+        stripped = archive_path / "hello"
+        stripped.write_bytes(runtime.extractfile("usr/bin/hello").read())
+        stripped.chmod(0o755)
+    with tarfile.open(debug_dir) as symbols:
+        for member in symbols.getmembers():
+            if member.isfile():
+                relative = pathlib.PurePosixPath(member.name.lstrip("./"))
+                # Symbols are installed below usr/lib/debug; normalize to the checker root.
+                assert relative.parts[:3] == ("usr", "lib", "debug"), member.name
+                output = archive_path.joinpath(*relative.parts[3:])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(symbols.extractfile(member).read())
+    debug_dir = archive_path
+else:
+    assert not sys.argv[8:], sys.argv[8:]
 
 
 def inspect(path, option):
@@ -28,7 +48,8 @@ else:
     assert original_paths[0][0] == expected_tag, original_paths
     assert "_solib_test" in original_paths[0][1], original_paths
     assert "app.runfiles/workspace" in original_paths[0][1], original_paths
-    expected = [] if mode == "all" else [(expected_tag, "$ORIGIN/../lib:/opt/sonic/lib")]
+    expected = ([(expected_tag, mode.removeprefix("exact="))] if mode.startswith("exact=")
+                else [] if mode == "all" else [(expected_tag, "$ORIGIN/../lib:/opt/sonic/lib")])
 actual = rpaths(stripped)
 assert actual == expected, (actual, expected)
 

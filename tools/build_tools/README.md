@@ -99,6 +99,10 @@ Native CI does not establish remote execution or every cross-compilation pair.
 
 ## Configure and Make builds
 
+`@sonic_build_infra//tools/build_tools:getconf` exports the pinned libc-bin
+program and its private execution runtime. The foreign Autotools runtime also
+provides it on its declared PATH for configure checks such as `getconf LONG_BIT`.
+
 Use these tools when compiling an upstream source release with `rules_foreign_cc`:
 
 | Target | Pinned executable |
@@ -455,6 +459,57 @@ declared library paths, and Debian dependency metadata. The native
 `kernel_runtime_test` checks the same tree for AMD64 regressions. Complete
 kernel source and package validation belongs to `sonic-linux-kernel`.
 
+## Source-built execution tools
+
+Export source-built host executables with `source_build_tool` from
+`//tools/build_tools:defs.bzl`. It uses the same `build_tool` executable and
+launcher interface as the DEB tools, with the loader and shared libraries from
+the compiler's fixed Trixie sysroot. The binary's existing runfiles are retained.
+Dynamic ELF tools use the matching loader; static ELF tools run directly.
+Arguments, working directory, streams and exit status are preserved, and ambient
+`LD_*` overrides are removed. No Trixie host installation is required.
+
+```starlark
+source_build_tool(name = "generator", binary = ":generator_binary")
+```
+
+A source tool embedding the fixed APT Python interpreter can select its complete
+execution environment explicitly:
+
+```starlark
+source_build_tool(
+    name = "python_generator",
+    binary = ":python_generator_binary",
+    runtime = "@sonic_build_infra//tools/build_tools:foreign_runtime",
+)
+```
+
+The foreign runtime supplies its matching loader, libraries and Python standard
+library. The launcher sets `PYTHONHOME` to that runtime and disables user site
+packages. A caller's declared `PYTHONPATH` remains available for component-owned
+modules. The default compiler-sysroot runtime is unchanged.
+
+`build_tools_runtime` also exposes its original package inputs through the
+`packages` output group. Use `filegroup(output_group = "packages", ...)` when
+an analysis tool needs to combine existing declared package closures; feed those
+files directly to `build_tools_runtime(packages = ...)`. The default output stays
+the prepared runtime tree.
+
+Consumers select `cfg = "exec"` and pass the target's `FilesToRunProvider` to
+actions. Keep the executable's runfiles path intact when changing directories;
+make it absolute without resolving its symlink. Exported tools include
+`//tools/build_tools:patchelf`, `:gawk` and `:swig`. Component-local generators
+use this same interface. The static runtime bootstrap itself does not need a
+loader wrapper. Additional tool-specific libraries belong in the source
+binary's declared runtime dependencies.
+
+Infra registers `//tools/build_tools:gawk_toolchain` for gawk's execution
+toolchain. tar.bzl 0.10.5-sonic.2 and rules_distroless 0.9.4.sonic.16 consume
+the selected executable with its runfiles. Their dependency
+`gawk@5.3.2.sonic.1` provides a raw-tool fallback for other consumers;
+SONiC roots select the infra registration. These adapters leave compilation
+rules unchanged.
+
 The shared execution runtime also exports `sphinx-build` and `makeinfo` for
 native documentation generation actions. Their Python/Perl modules, Texinfo XS
 modules, Sphinx themes and native libraries come from the same pinned
@@ -508,6 +563,53 @@ valid/invalid XSD input and an XSLT transformation after relocating the runtime
 with an empty PATH. Existing native AMD64/ARM64 CI retains that coverage and the
 fresh-output-base cache check; local validation is recorded per architecture.
 
+## Locked installer worker packages
+
+`sonic-buildimage` uses an AMD64 Debian Trixie worker for its VS installer
+assembly. The worker's Dockerfile requests 39 Debian package names, including
+`j2cli=0.3.12b-5` and `squashfs-tools=1:4.6.1-1`. Its separately supplied Docker
+CE archive also requires `nftables`. These execution tools use the same
+`build_tools` collection in `apt/apt.lock.json` as source generators and kernel builds.
+
+| Public target | Output |
+| --- | --- |
+| `@sonic_build_infra//tools/build_tools:installer_worker_debs_amd64` | One original `rules_distroless` `:deb` archive for every package in the 40 requested names' AMD64 dependency closure. |
+| `@sonic_build_infra//tools/build_tools:installer_worker_manifest_amd64` | JSON metadata for exactly those archives, derived from the same canonical lock. |
+
+The metadata repository follows only locked dependency keys. A requested name
+may already be transitive in the shared set, as `make` and `binutils` are. It
+does not resolve versions, download packages, or change the ARM64 and ARMHF
+selections. The DEB target selects explicit `<package>/amd64:deb` aliases, also
+for packages whose Debian architecture is `all`.
+
+The manifest has `schema = 1`, `dependency_set`, `architecture`,
+`root_packages`, and `packages`. The `packages` object is keyed by the complete
+version-2 lock key. Each row contains `name`, `version`, `architecture`, ordered
+`urls`, `sha256`, and the locked `depends_on` keys. The source URLs and hashes
+come from the reviewed lock.
+
+Raw archives can share the same basename in distinct external repositories.
+Consumers must keep the full Bazel paths while enumerating the DEB target, match each file's SHA256 to one manifest row, and verify the complete
+set before staging unique filenames. Do not flatten by basename or infer a
+package identity from Bazel's internal repository path. These targets supply
+archives; the worker still owns real APT/dpkg installation and its installed
+runtime checks.
+
+### Refresh the worker inputs
+
+Add worker package requests to the existing `build_tools` collection in
+`apt/requests.json`, then use the shared updater from the repository root:
+
+```sh
+python3 apt/lock.py update --bazel /path/to/bazel-8.5.1
+python3 apt/lock.py check
+bazel test //tools/build_tools:installer_worker_debs_test
+```
+
+Review and commit `apt/requests.json` and `apt/apt.lock.json` together. The updater
+preserves existing archive identities and native file mappings. The worker
+metadata repository and archive targets consume that same lock during ordinary
+builds. `MODULE.bazel.lock` remains ignored generated resolution evidence.
 ## Oversized linker arguments
 
 BMv2's AMD64 source build can pass more than 136 KiB through `LDFLAGS`, which

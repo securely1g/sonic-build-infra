@@ -1,0 +1,39 @@
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//tools/autoconf:probe.bzl", "autoconf_probe")
+
+autoconf_probe(
+    name = "declared_generator",
+    configure = "configure",
+    srcs = ["probe.et"],
+    extra_tools = ["//tools/build_tools:compile_et"],
+    build_triplet = "x86_64-linux-gnu",
+    host_triplet = "x86_64-linux-gnu",
+    expected_outputs = ["probe.h", "probe.c"],
+)
+
+py_test(
+    name = "declared_tools_test",
+    srcs = ["declared_tools_test.py"],
+    args = ["$(rootpath :declared_generator)"],
+    data = [":declared_generator"],
+)
+
+autoconf_probe(
+    name = "relocatable_pkgconfig",
+    configure = "configure",
+    srcs = ["probe.et", "probe-pc.c", "marker.h"],
+    extra_tools = ["//tools/build_tools:compile_et"],
+    pkg_config_files = ["tool.pc"],
+    pkg_config_use_toolchain_sysroot = False,
+    configure_args = ["--pkgconfig=tool"],
+    build_triplet = "x86_64-linux-gnu",
+    host_triplet = "x86_64-linux-gnu",
+    expected_outputs = ["probe.h", "probe.c", "probe-pc.o"],
+)
+
+py_test(
+    name = "relocatable_pkgconfig_test",
+    srcs = ["relocatable_pkgconfig_test.py"],
+    args = ["$(rootpath :relocatable_pkgconfig)"],
+    data = [":relocatable_pkgconfig"],
+)

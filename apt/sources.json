@@ -1,0 +1,69 @@
+{
+  "sources": [
+    {
+      "architectures": [
+        "amd64",
+        "arm64",
+        "armhf"
+      ],
+      "components": [
+        "main"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates"
+      ],
+      "uris": [
+        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+      ]
+    },
+    {
+      "architectures": [
+        "amd64",
+        "arm64",
+        "armhf"
+      ],
+      "components": [
+        "main"
+      ],
+      "suites": [
+        "trixie-security"
+      ],
+      "uris": [
+        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+      ]
+    },
+    {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "components": [
+        "main"
+      ],
+      "suites": [
+        "bookworm",
+        "bookworm-updates"
+      ],
+      "uris": [
+        "https://snapshot.debian.org/archive/debian/20260727T143429Z"
+      ]
+    },
+    {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "components": [
+        "main"
+      ],
+      "suites": [
+        "bookworm-security"
+      ],
+      "uris": [
+        "https://snapshot.debian.org/archive/debian-security/20260726T121236Z"
+      ]
+    }
+  ],
+  "version": 1
+}
