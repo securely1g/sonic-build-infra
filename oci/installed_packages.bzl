@@ -22,12 +22,12 @@ def _installed_packages_impl(ctx):
         args.add("--source-receipt", ctx.file.source_receipt)
         source_receipt = [ctx.file.source_receipt]
     metadata = []
-    for target in ctx.attr.owner_metadata:
+    for label, target in ctx.attr.owner_metadata.items():
         files = target[DefaultInfo].files.to_list()
         if len(files) != 1:
             fail("owner package metadata must provide one JSON file")
         metadata.extend(files)
-        args.add("--package-metadata", str(target.label) + "=" + files[0].path)
+        args.add("--package-metadata", label + "=" + files[0].path)
     for module, target in ctx.attr.source_modules.items():
         files = target[DefaultInfo].files.to_list()
         if len(files) != 1:
@@ -63,7 +63,7 @@ _installed_packages = rule(
         "base": attr.label(allow_single_file = True, mandatory = True),
         "controls": attr.label_list(allow_files = True),
         "declared_sources": attr.string_dict(mandatory = True),
-        "owner_metadata": attr.label_list(allow_files = [".json"]),
+        "owner_metadata": attr.string_keyed_label_dict(allow_files = [".json"]),
         "source_modules": attr.string_keyed_label_dict(allow_files = True),
         "source_receipt": attr.label(allow_single_file = [".json"]),
         "source_spec": attr.label(allow_single_file = [".json"], mandatory = True),
@@ -77,11 +77,17 @@ _installed_packages = rule(
     },
 )
 
-def installed_packages(name, sources = {}, **kwargs):
+def installed_packages(name, sources = {}, owner_metadata = [], **kwargs):
     """Bind owner metadata to public labels, including aliases to private TARs."""
+    metadata_labels = {str(native.package_relative_label(target)): target for target in owner_metadata}
+    if len(metadata_labels) != len(owner_metadata):
+        fail("duplicate metadata input")
     _installed_packages(
         name = name,
         sources = sources,
+        # Metadata may itself be an alias into the producer's private repository.
+        # Keep both sides of owner/source identity in the caller's public mapping.
+        owner_metadata = metadata_labels,
         # Target.label follows aliases. The owner declares the public target
         # requested by this image, resolved in the caller's repository mapping.
         declared_sources = {package: str(native.package_relative_label(target)) for package, target in sources.items()},

@@ -14,7 +14,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  owner-metadata-pure:
+    name: Owner metadata alias regressions
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["codex/owner-metadata-public-alias","codex/owner-metadata-public-alias-f6"]'), github.head_ref) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check declared labels and strict owner identity without native actions
+        run: |
+          PYTHONPATH=oci python3 -B - <<'PYTHON'
+          import sys
+          import unittest
+          def guard(event, args):
+              if event.startswith(("subprocess.", "socket.")) or event in ("os.system", "os.exec", "os.posix_spawn", "os.fork"):
+                  raise AssertionError("process/network operation forbidden: " + event)
+          sys.addaudithook(guard)
+          loader = unittest.TestLoader()
+          suite = unittest.TestSuite(loader.discover("oci/tests", pattern=pattern)
+                                    for pattern in ("owner_metadata_test.py", "installed_packages_alias_test.py"))
+          if not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful():
+              raise SystemExit(1)
+          PYTHON
+
   native:
+    # These two owner-alias review branches run only the focused pure checks.
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["codex/owner-metadata-public-alias","codex/owner-metadata-public-alias-f6"]'), github.head_ref)) }}
     name: Bazel (${{ matrix.arch }})
     strategy:
       fail-fast: false
