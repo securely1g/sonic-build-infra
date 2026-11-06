@@ -31,6 +31,13 @@ py_test(
     deps = ["//oci:package_metadata"],
 )
 
+py_test(
+    name = "installed_packages_alias_test",
+    srcs = ["installed_packages_alias_test.py"],
+    data = ["//oci:installed_packages.bzl"],
+    deps = ["//oci:package_metadata"],
+)
+
 py_binary(
     name = "fixture",
     srcs = ["fixture.py"],

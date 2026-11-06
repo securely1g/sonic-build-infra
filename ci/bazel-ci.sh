@@ -45,6 +45,7 @@ tests=(
   //oci/tests:runtime_packages_test //oci/tests:runtime_packages_rule_test
   //oci/tests:installed_packages_test
   //oci/tests:owner_metadata_test //oci/tests:installed_packages_rule_test
+  //oci/tests:installed_packages_alias_test
   //oci/tests:account_layer_test
   //apt:selection_test
   //apt:inputs_test
