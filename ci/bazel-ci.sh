@@ -45,6 +45,7 @@ tests=(
   //oci/tests:runtime_control_files_rule_test
   //oci/tests:installed_packages_test
   //oci/tests:owner_metadata_test //oci/tests:installed_packages_rule_test
+  //oci/tests:installed_packages_alias_test
   //oci/tests:account_layer_test
   //apt:lock_test
   //apt:bookworm_lock_test
