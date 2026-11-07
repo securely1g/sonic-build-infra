@@ -1,5 +1,6 @@
 """Run a native Linux ELF using the matching loader from declared target data."""
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -139,8 +140,11 @@ def prepare_native(python, binary, payloads, arguments, target_machine,
                if not name.startswith(("PYTHON", "LD_"))}
     startup.update(PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1", PYTHONSAFEPATH="1")
     bootstrap = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));sys.argv[0]=sys.argv.pop(1);runpy.run_path(sys.argv[0],run_name='__main__')"
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stream:
-        descriptor = stream.fileno()
+    # A caller may have closed a standard descriptor. Move the transport out
+    # of that range and close the original before starting the child.
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as temporary:
+        descriptor = fcntl.fcntl(temporary.fileno(), fcntl.F_DUPFD_CLOEXEC, 3)
+    with os.fdopen(descriptor, mode="w+", encoding="utf-8") as stream:
         if os.fstat(descriptor).st_nlink != 0:
             raise RuntimeError("caller environment transport must be unlinked before writing")
         json.dump(original, stream, ensure_ascii=True)
