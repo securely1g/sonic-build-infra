@@ -1,6 +1,8 @@
 """Run a native Linux ELF using the matching loader from declared target data."""
 import argparse
+import fcntl
 import hashlib
+import json
 import os
 from pathlib import Path
 import platform
@@ -10,6 +12,7 @@ import tarfile
 import tempfile
 import zlib
 
+import elf_metadata
 from elf_metadata import Elf
 
 
@@ -31,12 +34,13 @@ def origin_paths(elf, directory):
     return ([] if has_runpath else paths[15], paths[29], has_runpath)
 
 
-def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
+def run(binary, payloads, arguments, instrument=None, instrument_arguments=(), *,
+        target_machine=None, environment=None):
     binary = Path(binary).resolve()
     elf = Elf(binary.read_bytes())
-    native = {"x86_64": 62, "aarch64": 183}.get(platform.machine())
-    if elf.machine != native:
-        raise ValueError("native_runtime_test requires matching execution and target CPUs")
+    expected = target_machine if target_machine is not None else {"x86_64": 62, "aarch64": 183}.get(platform.machine())
+    if expected not in (62, 183) or elf.machine != expected:
+        raise ValueError("runtime binary does not match the declared target CPU")
     with tempfile.TemporaryDirectory(prefix="native-target-runtime-") as temporary:
         root = Path(temporary)
         libraries = {}
@@ -52,7 +56,7 @@ def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
                     if contents[:4] != b"\x7fELF":
                         continue
                     item = Elf(contents)
-                    if item.machine != native:
+                    if item.machine != expected:
                         raise ValueError("runtime payload contains an ELF for a different CPU: " + member.name)
                     if member.name.removeprefix("./").startswith("usr/lib/debug/") and item.build_id:
                         previous = debug_files.setdefault(item.build_id, contents)
@@ -107,7 +111,7 @@ def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
                 if provider is None:
                     raise ValueError("undeclared runtime library: " + soname + " required by " + str(current))
                 pending.append((provider, rpaths + inherited_rpaths))
-        environment = dict(os.environ)
+        environment = dict(os.environ if environment is None else environment)
         for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "LD_AUDIT"):
             environment.pop(name, None)
         # Let the loader apply each object's RPATH/RUNPATH itself. Promoting
@@ -115,7 +119,48 @@ def run(binary, payloads, arguments, instrument=None, instrument_arguments=()):
         command = [str(loader), "--inhibit-cache", "--library-path", str(root), str(binary)] + arguments
         if instrument:
             command = [str(Path(instrument).absolute())] + list(instrument_arguments) + command
-        return subprocess.run(command, env=environment).returncode
+        # Preserve the caller directory while avoiding posix_spawn EFAULT with
+        # large environments when native Python executes under PRoot.
+        return subprocess.run(command, env=environment, cwd=os.getcwd()).returncode
+
+
+def prepare_native(python, binary, payloads, arguments, target_machine,
+                   instrument=None, instrument_arguments=()):
+    """Run CPU-independent preparation with a declared native private Python.
+
+    The public build-tool wrapper needs its own PYTHONHOME, so it cannot use
+    -E. Its startup receives a sanitized environment; the target later gets
+    the caller's exact environment, subject only to run()'s loader filtering.
+    An inherited unlinked file keeps this snapshot out of argv and named files.
+    """
+    if target_machine not in (62, 183):
+        raise ValueError("native preparation requires an explicit target CPU")
+    original = dict(os.environ)
+    startup = {name: value for name, value in original.items()
+               if not name.startswith(("PYTHON", "LD_"))}
+    startup.update(PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1", PYTHONSAFEPATH="1")
+    bootstrap = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));sys.argv[0]=sys.argv.pop(1);runpy.run_path(sys.argv[0],run_name='__main__')"
+    # A caller may have closed a standard descriptor. Move the transport out
+    # of that range and close the original before starting the child.
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as temporary:
+        descriptor = fcntl.fcntl(temporary.fileno(), fcntl.F_DUPFD_CLOEXEC, 3)
+    with os.fdopen(descriptor, mode="w+", encoding="utf-8") as stream:
+        if os.fstat(descriptor).st_nlink != 0:
+            raise RuntimeError("caller environment transport must be unlinked before writing")
+        json.dump(original, stream, ensure_ascii=True)
+        stream.flush()
+        stream.seek(0)
+        command = [str(python), "-B", "-S", "-c", bootstrap,
+                   str(Path(elf_metadata.__file__).resolve().parent), str(Path(__file__).resolve()),
+                   "--caller-environment-fd", str(descriptor),
+                   "--target-machine", str(target_machine), "--binary", str(binary)]
+        for payload in payloads:
+            command += ["--payload", str(payload)]
+        if instrument:
+            command += ["--instrument", str(instrument)]
+        command += ["--instrument-arg=" + value for value in instrument_arguments]
+        command += ["--", *arguments]
+        return subprocess.run(command, env=startup, pass_fds=(descriptor,)).returncode
 
 
 def main():
@@ -124,10 +169,28 @@ def main():
     parser.add_argument("--payload", action="append", default=[])
     parser.add_argument("--instrument")
     parser.add_argument("--instrument-arg", action="append", default=[])
+    parser.add_argument("--target-machine", type=int, choices=(62, 183))
+    parser.add_argument("--preparation-python")
+    parser.add_argument("--caller-environment-fd", type=int, help=argparse.SUPPRESS)
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args()
     arguments = options.arguments[1:] if options.arguments[:1] == ["--"] else options.arguments
-    return run(options.binary, options.payload, arguments, options.instrument, options.instrument_arg)
+    if options.preparation_python:
+        if options.caller_environment_fd is not None or options.target_machine is None:
+            parser.error("native preparation requires an explicit target CPU and no inherited environment descriptor")
+        return prepare_native(options.preparation_python, options.binary, options.payload, arguments,
+                              options.target_machine, options.instrument, options.instrument_arg)
+    environment = None
+    if options.caller_environment_fd is not None:
+        if options.caller_environment_fd < 3 or options.target_machine is None:
+            parser.error("caller environment requires a private descriptor and an explicit target CPU")
+        with os.fdopen(options.caller_environment_fd, encoding="utf-8") as stream:
+            environment = json.load(stream)
+        if not isinstance(environment, dict) or any(not isinstance(k, str) or not isinstance(v, str)
+                                                    for k, v in environment.items()):
+            parser.error("invalid caller environment snapshot")
+    return run(options.binary, options.payload, arguments, options.instrument, options.instrument_arg,
+               target_machine=options.target_machine, environment=environment)
 
 
 if __name__ == "__main__":

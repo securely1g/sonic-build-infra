@@ -2,6 +2,19 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//cc:runtime_test.bzl", "native_runtime_binary", "native_runtime_test")
 
+py_test(
+    name = "preparation_test",
+    srcs = ["preparation_test.py", "//cc:runtime_test.py"],
+    main = "preparation_test.py",
+    args = [
+        "$(location //cc:runtime_test.bzl)",
+        "$(location //tools/build_tools:launcher_test_source)",
+    ],
+    data = ["//cc:runtime_test.bzl", "//tools/build_tools:launcher_test_source"],
+    deps = ["//deb:elf_metadata"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
 cc_binary(name = "program", srcs = ["program.c"])
 
 native_runtime_binary(
