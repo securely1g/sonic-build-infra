@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "d101f5b714fc8344a9df71cae516d9e877977e51372476a9fa4b2cbd4fdff87e",
+    "digest": "6ab8915db484c5da3e9b27d297cb4e029e09c5afd451b3c6f2a84caf383bc084",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -317,8 +317,10 @@
             "bash:arm64",
             "bc:amd64",
             "bc:arm64",
+            "binutils:amd64",
             "bison:amd64",
             "bison:arm64",
+            "bubblewrap:amd64",
             "build-essential:amd64",
             "build-essential:arm64",
             "busybox:amd64",
@@ -332,6 +334,7 @@
             "curl:amd64",
             "dash:amd64",
             "dash:arm64",
+            "dbus-daemon:amd64",
             "debhelper:amd64",
             "debhelper:arm64",
             "debianutils:amd64",
@@ -383,6 +386,7 @@
             "libc6-dbg:arm64",
             "libc6:amd64",
             "libc6:arm64",
+            "libdbus-c++-bin:amd64",
             "libelf-dev:amd64",
             "libelf-dev:arm64",
             "libelf-dev:armhf",
@@ -456,6 +460,7 @@
             "python3:arm64",
             "quilt:amd64",
             "quilt:arm64",
+            "redis-server:amd64",
             "rsync:amd64",
             "rsync:arm64",
             "sed:amd64",
@@ -544,6 +549,17 @@
             "libprotobuf32t64",
             "libre2-11",
             "zlib1g"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "dash_runtime_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libprotobuf32t64"
           ],
           "suites": [
             "trixie",
@@ -836,6 +852,28 @@
             "trixie-security"
           ]
         },
+        "libnl_bookworm_system": {
+          "include_transitive": true,
+          "packages": [
+            "libc6"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
+          ]
+        },
+        "libnl_system": {
+          "include_transitive": true,
+          "packages": [
+            "libc6"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
         "libyang_deps": {
           "include_transitive": true,
           "packages": [
@@ -847,6 +885,42 @@
             "trixie",
             "trixie-updates",
             "trixie-security"
+          ]
+        },
+        "libyang_system": {
+          "include_transitive": true,
+          "packages": [
+            "libc6",
+            "libcmocka-dev",
+            "libcmocka0",
+            "libgcc-s1",
+            "libpcre2-8-0",
+            "libpcre2-dev",
+            "libxxhash-dev",
+            "libxxhash0"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "libyang_system_bookworm": {
+          "include_transitive": true,
+          "packages": [
+            "libc6",
+            "libcmocka-dev",
+            "libcmocka0",
+            "libgcc-s1",
+            "libpcre2-8-0",
+            "libpcre2-dev",
+            "libxxhash-dev",
+            "libxxhash0"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
           ]
         },
         "manual_tools": {
@@ -1089,9 +1163,14 @@
           "include_transitive": true,
           "packages": [
             "libjansson-dev",
+            "libjansson4",
             "libjemalloc-dev",
+            "libjemalloc2",
             "libteam-dev",
-            "libyaml-cpp-dev"
+            "libteam5",
+            "libteamdctl0",
+            "libyaml-cpp-dev",
+            "libyaml-cpp0.8"
           ],
           "suites": [
             "trixie",
@@ -1208,6 +1287,74 @@
             "strace:arm64",
             "vim-nox:amd64 (= 2:9.1.1230-2)",
             "vim-nox:arm64 (= 2:9.1.1230-2)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "syncd_vs_vim_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64 (= 16.3-1)",
+            "gdbserver:amd64 (= 16.3-1)",
+            "libgpm2:amd64 (= 1.20.7-11+b2)",
+            "sshpass:amd64 (= 1.10-0.1)",
+            "strace:amd64 (= 6.13+ds-1)",
+            "vim:amd64 (= 2:9.1.1230-2)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libdbus-1-3:amd64 (= 1.16.2-2)",
+            "libdbus-c++-1-0v5:amd64 (= 0.9.0-15)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64 (= 16.3-1)",
+            "gdbserver:amd64 (= 16.3-1)",
+            "libaudit1:amd64 (= 1:4.0.2-2+b2)",
+            "libcap-ng0:amd64 (= 0.8.5-4+b1)",
+            "libcbor0.10:amd64 (= 0.10.2-2)",
+            "libcrypt1:amd64 (= 1:4.4.38-1)",
+            "libedit2:amd64 (= 3.1-20250104-1)",
+            "libfido2-1:amd64 (= 1.15.0-1+b1)",
+            "libpam0g:amd64 (= 1.7.0-5)",
+            "libselinux1:amd64 (= 3.8.1-1)",
+            "libtinfo6:amd64 (= 6.5+20250216-2)",
+            "libudev1:amd64 (= 257.13-1~deb13u1)",
+            "libwrap0:amd64 (= 7.6.q-36)",
+            "libwtmpdb0:amd64 (= 0.73.0-3+deb13u1)",
+            "sshpass:amd64 (= 1.10-0.1)",
+            "strace:amd64 (= 6.13+ds-1)",
+            "vim:amd64 (= 2:9.1.1230-2)",
+            "zlib1g:amd64 (= 1:1.3.dfsg+really1.3.1-1+b1)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "dbus-daemon:amd64 (= 1.16.2-2)",
+            "redis-server:amd64 (= 5:8.0.2-3+deb13u2)"
           ],
           "suites": [
             "trixie",
@@ -1810,7 +1957,12 @@
             "zlib1g:arm64",
             "zlib1g:armhf",
             "zstd:amd64",
-            "zstd:arm64"
+            "zstd:arm64",
+            "binutils:amd64",
+            "bubblewrap:amd64",
+            "dbus-daemon:amd64",
+            "libdbus-c++-bin:amd64",
+            "redis-server:amd64"
           ],
           "suites": [
             "trixie",
@@ -1863,6 +2015,17 @@
             "libprotobuf32t64",
             "libre2-11",
             "zlib1g"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "dash_runtime_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libprotobuf32t64"
           ],
           "suites": [
             "trixie",
@@ -2155,6 +2318,28 @@
             "trixie-security"
           ]
         },
+        "libnl_bookworm_system": {
+          "include_transitive": true,
+          "packages": [
+            "libc6"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
+          ]
+        },
+        "libnl_system": {
+          "include_transitive": true,
+          "packages": [
+            "libc6"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
         "libyang_deps": {
           "include_transitive": true,
           "packages": [
@@ -2166,6 +2351,42 @@
             "trixie",
             "trixie-updates",
             "trixie-security"
+          ]
+        },
+        "libyang_system": {
+          "include_transitive": true,
+          "packages": [
+            "libpcre2-dev",
+            "libxxhash-dev",
+            "libpcre2-8-0",
+            "libxxhash0",
+            "libc6",
+            "libgcc-s1",
+            "libcmocka-dev",
+            "libcmocka0"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "libyang_system_bookworm": {
+          "include_transitive": true,
+          "packages": [
+            "libpcre2-dev",
+            "libxxhash-dev",
+            "libpcre2-8-0",
+            "libxxhash0",
+            "libc6",
+            "libgcc-s1",
+            "libcmocka-dev",
+            "libcmocka0"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
           ]
         },
         "manual_tools": {
@@ -2410,7 +2631,12 @@
             "libjansson-dev",
             "libjemalloc-dev",
             "libteam-dev",
-            "libyaml-cpp-dev"
+            "libyaml-cpp-dev",
+            "libjansson4",
+            "libjemalloc2",
+            "libteam5",
+            "libteamdctl0",
+            "libyaml-cpp0.8"
           ],
           "suites": [
             "trixie",
@@ -2527,6 +2753,74 @@
             "strace:arm64",
             "vim-nox:amd64 (= 2:9.1.1230-2)",
             "vim-nox:arm64 (= 2:9.1.1230-2)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "syncd_vs_vim_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64 (= 16.3-1)",
+            "gdbserver:amd64 (= 16.3-1)",
+            "libgpm2:amd64 (= 1.20.7-11+b2)",
+            "sshpass:amd64 (= 1.10-0.1)",
+            "strace:amd64 (= 6.13+ds-1)",
+            "vim:amd64 (= 2:9.1.1230-2)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libdbus-1-3:amd64 (= 1.16.2-2)",
+            "libdbus-c++-1-0v5:amd64 (= 0.9.0-15)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64 (= 16.3-1)",
+            "gdbserver:amd64 (= 16.3-1)",
+            "libaudit1:amd64 (= 1:4.0.2-2+b2)",
+            "libcap-ng0:amd64 (= 0.8.5-4+b1)",
+            "libcbor0.10:amd64 (= 0.10.2-2)",
+            "libcrypt1:amd64 (= 1:4.4.38-1)",
+            "libedit2:amd64 (= 3.1-20250104-1)",
+            "libfido2-1:amd64 (= 1.15.0-1+b1)",
+            "libpam0g:amd64 (= 1.7.0-5)",
+            "libselinux1:amd64 (= 3.8.1-1)",
+            "libtinfo6:amd64 (= 6.5+20250216-2)",
+            "libudev1:amd64 (= 257.13-1~deb13u1)",
+            "libwrap0:amd64 (= 7.6.q-36)",
+            "libwtmpdb0:amd64 (= 0.73.0-3+deb13u1)",
+            "sshpass:amd64 (= 1.10-0.1)",
+            "strace:amd64 (= 6.13+ds-1)",
+            "vim:amd64 (= 2:9.1.1230-2)",
+            "zlib1g:amd64 (= 1:1.3.dfsg+really1.3.1-1+b1)"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sysmgr_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "dbus-daemon:amd64 (= 1.16.2-2)",
+            "redis-server:amd64 (= 5:8.0.2-3+deb13u2)"
           ],
           "suites": [
             "trixie",
@@ -2676,6 +2970,27 @@
           "sha256": "043219839669c431def9bb410c4a827f115ee5bf377469d55c4ed905f81f73be",
           "suite": "trixie",
           "version": "4.4.1-2"
+        },
+        {
+          "architecture": "amd64",
+          "name": "dbus-bin",
+          "sha256": "a7c0785f89d3763bb83e2912237135a7d1c610e06f487c39b1d6408e88d46fb5",
+          "suite": "trixie",
+          "version": "1.16.2-2"
+        },
+        {
+          "architecture": "amd64",
+          "name": "dbus-daemon",
+          "sha256": "c91558cbd019bd5ec3e9fde0084976d5f61977f4ef0a9ed1ff48fe3a129b91d4",
+          "suite": "trixie",
+          "version": "1.16.2-2"
+        },
+        {
+          "architecture": "all",
+          "name": "dbus-session-bus-common",
+          "sha256": "98bd27836c7170839ed9c84b00daad9ed7155bd3d42e3f0ec3faf497aafa5f5f",
+          "suite": "trixie",
+          "version": "1.16.2-2"
         }
       ],
       "version": 1
@@ -3111,6 +3426,7 @@
           "/trixie-security/libssl-dev:amd64": "3.5.6-1~deb13u2",
           "/trixie-security/libssl3t64:amd64": "3.5.6-1~deb13u2",
           "/trixie-security/openssl:amd64": "3.5.6-1~deb13u2",
+          "/trixie-security/redis-server:amd64": "5:8.0.2-3+deb13u2",
           "/trixie/acl:amd64": "2.3.2-2+b1",
           "/trixie/aspell-en:amd64": "2020.12.07-0-1",
           "/trixie/aspell:amd64": "0.60.8.1-4",
@@ -3118,7 +3434,9 @@
           "/trixie/automake:amd64": "1:1.17-4",
           "/trixie/bash:amd64": "5.2.37-2+b9",
           "/trixie/bc:amd64": "1.07.1-4",
+          "/trixie/binutils:amd64": "2.44-3",
           "/trixie/bison:amd64": "2:3.8.2+dfsg-1+b2",
+          "/trixie/bubblewrap:amd64": "0.11.0-2+deb13u1",
           "/trixie/build-essential:amd64": "12.12",
           "/trixie/busybox:amd64": "1:1.37.0-6+b8",
           "/trixie/ca-certificates:amd64": "20250419",
@@ -3127,6 +3445,7 @@
           "/trixie/cpio:amd64": "2.15+dfsg-2",
           "/trixie/curl:amd64": "8.14.1-2+deb13u4",
           "/trixie/dash:amd64": "0.5.12-12",
+          "/trixie/dbus-daemon:amd64": "1.16.2-2",
           "/trixie/debhelper:amd64": "13.24.2",
           "/trixie/debianutils:amd64": "5.23.2",
           "/trixie/dh-python:amd64": "6.20250414",
@@ -3157,6 +3476,7 @@
           "/trixie/libc-bin:amd64": "2.41-12+deb13u3",
           "/trixie/libc6-dbg:amd64": "2.41-12+deb13u3",
           "/trixie/libc6:amd64": "2.41-12+deb13u3",
+          "/trixie/libdbus-c++-bin:amd64": "0.9.0-15",
           "/trixie/libelf-dev:amd64": "0.192-4",
           "/trixie/libelf1t64:amd64": "0.192-4",
           "/trixie/libgcc-s1:amd64": "14.2.0-19",
@@ -3370,6 +3690,19 @@
           "/trixie/libprotobuf32t64:armhf": "3.21.12-11+deb13u1",
           "/trixie/libre2-11:armhf": "20240702-3+b1",
           "/trixie/zlib1g:armhf": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "dash_runtime_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/libprotobuf32t64:amd64": "3.21.12-11+deb13u1"
+        },
+        "arm64": {
+          "/trixie/libprotobuf32t64:arm64": "3.21.12-11+deb13u1"
+        },
+        "armhf": {
+          "/trixie/libprotobuf32t64:armhf": "3.21.12-11+deb13u1"
         }
       }
     },
@@ -3724,6 +4057,29 @@
         }
       }
     },
+    "libnl_bookworm_system": {
+      "sets": {
+        "amd64": {
+          "/bookworm/libc6:amd64": "2.36-9+deb12u14"
+        },
+        "arm64": {
+          "/bookworm/libc6:arm64": "2.36-9+deb12u14"
+        }
+      }
+    },
+    "libnl_system": {
+      "sets": {
+        "amd64": {
+          "/trixie/libc6:amd64": "2.41-12+deb13u3"
+        },
+        "arm64": {
+          "/trixie/libc6:arm64": "2.41-12+deb13u3"
+        },
+        "armhf": {
+          "/trixie/libc6:armhf": "2.41-12+deb13u3"
+        }
+      }
+    },
     "libyang_deps": {
       "sets": {
         "amd64": {
@@ -3740,6 +4096,64 @@
           "/trixie/libcmocka-dev:armhf": "1.1.7-3+b1",
           "/trixie/libpcre2-dev:armhf": "10.46-1~deb13u1",
           "/trixie/libxxhash-dev:armhf": "0.8.3-2"
+        }
+      }
+    },
+    "libyang_system": {
+      "sets": {
+        "amd64": {
+          "/trixie/libc6:amd64": "2.41-12+deb13u3",
+          "/trixie/libcmocka-dev:amd64": "1.1.7-3+b1",
+          "/trixie/libcmocka0:amd64": "1.1.7-3+b1",
+          "/trixie/libgcc-s1:amd64": "14.2.0-19",
+          "/trixie/libpcre2-8-0:amd64": "10.46-1~deb13u1",
+          "/trixie/libpcre2-dev:amd64": "10.46-1~deb13u1",
+          "/trixie/libxxhash-dev:amd64": "0.8.3-2",
+          "/trixie/libxxhash0:amd64": "0.8.3-2"
+        },
+        "arm64": {
+          "/trixie/libc6:arm64": "2.41-12+deb13u3",
+          "/trixie/libcmocka-dev:arm64": "1.1.7-3+b1",
+          "/trixie/libcmocka0:arm64": "1.1.7-3+b1",
+          "/trixie/libgcc-s1:arm64": "14.2.0-19",
+          "/trixie/libpcre2-8-0:arm64": "10.46-1~deb13u1",
+          "/trixie/libpcre2-dev:arm64": "10.46-1~deb13u1",
+          "/trixie/libxxhash-dev:arm64": "0.8.3-2",
+          "/trixie/libxxhash0:arm64": "0.8.3-2"
+        },
+        "armhf": {
+          "/trixie/libc6:armhf": "2.41-12+deb13u3",
+          "/trixie/libcmocka-dev:armhf": "1.1.7-3+b1",
+          "/trixie/libcmocka0:armhf": "1.1.7-3+b1",
+          "/trixie/libgcc-s1:armhf": "14.2.0-19",
+          "/trixie/libpcre2-8-0:armhf": "10.46-1~deb13u1",
+          "/trixie/libpcre2-dev:armhf": "10.46-1~deb13u1",
+          "/trixie/libxxhash-dev:armhf": "0.8.3-2",
+          "/trixie/libxxhash0:armhf": "0.8.3-2"
+        }
+      }
+    },
+    "libyang_system_bookworm": {
+      "sets": {
+        "amd64": {
+          "/bookworm/libc6:amd64": "2.36-9+deb12u14",
+          "/bookworm/libcmocka-dev:amd64": "1.1.5-2.1",
+          "/bookworm/libcmocka0:amd64": "1.1.5-2.1",
+          "/bookworm/libgcc-s1:amd64": "12.2.0-14+deb12u1",
+          "/bookworm/libpcre2-8-0:amd64": "10.42-1",
+          "/bookworm/libpcre2-dev:amd64": "10.42-1",
+          "/bookworm/libxxhash-dev:amd64": "0.8.1-1",
+          "/bookworm/libxxhash0:amd64": "0.8.1-1"
+        },
+        "arm64": {
+          "/bookworm/libc6:arm64": "2.36-9+deb12u14",
+          "/bookworm/libcmocka-dev:arm64": "1.1.5-2.1",
+          "/bookworm/libcmocka0:arm64": "1.1.5-2.1",
+          "/bookworm/libgcc-s1:arm64": "12.2.0-14+deb12u1",
+          "/bookworm/libpcre2-8-0:arm64": "10.42-1",
+          "/bookworm/libpcre2-dev:arm64": "10.42-1",
+          "/bookworm/libxxhash-dev:arm64": "0.8.1-1",
+          "/bookworm/libxxhash0:arm64": "0.8.1-1"
         }
       }
     },
@@ -4131,21 +4545,36 @@
       "sets": {
         "amd64": {
           "/trixie/libjansson-dev:amd64": "2.14-2+b3",
+          "/trixie/libjansson4:amd64": "2.14-2+b3",
           "/trixie/libjemalloc-dev:amd64": "5.3.0-3",
+          "/trixie/libjemalloc2:amd64": "5.3.0-3",
           "/trixie/libteam-dev:amd64": "1.31-1+b2",
-          "/trixie/libyaml-cpp-dev:amd64": "0.8.0+dfsg-7"
+          "/trixie/libteam5:amd64": "1.31-1+b2",
+          "/trixie/libteamdctl0:amd64": "1.31-1+b2",
+          "/trixie/libyaml-cpp-dev:amd64": "0.8.0+dfsg-7",
+          "/trixie/libyaml-cpp0.8:amd64": "0.8.0+dfsg-7"
         },
         "arm64": {
           "/trixie/libjansson-dev:arm64": "2.14-2+b3",
+          "/trixie/libjansson4:arm64": "2.14-2+b3",
           "/trixie/libjemalloc-dev:arm64": "5.3.0-3",
+          "/trixie/libjemalloc2:arm64": "5.3.0-3",
           "/trixie/libteam-dev:arm64": "1.31-1+b2",
-          "/trixie/libyaml-cpp-dev:arm64": "0.8.0+dfsg-7"
+          "/trixie/libteam5:arm64": "1.31-1+b2",
+          "/trixie/libteamdctl0:arm64": "1.31-1+b2",
+          "/trixie/libyaml-cpp-dev:arm64": "0.8.0+dfsg-7",
+          "/trixie/libyaml-cpp0.8:arm64": "0.8.0+dfsg-7"
         },
         "armhf": {
           "/trixie/libjansson-dev:armhf": "2.14-2+b3",
+          "/trixie/libjansson4:armhf": "2.14-2+b3",
           "/trixie/libjemalloc-dev:armhf": "5.3.0-3",
+          "/trixie/libjemalloc2:armhf": "5.3.0-3",
           "/trixie/libteam-dev:armhf": "1.31-1+b2",
-          "/trixie/libyaml-cpp-dev:armhf": "0.8.0+dfsg-7"
+          "/trixie/libteam5:armhf": "1.31-1+b2",
+          "/trixie/libteamdctl0:armhf": "1.31-1+b2",
+          "/trixie/libyaml-cpp-dev:armhf": "0.8.0+dfsg-7",
+          "/trixie/libyaml-cpp0.8:armhf": "0.8.0+dfsg-7"
         }
       }
     },
@@ -4258,6 +4687,58 @@
           "/trixie/sshpass:arm64": "1.10-0.1+b1",
           "/trixie/strace:arm64": "6.13+ds-1",
           "/trixie/vim-nox:arm64": "2:9.1.1230-2"
+        }
+      }
+    },
+    "syncd_vs_vim_debug_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/gdb:amd64": "16.3-1",
+          "/trixie/gdbserver:amd64": "16.3-1",
+          "/trixie/libgpm2:amd64": "1.20.7-11+b2",
+          "/trixie/sshpass:amd64": "1.10-0.1",
+          "/trixie/strace:amd64": "6.13+ds-1",
+          "/trixie/vim:amd64": "2:9.1.1230-2"
+        }
+      }
+    },
+    "sysmgr_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/libdbus-1-3:amd64": "1.16.2-2",
+          "/trixie/libdbus-c++-1-0v5:amd64": "0.9.0-15"
+        }
+      }
+    },
+    "sysmgr_debug_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/gdb:amd64": "16.3-1",
+          "/trixie/gdbserver:amd64": "16.3-1",
+          "/trixie/libaudit1:amd64": "1:4.0.2-2+b2",
+          "/trixie/libcap-ng0:amd64": "0.8.5-4+b1",
+          "/trixie/libcbor0.10:amd64": "0.10.2-2",
+          "/trixie/libcrypt1:amd64": "1:4.4.38-1",
+          "/trixie/libedit2:amd64": "3.1-20250104-1",
+          "/trixie/libfido2-1:amd64": "1.15.0-1+b1",
+          "/trixie/libpam0g:amd64": "1.7.0-5",
+          "/trixie/libselinux1:amd64": "3.8.1-1",
+          "/trixie/libtinfo6:amd64": "6.5+20250216-2",
+          "/trixie/libudev1:amd64": "257.13-1~deb13u1",
+          "/trixie/libwrap0:amd64": "7.6.q-36",
+          "/trixie/libwtmpdb0:amd64": "0.73.0-3+deb13u1",
+          "/trixie/sshpass:amd64": "1.10-0.1",
+          "/trixie/strace:amd64": "6.13+ds-1",
+          "/trixie/vim:amd64": "2:9.1.1230-2",
+          "/trixie/zlib1g:amd64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "sysmgr_test_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/redis-server:amd64": "5:8.0.2-3+deb13u2",
+          "/trixie/dbus-daemon:amd64": "1.16.2-2"
         }
       }
     },
@@ -10289,6 +10770,98 @@
       "suite": "bookworm",
       "version": "12.2.0-14+deb12u1"
     },
+    "/bookworm/libcmocka-dev:amd64=1.1.5-2.1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libcmocka0:amd64=1.1.5-2.1",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/c/cmocka/libcmocka-dev_1.1.5-2.1_amd64.deb",
+      "files": [
+        "usr/include/cmocka.h",
+        "usr/include/cmocka_pbc.h",
+        "usr/include/cmockery/cmockery.h",
+        "usr/include/cmockery/pbc.h",
+        "usr/lib/x86_64-linux-gnu/cmake/cmocka/cmocka-config-version.cmake",
+        "usr/lib/x86_64-linux-gnu/cmake/cmocka/cmocka-config.cmake",
+        "usr/lib/x86_64-linux-gnu/libcmocka.so",
+        "usr/lib/x86_64-linux-gnu/libcmockery.so",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/cmocka.pc"
+      ],
+      "name": "libcmocka-dev",
+      "section": "libdevel",
+      "sha256": "9fce50ae4bde8cd63599641b365db7432004b1d266839f1f4de8d6cc623dde52",
+      "size": 18596,
+      "suite": "bookworm",
+      "version": "1.1.5-2.1"
+    },
+    "/bookworm/libcmocka-dev:arm64=1.1.5-2.1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libcmocka0:arm64=1.1.5-2.1",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/c/cmocka/libcmocka-dev_1.1.5-2.1_arm64.deb",
+      "files": [
+        "usr/include/cmocka.h",
+        "usr/include/cmocka_pbc.h",
+        "usr/include/cmockery/cmockery.h",
+        "usr/include/cmockery/pbc.h",
+        "usr/lib/aarch64-linux-gnu/cmake/cmocka/cmocka-config-version.cmake",
+        "usr/lib/aarch64-linux-gnu/cmake/cmocka/cmocka-config.cmake",
+        "usr/lib/aarch64-linux-gnu/libcmocka.so",
+        "usr/lib/aarch64-linux-gnu/libcmockery.so",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/cmocka.pc"
+      ],
+      "name": "libcmocka-dev",
+      "section": "libdevel",
+      "sha256": "8813efcd79b2f7c6d41b4f8dd1441d01993524f5669a0bac3325600a6366d481",
+      "size": 18600,
+      "suite": "bookworm",
+      "version": "1.1.5-2.1"
+    },
+    "/bookworm/libcmocka0:amd64=1.1.5-2.1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/c/cmocka/libcmocka0_1.1.5-2.1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libcmocka.so.0",
+        "usr/lib/x86_64-linux-gnu/libcmocka.so.0.7.0"
+      ],
+      "name": "libcmocka0",
+      "section": "libs",
+      "sha256": "4dd93b88bf0268073c53e426e45e257b2bb1e00c72d5d9f7d93d51a231f6085f",
+      "size": 22472,
+      "suite": "bookworm",
+      "version": "1.1.5-2.1"
+    },
+    "/bookworm/libcmocka0:arm64=1.1.5-2.1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/c/cmocka/libcmocka0_1.1.5-2.1_arm64.deb",
+      "files": [
+        "usr/lib/aarch64-linux-gnu/libcmocka.so.0",
+        "usr/lib/aarch64-linux-gnu/libcmocka.so.0.7.0"
+      ],
+      "name": "libcmocka0",
+      "section": "libs",
+      "sha256": "cddc0e4875e4232807603576f9aadbe6452d719796543f81d1b0bad419b2101f",
+      "size": 21016,
+      "suite": "bookworm",
+      "version": "1.1.5-2.1"
+    },
     "/bookworm/libcom-err2:amd64=1.47.0-2+b2": {
       "architecture": "amd64",
       "depends_on": [
@@ -11495,6 +12068,82 @@
       "suite": "bookworm",
       "version": "1.3.0-2"
     },
+    "/bookworm/libpcre2-16-0:amd64=10.42-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-16-0_10.42-1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libpcre2-16.so.0",
+        "usr/lib/x86_64-linux-gnu/libpcre2-16.so.0.11.2"
+      ],
+      "name": "libpcre2-16-0",
+      "section": "libs",
+      "sha256": "53892097cf102ecd8f133ccd3f1f6be6f288c6ffeeeacf6ce081dfee15292675",
+      "size": 245032,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-16-0:arm64=10.42-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-16-0_10.42-1_arm64.deb",
+      "files": [
+        "usr/lib/aarch64-linux-gnu/libpcre2-16.so.0",
+        "usr/lib/aarch64-linux-gnu/libpcre2-16.so.0.11.2"
+      ],
+      "name": "libpcre2-16-0",
+      "section": "libs",
+      "sha256": "f4f08df15ba9faa2e74028212a0a7f5c6dc723d3ef3a71a923917a70aae0f3fe",
+      "size": 215944,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-32-0:amd64=10.42-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-32-0_10.42-1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libpcre2-32.so.0",
+        "usr/lib/x86_64-linux-gnu/libpcre2-32.so.0.11.2"
+      ],
+      "name": "libpcre2-32-0",
+      "section": "libs",
+      "sha256": "cadd2941b89f3f80dd739df457f96cd7a77f364d878b5c2c354130208bd60c31",
+      "size": 233920,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-32-0:arm64=10.42-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-32-0_10.42-1_arm64.deb",
+      "files": [
+        "usr/lib/aarch64-linux-gnu/libpcre2-32.so.0",
+        "usr/lib/aarch64-linux-gnu/libpcre2-32.so.0.11.2"
+      ],
+      "name": "libpcre2-32-0",
+      "section": "libs",
+      "sha256": "afcd35adf1f4f6982100e03ff39438984298947d1f1740e87a93263157678bb8",
+      "size": 206820,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
     "/bookworm/libpcre2-8-0:amd64=10.42-1": {
       "architecture": "amd64",
       "depends_on": [
@@ -11530,6 +12179,154 @@
       "section": "libs",
       "sha256": "b2448d0a8a3db7fbeac231e7ef93811346c1fb5f96ccf6f631701d8a4eb39206",
       "size": 230728,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-dev:amd64=10.42-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm-security/libgssapi-krb5-2:amd64=1.20.1-2+deb12u5",
+        "/bookworm-security/libk5crypto3:amd64=1.20.1-2+deb12u5",
+        "/bookworm-security/libkrb5-3:amd64=1.20.1-2+deb12u5",
+        "/bookworm-security/libkrb5support0:amd64=1.20.1-2+deb12u5",
+        "/bookworm-security/libssl3:amd64=3.0.20-1~deb12u2",
+        "/bookworm-security/linux-libc-dev:amd64=6.1.177-1",
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc-dev-bin:amd64=2.36-9+deb12u14",
+        "/bookworm/libc6-dev:amd64=2.36-9+deb12u14",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libcom-err2:amd64=1.47.0-2+b2",
+        "/bookworm/libcrypt-dev:amd64=1:4.4.33-2",
+        "/bookworm/libcrypt1:amd64=1:4.4.33-2",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libkeyutils1:amd64=1.6.3-2",
+        "/bookworm/libnsl-dev:amd64=1.3.0-2",
+        "/bookworm/libnsl2:amd64=1.3.0-2",
+        "/bookworm/libpcre2-16-0:amd64=10.42-1",
+        "/bookworm/libpcre2-32-0:amd64=10.42-1",
+        "/bookworm/libpcre2-8-0:amd64=10.42-1",
+        "/bookworm/libpcre2-posix3:amd64=10.42-1",
+        "/bookworm/libtirpc-common:amd64=1.3.3+ds-1",
+        "/bookworm/libtirpc-dev:amd64=1.3.3+ds-1",
+        "/bookworm/libtirpc3:amd64=1.3.3+ds-1",
+        "/bookworm/rpcsvc-proto:amd64=1.4.3-1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-dev_10.42-1_amd64.deb",
+      "files": [
+        "usr/bin/pcre2-config",
+        "usr/include/pcre2.h",
+        "usr/include/pcre2posix.h",
+        "usr/lib/x86_64-linux-gnu/libpcre2-16.a",
+        "usr/lib/x86_64-linux-gnu/libpcre2-16.so",
+        "usr/lib/x86_64-linux-gnu/libpcre2-32.a",
+        "usr/lib/x86_64-linux-gnu/libpcre2-32.so",
+        "usr/lib/x86_64-linux-gnu/libpcre2-8.a",
+        "usr/lib/x86_64-linux-gnu/libpcre2-8.so",
+        "usr/lib/x86_64-linux-gnu/libpcre2-posix.a",
+        "usr/lib/x86_64-linux-gnu/libpcre2-posix.so",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/libpcre2-16.pc",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/libpcre2-32.pc",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/libpcre2-8.pc",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/libpcre2-posix.pc"
+      ],
+      "name": "libpcre2-dev",
+      "section": "libdevel",
+      "sha256": "f0ff485a26daae8f742a1566426f0d98f06cdaf19ee0cc24764e09eff1c99257",
+      "size": 753232,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-dev:arm64=10.42-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm-security/libgssapi-krb5-2:arm64=1.20.1-2+deb12u5",
+        "/bookworm-security/libk5crypto3:arm64=1.20.1-2+deb12u5",
+        "/bookworm-security/libkrb5-3:arm64=1.20.1-2+deb12u5",
+        "/bookworm-security/libkrb5support0:arm64=1.20.1-2+deb12u5",
+        "/bookworm-security/libssl3:arm64=3.0.20-1~deb12u2",
+        "/bookworm-security/linux-libc-dev:arm64=6.1.177-1",
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc-dev-bin:arm64=2.36-9+deb12u14",
+        "/bookworm/libc6-dev:arm64=2.36-9+deb12u14",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libcom-err2:arm64=1.47.0-2+b2",
+        "/bookworm/libcrypt-dev:arm64=1:4.4.33-2",
+        "/bookworm/libcrypt1:arm64=1:4.4.33-2",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libkeyutils1:arm64=1.6.3-2",
+        "/bookworm/libnsl-dev:arm64=1.3.0-2",
+        "/bookworm/libnsl2:arm64=1.3.0-2",
+        "/bookworm/libpcre2-16-0:arm64=10.42-1",
+        "/bookworm/libpcre2-32-0:arm64=10.42-1",
+        "/bookworm/libpcre2-8-0:arm64=10.42-1",
+        "/bookworm/libpcre2-posix3:arm64=10.42-1",
+        "/bookworm/libtirpc-common:arm64=1.3.3+ds-1",
+        "/bookworm/libtirpc-dev:arm64=1.3.3+ds-1",
+        "/bookworm/libtirpc3:arm64=1.3.3+ds-1",
+        "/bookworm/rpcsvc-proto:arm64=1.4.3-1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-dev_10.42-1_arm64.deb",
+      "files": [
+        "usr/bin/pcre2-config",
+        "usr/include/pcre2.h",
+        "usr/include/pcre2posix.h",
+        "usr/lib/aarch64-linux-gnu/libpcre2-16.a",
+        "usr/lib/aarch64-linux-gnu/libpcre2-16.so",
+        "usr/lib/aarch64-linux-gnu/libpcre2-32.a",
+        "usr/lib/aarch64-linux-gnu/libpcre2-32.so",
+        "usr/lib/aarch64-linux-gnu/libpcre2-8.a",
+        "usr/lib/aarch64-linux-gnu/libpcre2-8.so",
+        "usr/lib/aarch64-linux-gnu/libpcre2-posix.a",
+        "usr/lib/aarch64-linux-gnu/libpcre2-posix.so",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/libpcre2-16.pc",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/libpcre2-32.pc",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/libpcre2-8.pc",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/libpcre2-posix.pc"
+      ],
+      "name": "libpcre2-dev",
+      "section": "libdevel",
+      "sha256": "741bf236122f890ca3b1a9f6b9570848dd5b35aa558281424001cb1413747c90",
+      "size": 664496,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-posix3:amd64=10.42-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libpcre2-8-0:amd64=10.42-1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-posix3_10.42-1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libpcre2-posix.so.3",
+        "usr/lib/x86_64-linux-gnu/libpcre2-posix.so.3.0.4"
+      ],
+      "name": "libpcre2-posix3",
+      "section": "libs",
+      "sha256": "904e16de97e0b8f4b714774fa7dc566afa4b01ad6f4c5bac4cacd024d04823de",
+      "size": 55396,
+      "suite": "bookworm",
+      "version": "10.42-1"
+    },
+    "/bookworm/libpcre2-posix3:arm64=10.42-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libpcre2-8-0:arm64=10.42-1"
+      ],
+      "filename": "pool/main/p/pcre2/libpcre2-posix3_10.42-1_arm64.deb",
+      "files": [
+        "usr/lib/aarch64-linux-gnu/libpcre2-posix.so.3",
+        "usr/lib/aarch64-linux-gnu/libpcre2-posix.so.3.0.4"
+      ],
+      "name": "libpcre2-posix3",
+      "section": "libs",
+      "sha256": "c963bcd6864438e7a17499bd5d0e047fe3e42d8b09cf141cc10d4ee17314568b",
+      "size": 55464,
       "suite": "bookworm",
       "version": "10.42-1"
     },
@@ -14572,6 +15369,91 @@
       "size": 861608,
       "suite": "bookworm",
       "version": "12.2.0-14+deb12u1"
+    },
+    "/bookworm/libxxhash-dev:amd64=0.8.1-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libxxhash0:amd64=0.8.1-1"
+      ],
+      "filename": "pool/main/x/xxhash/libxxhash-dev_0.8.1-1_amd64.deb",
+      "files": [
+        "usr/include/xxh3.h",
+        "usr/include/xxh_x86dispatch.h",
+        "usr/include/xxhash.h",
+        "usr/lib/x86_64-linux-gnu/libxxhash.a",
+        "usr/lib/x86_64-linux-gnu/libxxhash.so",
+        "usr/lib/x86_64-linux-gnu/pkgconfig/libxxhash.pc"
+      ],
+      "name": "libxxhash-dev",
+      "section": "libdevel",
+      "sha256": "47e8309c6163f5ffa910520f6502cc264fda93dbb58ada840db4838575a86151",
+      "size": 66116,
+      "suite": "bookworm",
+      "version": "0.8.1-1"
+    },
+    "/bookworm/libxxhash-dev:arm64=0.8.1-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libxxhash0:arm64=0.8.1-1"
+      ],
+      "filename": "pool/main/x/xxhash/libxxhash-dev_0.8.1-1_arm64.deb",
+      "files": [
+        "usr/include/xxh3.h",
+        "usr/include/xxhash.h",
+        "usr/lib/aarch64-linux-gnu/libxxhash.a",
+        "usr/lib/aarch64-linux-gnu/libxxhash.so",
+        "usr/lib/aarch64-linux-gnu/pkgconfig/libxxhash.pc"
+      ],
+      "name": "libxxhash-dev",
+      "section": "libdevel",
+      "sha256": "30df1dc1b8d8436d1b66af5886b788775b33a7bee5fd319f7101d17076618f57",
+      "size": 66616,
+      "suite": "bookworm",
+      "version": "0.8.1-1"
+    },
+    "/bookworm/libxxhash0:amd64=0.8.1-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:amd64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:amd64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:amd64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/x/xxhash/libxxhash0_0.8.1-1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libxxhash.so.0",
+        "usr/lib/x86_64-linux-gnu/libxxhash.so.0.8.1"
+      ],
+      "name": "libxxhash0",
+      "section": "libs",
+      "sha256": "6c19a5d18c8350744581fbd25d5d29e2b7101053e25aafa4e1ffcc2b505b2f1c",
+      "size": 27584,
+      "suite": "bookworm",
+      "version": "0.8.1-1"
+    },
+    "/bookworm/libxxhash0:arm64=0.8.1-1": {
+      "architecture": "arm64",
+      "depends_on": [
+        "/bookworm/gcc-12-base:arm64=12.2.0-14+deb12u1",
+        "/bookworm/libc6:arm64=2.36-9+deb12u14",
+        "/bookworm/libgcc-s1:arm64=12.2.0-14+deb12u1"
+      ],
+      "filename": "pool/main/x/xxhash/libxxhash0_0.8.1-1_arm64.deb",
+      "files": [
+        "usr/lib/aarch64-linux-gnu/libxxhash.so.0",
+        "usr/lib/aarch64-linux-gnu/libxxhash.so.0.8.1"
+      ],
+      "name": "libxxhash0",
+      "section": "libs",
+      "sha256": "a3eed3901eb1804f2882dc7676f174d619745539e66ac9e92e09cd96ca0cfd73",
+      "size": 20452,
+      "suite": "bookworm",
+      "version": "0.8.1-1"
     },
     "/bookworm/libzstd1:amd64=1.5.4+dfsg2-5": {
       "architecture": "amd64",
@@ -28979,6 +29861,75 @@
       "size": 95648,
       "suite": "trixie",
       "version": "0.5.12-12"
+    },
+    "/trixie/dbus-bin:amd64=1.16.2-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/libdbus-1-3:amd64=1.16.2-2",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/gcc-14-base:amd64=14.2.0-19"
+      ],
+      "filename": "pool/main/d/dbus/dbus-bin_1.16.2-2_amd64.deb",
+      "files": [
+        "usr/bin/dbus-cleanup-sockets",
+        "usr/bin/dbus-monitor",
+        "usr/bin/dbus-send",
+        "usr/bin/dbus-update-activation-environment",
+        "usr/bin/dbus-uuidgen"
+      ],
+      "name": "dbus-bin",
+      "section": "admin",
+      "sha256": "a7c0785f89d3763bb83e2912237135a7d1c610e06f487c39b1d6408e88d46fb5",
+      "size": 80004,
+      "suite": "trixie",
+      "version": "1.16.2-2"
+    },
+    "/trixie/dbus-daemon:amd64=1.16.2-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libexpat1:amd64=2.7.1-2",
+        "/trixie/libdbus-1-3:amd64=1.16.2-2",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libapparmor1:amd64=4.1.0-1",
+        "/trixie/dbus-session-bus-common:amd64=1.16.2-2",
+        "/trixie/dbus-bin:amd64=1.16.2-2"
+      ],
+      "filename": "pool/main/d/dbus/dbus-daemon_1.16.2-2_amd64.deb",
+      "files": [
+        "usr/bin/dbus-daemon",
+        "usr/bin/dbus-run-session",
+        "usr/lib/tmpfiles.d/dbus.conf"
+      ],
+      "name": "dbus-daemon",
+      "section": "admin",
+      "sha256": "c91558cbd019bd5ec3e9fde0084976d5f61977f4ef0a9ed1ff48fe3a129b91d4",
+      "size": 158660,
+      "suite": "trixie",
+      "version": "1.16.2-2"
+    },
+    "/trixie/dbus-session-bus-common:amd64=1.16.2-2": {
+      "architecture": "all",
+      "depends_on": [],
+      "filename": "pool/main/d/dbus/dbus-session-bus-common_1.16.2-2_all.deb",
+      "files": [],
+      "name": "dbus-session-bus-common",
+      "section": "admin",
+      "sha256": "98bd27836c7170839ed9c84b00daad9ed7155bd3d42e3f0ec3faf497aafa5f5f",
+      "size": 52264,
+      "suite": "trixie",
+      "version": "1.16.2-2"
     },
     "/trixie/debconf:amd64=1.5.91": {
       "architecture": "all",
