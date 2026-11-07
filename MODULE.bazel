@@ -84,6 +84,18 @@ apt.import_lock(
     sources = "//apt:sources.json",
 )
 
+# Registered native owners still use this historical Bookworm namespace. Bind
+# their library views to the same production lock rather than resolving again.
+bookworm_apt = use_extension("//toolchains/bookworm:apt.bzl", "apt")
+bookworm_apt.import_lock(
+    dependency_sets = ["libnl_bookworm_system", "libyang_system_bookworm"],
+    libraries = True,
+    lock = "//apt:apt.lock.json",
+    requests = "//apt:requests.json",
+    sources = "//apt:sources.json",
+)
+use_repo(bookworm_apt, "libnl_bookworm_system", "libyang_system_bookworm")
+
 # Preserve historical raw-archive interfaces from the same locked packages.
 use_repo(
     apt,

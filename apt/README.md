@@ -6,6 +6,17 @@ reviewed production graph, shared by Docker/rootfs payloads, target development
 libraries and execution tools. A package identity is stored once; dependency
 sets select their required packages and architecture contexts.
 
+Registered libnl/libyang consumers retain their historical
+`//toolchains/bookworm:apt.bzl` namespace. Its library views import this same
+production lock, including CMocka, PCRE2 and xxHash headers and libraries;
+normal builds do not restart the old Bookworm index resolver.
+
+The Sysmgr runtime, debug and test collections preserve their reviewed AMD64
+package selections. `syncd_vs_vim_debug_debian` preserves the Syncd debug
+consumer that selects `vim`, while `syncd_vs_debug_debian` continues to select
+`vim-nox`. These are separate root selections over one package graph, so adopting
+the shared lock does not silently replace one editor package with the other.
+
 ## Update and check
 
 Use the fixed Bazel and Distroless versions selected by the owning workspace.
