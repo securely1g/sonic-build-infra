@@ -68,22 +68,38 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
           printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
+      - name: Check downloader configuration
+        run: python3 -B ci/tests/debian_transport_test.py
+      - name: Fetch the verified shared downloader configuration
+        env:
+          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg
+          SOURCE_MIRRORS_SHA256: ddd6f40504a30e138a62be0d728e1a352391d0f781c927eaf4ea45c44d8a0720
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/declared-tools-downloads.cfg"
+          curl --fail --location --retry 3 --max-time 60 --output "$config.tmp" "$SOURCE_MIRRORS_URL"
+          printf '%s  %s\n' "$SOURCE_MIRRORS_SHA256" "$config.tmp" | sha256sum --check --strict
+          mv "$config.tmp" "$config"
+          mkdir -p ci-artifacts
+          cp "$config" ci-artifacts/source-mirrors.cfg
+          printf '%s\n' "$SOURCE_MIRRORS_URL" > ci-artifacts/source-mirrors-url.txt
+          sha256sum ci-artifacts/source-mirrors.cfg > ci-artifacts/source-mirrors.sha256
       - name: Build and test source rules
-        run: bash ci/bazel-ci.sh
+        run: SONIC_BAZEL_DOWNLOADER_CONFIG="$RUNNER_TEMP/declared-tools-downloads.cfg" bash ci/bazel-ci.sh
       - name: Reject conflicting sysroot package files
         run: >-
           python3 toolchains/sysroot/tests/validate_collisions.py --artifacts ci-artifacts/sysroot-collisions
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
-          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
+          --bazel-option=--downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg"
       - name: Validate native Debian GCC, Clang and their shared sysroot
         run: >-
           python3 toolchains/sysroot/tests/validate.py --artifacts ci-artifacts/shared-sysroot
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
-          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
+          --bazel-option=--downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg"
       - name: Validate Debian cross GCC and Clang with an AMD64 source generator
         if: matrix.arch == 'AMD64'
         run: >-
@@ -91,7 +107,7 @@ jobs:
           --startup-option=--ignore_all_rc_files
           --bazel-option=--registry="$SONIC_BAZEL_REGISTRY"
           --bazel-option=--registry=https://bcr.bazel.build/
-          --bazel-option=--downloader_config="$PWD/ci/source_mirrors.cfg"
+          --bazel-option=--downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg"
       - name: Send ARM64 programs and their declared runtime to the native runner
         if: matrix.arch == 'AMD64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

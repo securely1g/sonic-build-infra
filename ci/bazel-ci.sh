@@ -27,8 +27,15 @@ cp ci/source_mirrors.cfg "$artifacts/ci/"
 # Record the effective endpoint with the generated module lock.
 registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
+# Explicit CI transport must also reach the nested shared-API workspace.
+# Ordinary local callers retain the checked-in mirror configuration.
+downloader_config=${SONIC_BAZEL_DOWNLOADER_CONFIG:-$root/ci/source_mirrors.cfg}
+if [[ "$downloader_config" != /* || ! -f "$downloader_config" || -L "$downloader_config" ]]; then
+  echo 'Selected downloader configuration must be an absolute regular non-symlink file' >&2
+  exit 1
+fi
 resolution=(--registry="$registry" --registry=https://bcr.bazel.build/ --lockfile_mode=update
-            --downloader_config="$root/ci/source_mirrors.cfg")
+            --downloader_config="$downloader_config")
 platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
        '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$')
