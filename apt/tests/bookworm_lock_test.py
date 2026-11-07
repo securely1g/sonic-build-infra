@@ -16,7 +16,8 @@ def main():
     document, sources, requests = [json.loads(path.read_text()) for path in (args.lock, args.sources, args.requests)]
     lock.check_lock(document, sources, requests)
     collections = {}
-    for name in ["bookworm_toolchains", "bookworm_build_tools", "bookworm_target_debug"]:
+    for name in ["bookworm_toolchains", "bookworm_build_tools", "bookworm_target_debug",
+                 "libnl_bookworm_system", "libyang_system_bookworm"]:
         definition = document["dependency_sets"][name]
         assert set(definition["sets"]) == {"amd64", "arm64"}, name
         closure = lock.reachable(dict(document, dependency_sets={name: definition}))
@@ -47,6 +48,12 @@ def main():
         debug = selected("bookworm_target_debug", architecture, "libc6-dbg")
         assert libc["version"] == debug["version"], (architecture, libc["version"], debug["version"])
         assert libc["architecture"] == debug["architecture"] == architecture
+        # Historical source-owner namespaces must select the same target libc,
+        # not accidentally resolve a Trixie library with the same package name.
+        assert selected("libnl_bookworm_system", architecture, "libc6") == libc
+        assert selected("libyang_system_bookworm", architecture, "libc6") == libc
+        cmocka = selected("libyang_system_bookworm", architecture, "libcmocka-dev")
+        assert "usr/include/cmocka.h" in cmocka["files"], architecture
     print("Bookworm AMD64/ARM64 package hashes, closures, native file maps and matching libc debug versions verified")
 
 
