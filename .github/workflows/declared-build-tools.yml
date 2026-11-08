@@ -233,9 +233,9 @@ jobs:
           [[ "$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)" == "$EXPECTED_SOURCE_SHA" ]]
           test -z "$(git -c safe.directory="$GITHUB_WORKSPACE" status --porcelain=v1 --untracked-files=all)"
           printf '%s\n' \
-            '4b704b2660cb7e873085e478ba1c8c213161fb0742da93b1d92cbd695df19531  apt/apt.lock.json' \
+            'efbf5d2ee33ca4cd14d62da62995530dd784c0de277b17af808583d05e7dbfaf  apt/apt.lock.json' \
             '2fa280945c553a7183fbb57460280cfb6f2fb5c9acdc95fe51f01e7c14e1c227  apt/sources.json' \
-            '3a8f03392f0b44a9081e76314784b2cc3c1c4393b9593bc489f8de3bcbe463dc  apt/requests.json' \
+            'fa8c6439dc00ee380fca987d31b4b4c6a5a0b668c852645ee246d288a63ac062  apt/requests.json' \
             '232d4b3fed61b3001106c9c18c04f15be08d1a65e83b520faee318043ae47059  apt/lock.py' \
             '47b88e49e5348e3e05bbfcb44278ab61f2fdd5fb38357923c6b5bbe8fcc3bce6  ci/source_mirrors.cfg' | sha256sum --check --strict
           mkdir "$RUNNER_TEMP/apt-lock-update"
@@ -269,10 +269,22 @@ jobs:
           root = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update"
           previous = json.loads((root / "inputs/seed.lock.json").read_text())
           result = json.loads((root / "apt.lock.json").read_text())
-          assert len(previous["dependency_sets"]) == 45 and len(previous["packages"]) == 2210
-          assert len(result["dependency_sets"]) == 53
+          assert len(previous["dependency_sets"]) == 53 and len(previous["packages"]) == 2269
+          assert len(result["dependency_sets"]) == 55
           for name, group in previous["dependency_sets"].items():
-              assert set(result["dependency_sets"][name]["sets"]) == set(group["sets"]), name
+              expected_architectures = set(group["sets"])
+              if name == "frr_deps":
+                  # The included FRR declaration has unqualified Trixie requests.
+                  assert expected_architectures == {"amd64", "arm64"}
+                  expected_architectures.add("armhf")
+              current_sets = result["dependency_sets"][name]["sets"]
+              assert set(current_sets) == expected_architectures, name
+              for architecture, roots in group["sets"].items():
+                  for key, version in roots.items():
+                      assert current_sets[architecture].get(key) == version, (name, architecture, key)
+          for name in ("frr_bookworm_deps", "net_snmp_system"):
+              assert set(result["dependency_sets"][name]["sets"]) == {"amd64", "arm64"}, name
+          assert sum(len(group["sets"]) for group in result["dependency_sets"].values()) == 124
           for key, old in previous["packages"].items():
               current = result["packages"][key]
               for field in ("name", "version", "architecture", "suite", "filename", "sha256"):
@@ -280,8 +292,9 @@ jobs:
               for field in old:
                   if field.endswith("_sha256"):
                       assert current[field] == old[field], (key, field)
-          summary = {"schema": 1, "preserved_group_architecture_sets": 45,
-                     "preserved_package_identities": 2210,
+          summary = {"schema": 1, "preserved_group_architecture_sets": 52,
+                     "expanded_group_architecture_sets": {"frr_deps": ["amd64", "arm64", "armhf"]},
+                     "preserved_package_identities": 2269,
                      "new_group_architectures": {name: sorted(group["sets"])
                          for name, group in result["dependency_sets"].items()
                          if name not in previous["dependency_sets"]},

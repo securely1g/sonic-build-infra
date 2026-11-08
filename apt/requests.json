@@ -614,7 +614,29 @@
         "libsnmp-dev:amd64",
         "libsnmp-dev:arm64",
         "libunwind8-dev:amd64",
-        "libunwind8-dev:arm64"
+        "libunwind8-dev:arm64",
+        "libc-ares-dev",
+        "libcap-dev",
+        "libjson-c-dev",
+        "libpam0g-dev",
+        "libpcre2-dev",
+        "libreadline-dev",
+        "libsnmp-dev",
+        "libgoogle-perftools-dev",
+        "libunwind-dev",
+        "libelf-dev",
+        "libcrypt-dev",
+        "libcunit1-dev",
+        "libcares2",
+        "libcap2",
+        "libcrypt1",
+        "libjson-c5",
+        "libpam0g",
+        "libpcre2-posix3",
+        "libreadline8t64",
+        "libgoogle-perftools4t64",
+        "libunwind8",
+        "libsnmp40t64"
       ],
       "suites": [
         "trixie",
@@ -1808,6 +1830,68 @@
         "trixie",
         "trixie-security",
         "trixie-updates"
+      ]
+    },
+    "frr_bookworm_deps": {
+      "include_transitive": true,
+      "packages": [
+        "libc-ares-dev",
+        "libcap-dev",
+        "libjson-c-dev",
+        "libpam0g-dev",
+        "libpcre2-dev",
+        "libreadline-dev",
+        "libgoogle-perftools-dev",
+        "libunwind-dev",
+        "libelf-dev",
+        "libcrypt-dev",
+        "libcunit1-dev"
+      ],
+      "suites": [
+        "bookworm",
+        "bookworm-updates",
+        "bookworm-security"
+      ]
+    },
+    "net_snmp_system": {
+      "include_transitive": true,
+      "packages": [
+        "libcrypt-dev",
+        "libncurses-dev",
+        "libpcap0.8-dev",
+        "libwrap0-dev",
+        "libssl-dev",
+        "libsensors-dev",
+        "libpci-dev",
+        "default-libmysqlclient-dev",
+        "libmariadb-dev",
+        "libsystemd-dev",
+        "libperl-dev",
+        "perl-base",
+        "perl",
+        "perl-modules-5.36",
+        "perl-xs-dev",
+        "libncurses5-dev",
+        "libpcap-dev",
+        "libc6",
+        "libgcc-s1",
+        "libstdc++6",
+        "libssl3",
+        "libwrap0",
+        "libperl5.36",
+        "libcrypt1",
+        "libsensors5",
+        "libpci3",
+        "libmariadb3",
+        "libsystemd0",
+        "libncurses6",
+        "libtinfo6",
+        "libpcap0.8"
+      ],
+      "suites": [
+        "bookworm",
+        "bookworm-updates",
+        "bookworm-security"
       ]
     }
   },
