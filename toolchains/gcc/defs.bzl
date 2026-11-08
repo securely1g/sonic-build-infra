@@ -211,6 +211,7 @@ def sonic_host_toolchain(
         compiler = "gcc",
         enabled_features = _FEATURES,
         known_features = _FEATURES,
+        supports_param_files = True,
         tags = ["manual"],
         tool_map = name + "_tools",
     )
