@@ -105,6 +105,8 @@ tests=(
   //cc/tests:transitive_runtime_test
   //cc/tests:shared_library_layout_test
   //cc/tests/runtime_context:layout_test
+  //cc/tests/runtime_context:paired_layout_test
+  //cc/tests/runtime_context:paired_flags_test
   //cc/tests/runtime_test:native_test
   //cc/tests/runtime_test:preparation_test
   //cc/tests/runtime_test:contract_test
