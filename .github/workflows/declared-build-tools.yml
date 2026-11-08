@@ -7,16 +7,27 @@ on:
     branches: [master]
     paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', '.github/workflows/declared-build-tools.yml']
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate tools, or resolve reviewed APT lock metadata only
+        type: choice
+        options: [validate, update-lock]
+        default: validate
+      expected_source_sha:
+        description: Exact reviewed source commit required for update-lock
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: declared-build-tools-${{ github.event.pull_request.number || github.ref }}
+  group: declared-build-tools-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'update-lock' && '-update-lock' || '' }}
   cancel-in-progress: true
 
 jobs:
   native:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'validate'
     name: Build tools (${{ matrix.architecture }})
     strategy:
       fail-fast: false
@@ -177,3 +188,186 @@ jobs:
           path: ci-artifacts/
           if-no-files-found: error
           retention-days: 30
+
+  update-lock:
+    name: Resolve reviewed APT lock metadata (amd64)
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'update-lock'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARCHITECTURE: amd64
+      BAZEL_ARCH: x86_64
+      BAZEL_SHA: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
+      BAZEL: /usr/local/bin/bazel
+      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/618c7279e814b858f803fd6b4891e99eedcb2400
+      EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+    steps:
+      - name: Prepare Bazel bootstrap dependencies
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SOURCE_SHA" ]]
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 tar xz-utils
+          [[ "$(dpkg --print-architecture)" == "$ARCHITECTURE" ]]
+          test ! -e /usr/bin/aspell
+          test ! -e /usr/bin/doxygen
+          curl --fail --location --retry 3 --output /usr/local/bin/bazel \
+            "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-$BAZEL_ARCH"
+          printf '%s  %s\n' "$BAZEL_SHA" /usr/local/bin/bazel | sha256sum --check --strict
+          chmod +x /usr/local/bin/bazel
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Bind exact inputs and preserve the previous lock
+        id: inputs
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SOURCE_SHA" ]]
+          [[ "$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)" == "$EXPECTED_SOURCE_SHA" ]]
+          test -z "$(git -c safe.directory="$GITHUB_WORKSPACE" status --porcelain=v1 --untracked-files=all)"
+          printf '%s\n' \
+            '4b704b2660cb7e873085e478ba1c8c213161fb0742da93b1d92cbd695df19531  apt/apt.lock.json' \
+            '2fa280945c553a7183fbb57460280cfb6f2fb5c9acdc95fe51f01e7c14e1c227  apt/sources.json' \
+            '3a8f03392f0b44a9081e76314784b2cc3c1c4393b9593bc489f8de3bcbe463dc  apt/requests.json' \
+            '232d4b3fed61b3001106c9c18c04f15be08d1a65e83b520faee318043ae47059  apt/lock.py' \
+            '47b88e49e5348e3e05bbfcb44278ab61f2fdd5fb38357923c6b5bbe8fcc3bce6  ci/source_mirrors.cfg' | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/apt-lock-update"
+          mkdir "$RUNNER_TEMP/apt-lock-update/inputs"
+          cp apt/apt.lock.json "$RUNNER_TEMP/apt-lock-update/apt.lock.json"
+          cp apt/apt.lock.json "$RUNNER_TEMP/apt-lock-update/inputs/seed.lock.json"
+          cp apt/sources.json apt/requests.json apt/lock.py ci/source_mirrors.cfg MODULE.bazel "$RUNNER_TEMP/apt-lock-update/inputs/"
+          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/apt-lock-update/inputs/revisions.txt"
+      - name: Update and check scratch lock through the maintained resolver
+        id: update
+        run: |
+          set -euo pipefail
+          python3 apt/lock.py update \
+            --sources apt/sources.json --requests apt/requests.json \
+            --lock "$RUNNER_TEMP/apt-lock-update/apt.lock.json" \
+            --work-dir "$RUNNER_TEMP/apt-lock-update/resolver" \
+            --bazel "$BAZEL" --resolver-version 0.9.4.sonic.17 \
+            --registry "$SONIC_BAZEL_REGISTRY" --registry https://bcr.bazel.build/ \
+            --bazel-startup-option=--ignore_all_rc_files \
+            --bazel-option="--downloader_config=$GITHUB_WORKSPACE/ci/source_mirrors.cfg" \
+            2>&1 | tee "$RUNNER_TEMP/apt-lock-update/update.log"
+          python3 apt/lock.py check \
+            --sources apt/sources.json --requests apt/requests.json \
+            --lock "$RUNNER_TEMP/apt-lock-update/apt.lock.json" \
+            --resolver-version 0.9.4.sonic.17 \
+            2>&1 | tee "$RUNNER_TEMP/apt-lock-update/check.log"
+          python3 - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update"
+          previous = json.loads((root / "inputs/seed.lock.json").read_text())
+          result = json.loads((root / "apt.lock.json").read_text())
+          assert len(previous["dependency_sets"]) == 45 and len(previous["packages"]) == 2210
+          assert len(result["dependency_sets"]) == 53
+          for name, group in previous["dependency_sets"].items():
+              assert set(result["dependency_sets"][name]["sets"]) == set(group["sets"]), name
+          for key, old in previous["packages"].items():
+              current = result["packages"][key]
+              for field in ("name", "version", "architecture", "suite", "filename", "sha256"):
+                  assert current[field] == old[field], (key, field)
+              for field in old:
+                  if field.endswith("_sha256"):
+                      assert current[field] == old[field], (key, field)
+          summary = {"schema": 1, "preserved_group_architecture_sets": 45,
+                     "preserved_package_identities": 2210,
+                     "new_group_architectures": {name: sorted(group["sets"])
+                         for name, group in result["dependency_sets"].items()
+                         if name not in previous["dependency_sets"]},
+                     "consumer_request_and_native_validation": "pending review"}
+          (root / "preservation.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          PYTHON
+      - name: Collect bounded metadata evidence
+        id: evidence
+        if: always() && steps.inputs.outcome == 'success'
+        env:
+          UPDATE_OUTCOME: ${{ steps.update.outcome }}
+        run: |
+          set -euo pipefail
+          cmp apt/apt.lock.json "$RUNNER_TEMP/apt-lock-update/inputs/seed.lock.json"
+          test -z "$(git -c safe.directory="$GITHUB_WORKSPACE" status --porcelain=v1 --untracked-files=all)"
+          python3 - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import stat
+
+          source = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update"
+          output = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update-evidence"
+          assert not output.exists()
+          assert source.is_dir() and not source.is_symlink()
+          files = [("inputs/" + name, True) for name in (
+              "seed.lock.json", "sources.json", "requests.json", "lock.py",
+              "source_mirrors.cfg", "MODULE.bazel", "revisions.txt")]
+          files += [("update.log", False), ("check.log", False)]
+          if os.environ["UPDATE_OUTCOME"] == "success":
+              files += [("apt.lock.json", True), ("preservation.json", True)]
+          resolver = source / "resolver"
+          if resolver.exists():
+              assert resolver.is_dir() and not resolver.is_symlink()
+              partitions = [p for p in resolver.iterdir() if re.fullmatch(r"partition-[0-9]+", p.name)]
+              assert len(partitions) <= 8
+              for partition in sorted(partitions):
+                  assert partition.is_dir() and not partition.is_symlink()
+                  for name in ("MODULE.bazel", "MODULE.bazel.lock", "BUILD.bazel", "sources.json",
+                               "requests.json", "previous.lock.json", "resolve.log"):
+                      files.append(("resolver/" + partition.name + "/" + name, False))
+          records, total = {}, 0
+          for name, required in files:
+              path = source / name
+              if not path.exists() and not path.is_symlink():
+                  assert not required, name
+                  continue
+              for parent in path.relative_to(source).parents:
+                  assert not (source / parent).is_symlink()
+              info = path.lstat()
+              assert stat.S_ISREG(info.st_mode) and info.st_size <= 16 * 1024 * 1024, name
+              total += info.st_size
+              assert total <= 64 * 1024 * 1024
+              data = path.read_bytes()
+              assert len(data) == info.st_size and path.stat().st_mtime_ns == info.st_mtime_ns, name
+              records[name] = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+          assert len(records) <= 67
+          output.mkdir()
+          for name, record in records.items():
+              path = source / name
+              target = output / name
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(path, target, follow_symlinks=False)
+              assert target.stat().st_size == record["size"]
+              assert hashlib.sha256(target.read_bytes()).hexdigest() == record["sha256"]
+          receipt = {"schema": 1, "scope": "APT metadata resolution only; not native acceptance",
+                     "source_sha": os.environ["EXPECTED_SOURCE_SHA"], "run_id": os.environ["GITHUB_RUN_ID"],
+                     "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "architecture": "amd64",
+                     "registry": os.environ["SONIC_BAZEL_REGISTRY"], "bcr": "https://bcr.bazel.build/",
+                     "bazel_version": "8.5.1", "bazel_sha256": os.environ["BAZEL_SHA"],
+                     "resolver_version": "0.9.4.sonic.17", "update_outcome": os.environ["UPDATE_OUTCOME"],
+                     "generated_lock_checked": os.environ["UPDATE_OUTCOME"] == "success",
+                     "input_lock_unchanged": True, "files": records, "payload_bytes": total,
+                     "review_required": True}
+          receipt_bytes = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
+          assert len(receipt_bytes) <= 64 * 1024 and total + len(receipt_bytes) <= 64 * 1024 * 1024
+          (output / "provenance.json").write_bytes(receipt_bytes)
+          PYTHON
+      - name: Retain reviewed-input lock metadata for inspection
+        if: always() && steps.evidence.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apt-lock-update-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apt-lock-update-evidence/
+          if-no-files-found: error
+          retention-days: 14
