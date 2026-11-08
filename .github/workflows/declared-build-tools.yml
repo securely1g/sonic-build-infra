@@ -298,9 +298,7 @@ jobs:
           cmp apt/apt.lock.json "$RUNNER_TEMP/apt-lock-update/inputs/seed.lock.json"
           test -z "$(git -c safe.directory="$GITHUB_WORKSPACE" status --porcelain=v1 --untracked-files=all)"
           python3 - <<'PYTHON'
-          import gzip
           import hashlib
-          import io
           import json
           import os
           from pathlib import Path
@@ -309,7 +307,6 @@ jobs:
 
           FILE_LIMIT = 16 * 1024 * 1024
           STORED_TOTAL_LIMIT = 64 * 1024 * 1024
-          RAW_LIMIT = 128 * 1024 * 1024
           PROVENANCE_LIMIT = 64 * 1024
           CHUNK = 1024 * 1024
 
@@ -346,20 +343,6 @@ jobs:
                           "source_identity_after_read", str(path), info, bytes_read=size)
               return {"size": size, "sha256": digest.hexdigest()}
 
-          class BoundedBuffer(io.BytesIO):
-              def __init__(self, limit, name, info):
-                  super().__init__()
-                  self.limit, self.name, self.info = limit, name, info
-                  self.digest = hashlib.sha256()
-
-              def write(self, data):
-                  require(self.tell() + len(data) <= self.limit,
-                          "compressed_stored_size_limit", self.name, self.info,
-                          stored_bytes=self.tell(), next_write_bytes=len(data), limit=self.limit)
-                  count = super().write(data)
-                  self.digest.update(data)
-                  return count
-
           source = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update"
           output = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update-evidence"
           assert not output.exists()
@@ -378,11 +361,11 @@ jobs:
                       resolver.lstat(), count=len(partitions), limit=8)
               for partition in sorted(partitions):
                   assert partition.is_dir() and not partition.is_symlink()
-                  for name in ("MODULE.bazel", "MODULE.bazel.lock", "BUILD.bazel", "sources.json",
+                  for name in ("MODULE.bazel", "BUILD.bazel", "sources.json",
                                "requests.json", "previous.lock.json", "resolve.log"):
                       files.append(("resolver/" + partition.name + "/" + name, False))
-          records, compression, compressed_data, plain_info = {}, {}, {}, {}
-          total, raw_total = 0, 0
+          records, plain_info = {}, {}
+          total = 0
           for name, required in files:
               path = source / name
               if not path.exists() and not path.is_symlink():
@@ -393,52 +376,22 @@ jobs:
                           (source / parent).lstat())
               info = path.lstat()
               require(stat.S_ISREG(info.st_mode), "nonregular_file", name, info)
-              compress = re.fullmatch(r"resolver/partition-[0-9]+/MODULE\.bazel\.lock", name) and info.st_size > FILE_LIMIT
-              require(info.st_size <= (RAW_LIMIT if compress else FILE_LIMIT),
-                      "raw_file_size_limit", name, info, limit=RAW_LIMIT if compress else FILE_LIMIT)
-              raw_total += info.st_size
-              require(raw_total <= RAW_LIMIT, "raw_payload_total_limit", name, info,
-                      raw_payload_bytes=raw_total, limit=RAW_LIMIT)
-              if compress:
-                  stored_name = name + ".gz"
-                  with BoundedBuffer(min(FILE_LIMIT, STORED_TOTAL_LIMIT - total), name, info) as buffer:
-                      with gzip.GzipFile(filename="", mode="wb", fileobj=buffer,
-                                         compresslevel=6, mtime=0) as zipped:
-                          raw_record = read_source(path, info, zipped.write)
-                      data = buffer.getvalue()
-                      stored_record = {"size": len(data), "sha256": buffer.digest.hexdigest()}
-                      require(hashlib.sha256(data).hexdigest() == stored_record["sha256"],
-                              "compressed_digest_mismatch", name, info)
-                  records[stored_name] = stored_record
-                  compressed_data[stored_name] = data
-                  compression[stored_name] = {
-                      "encoding": "gzip", "raw_path": name,
-                      "raw_size": raw_record["size"], "raw_sha256": raw_record["sha256"],
-                      "stored_size": stored_record["size"], "stored_sha256": stored_record["sha256"],
-                  }
-              else:
-                  require(total + info.st_size <= STORED_TOTAL_LIMIT,
-                          "stored_payload_total_limit", name, info,
-                          stored_payload_bytes=total + info.st_size, limit=STORED_TOTAL_LIMIT)
-                  stored_name = name
-                  records[name] = read_source(path, info, lambda data: None)
-                  plain_info[name] = info
-              total += records[stored_name]["size"]
-              require(total <= STORED_TOTAL_LIMIT, "stored_payload_total_limit", name, info,
-                      stored_payload_bytes=total, limit=STORED_TOTAL_LIMIT)
+              require(info.st_size <= FILE_LIMIT, "raw_file_size_limit", name, info, limit=FILE_LIMIT)
+              require(total + info.st_size <= STORED_TOTAL_LIMIT,
+                      "stored_payload_total_limit", name, info,
+                      stored_payload_bytes=total + info.st_size, limit=STORED_TOTAL_LIMIT)
+              records[name] = read_source(path, info, lambda data: None)
+              plain_info[name] = info
+              total += records[name]["size"]
           require(len(records) <= 67, "payload_file_count_limit", "evidence", count=len(records), limit=67)
           output.mkdir()
           for name, record in records.items():
               target = output / name
               target.parent.mkdir(parents=True, exist_ok=True)
-              if name in compressed_data:
-                  with target.open("xb") as stream:
-                      stream.write(compressed_data[name])
-              else:
-                  with target.open("xb") as stream:
-                      copied = read_source(source / name, plain_info[name], stream.write)
-                  require(copied == record, "stored_copy_source_changed", name,
-                          (source / name).lstat())
+              with target.open("xb") as stream:
+                  copied = read_source(source / name, plain_info[name], stream.write)
+              require(copied == record, "stored_copy_source_changed", name,
+                      (source / name).lstat())
               stored_info = target.lstat()
               require(stat.S_ISREG(stored_info.st_mode) and stored_info.st_size == record["size"]
                       and stored_info.st_size <= FILE_LIMIT,
@@ -453,7 +406,6 @@ jobs:
                      "resolver_version": "0.9.4.sonic.17", "update_outcome": os.environ["UPDATE_OUTCOME"],
                      "generated_lock_checked": os.environ["UPDATE_OUTCOME"] == "success",
                      "input_lock_unchanged": True, "files": records, "payload_bytes": total,
-                     "raw_payload_bytes": raw_total, "compression": compression,
                      "review_required": True}
           receipt_bytes = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
           require(len(receipt_bytes) <= PROVENANCE_LIMIT and total + len(receipt_bytes) <= STORED_TOTAL_LIMIT,
@@ -469,4 +421,105 @@ jobs:
           name: apt-lock-update-amd64-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apt-lock-update-evidence/
           if-no-files-found: error
+          retention-days: 14
+      - name: Validate raw Bazel resolution lock evidence
+        id: resolution_evidence
+        if: always() && steps.inputs.outcome == 'success'
+        env:
+          UPDATE_OUTCOME: ${{ steps.update.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import stat
+
+          CHUNK = 1024 * 1024
+
+          def require(condition, reason, name, info=None, **details):
+              if not condition:
+                  raise ValueError(json.dumps({
+                      "reason": reason, "path": name,
+                      "observed_type": stat.S_IFMT(info.st_mode) if info else "generated",
+                      "observed_size": info.st_size if info else details.get("size"),
+                      **details,
+                  }, sort_keys=True))
+
+          def identity(info):
+              return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                      info.st_mtime_ns, info.st_ctime_ns)
+
+          def read_source(path, info, consume):
+              digest, size = hashlib.sha256(), 0
+              with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+                  opened = os.fstat(stream.fileno())
+                  require(stat.S_ISREG(opened.st_mode) and identity(opened) == identity(info),
+                          "source_identity_before_read", str(path), opened, expected_size=info.st_size)
+                  while True:
+                      data = stream.read(min(CHUNK, info.st_size - size + 1))
+                      if not data:
+                          break
+                      size += len(data)
+                      require(size <= info.st_size, "source_grew_during_read", str(path), info,
+                              bytes_read=size)
+                      digest.update(data)
+                      consume(data)
+                  require(size == info.st_size and identity(os.fstat(stream.fileno())) == identity(info)
+                          and identity(path.lstat()) == identity(info),
+                          "source_identity_after_read", str(path), info, bytes_read=size)
+              return {"size": size, "sha256": digest.hexdigest()}
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "apt-lock-update"
+          require(root.is_dir() and not root.is_symlink(), "input_directory", str(root))
+          source = root / "resolver"
+          manifest = Path(os.environ["RUNNER_TEMP"]) / "apt-resolution-lock-evidence.json"
+          require(source.is_dir() and not source.is_symlink(), "resolver_directory", str(source))
+          partitions = sorted(p for p in source.iterdir() if re.fullmatch(r"partition-[0-9]+", p.name))
+          require(len(partitions) <= 8, "partition_count_limit", str(source), source.lstat(),
+                  count=len(partitions), limit=8)
+          require(partitions or os.environ["UPDATE_OUTCOME"] != "success",
+                  "required_partitions_missing", str(source))
+          records, paths, total = {}, [], 0
+          for partition in partitions:
+              require(partition.is_dir() and not partition.is_symlink(), "partition_directory",
+                      partition.name, partition.lstat())
+              path = partition / "MODULE.bazel.lock"
+              name = partition.name + "/MODULE.bazel.lock"
+              if not path.exists() and not path.is_symlink():
+                  require(os.environ["UPDATE_OUTCOME"] != "success", "required_resolution_lock_missing", name)
+                  continue
+              info = path.lstat()
+              require(stat.S_ISREG(info.st_mode), "nonregular_file", name, info)
+              record = read_source(path, info, lambda data: None)
+              records[name] = record
+              total += record["size"]
+              paths.append(str(path))
+              print(json.dumps({"resolution_lock": name, **record}, sort_keys=True))
+          receipt = {"schema": 1, "scope": "Raw Bazel resolution locks; not semantic or native acceptance",
+                     "source_sha": os.environ["EXPECTED_SOURCE_SHA"], "run_id": os.environ["GITHUB_RUN_ID"],
+                     "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "architecture": "amd64",
+                     "registry": os.environ["SONIC_BAZEL_REGISTRY"], "update_outcome": os.environ["UPDATE_OUTCOME"],
+                     "files": records, "payload_bytes": total, "partition_count": len(partitions),
+                     "review_required": True}
+          receipt_bytes = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
+          require(len(receipt_bytes) <= 64 * 1024, "provenance_size_limit", str(manifest), size=len(receipt_bytes))
+          with manifest.open("xb") as stream:
+              stream.write(receipt_bytes)
+          paths.append(str(manifest))
+          require(all(not any(c in path for c in "\n\r*?[]") for path in paths), "literal_upload_paths", "paths")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write("paths<<APT_RESOLUTION_PATHS\n" + "\n".join(paths) + "\nAPT_RESOLUTION_PATHS\n")
+          print(json.dumps({"resolution_lock_files": len(records), "resolution_lock_bytes": total}, sort_keys=True))
+          PYTHON
+      - name: Retain raw Bazel resolution locks for inspection
+        if: always() && steps.resolution_evidence.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apt-lock-resolution-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.resolution_evidence.outputs.paths }}
+          if-no-files-found: error
+          compression-level: 6
           retention-days: 14
