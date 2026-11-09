@@ -13,6 +13,13 @@ load(":kernel_roots.bzl", "KERNEL_TOOL_ROOTS")
 
 python_runtime(name = "python_runtime", visibility = ["//visibility:public"])
 
+filegroup(
+    name = "launcher_test_source",
+    testonly = True,
+    srcs = ["launcher.py"],
+    visibility = ["//cc/tests/runtime_test:__pkg__"],
+)
+
 # The metadata repository projects these roots and dependencies from the one
 # shared lock. Explicit architecture aliases keep this worker target on AMD64.
 _INSTALLER_WORKER_PACKAGES = APT_INPUTS["build_tools"]["amd64"]
