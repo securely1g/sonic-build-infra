@@ -1,8 +1,8 @@
 load("@bazel_lib//lib:copy_file.bzl", "copy_file")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_shared_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_shared_library", "cc_test")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//cc:shared_library.bzl", "shared_library_cc_info")
-load(":runtime_inputs.bzl", "paired_flags_test", "runtime_inputs")
+load(":runtime_inputs.bzl", "linker_owners_test", "paired_flags_test", "runtime_inputs")
 
 package(default_testonly = True)
 
@@ -115,3 +115,61 @@ py_test(
     deps = ["//deb:elf_metadata"],
 )
 paired_flags_test(name = "paired_flags_test", target_under_test = ":paired_middle_link")
+
+# Verify shared_library_cc_info survives rules_cc dynamic_deps filtering for
+# adapters both with and without runtime_deps, including transitive shared deps.
+cc_library(name = "dynamic_side_objects", srcs = ["dynamic_side.c"])
+cc_shared_library(
+    name = "dynamic_side",
+    deps = [":dynamic_side_objects"],
+    shared_lib_name = "libdynamic_side.so.0",
+    user_link_flags = ["-Wl,-soname,libdynamic_side.so.0"],
+)
+cc_library(name = "plain_leaf_objects", srcs = ["leaf.c"])
+cc_shared_library(
+    name = "plain_leaf",
+    deps = [":plain_leaf_objects"],
+    shared_lib_name = "libplain_leaf.so.0",
+    user_link_flags = ["-Wl,-soname,libplain_leaf.so.0"],
+)
+cc_library(name = "plain_middle_objects", srcs = ["middle.c"], deps = [":plain_leaf_objects"])
+cc_shared_library(
+    name = "plain_middle",
+    deps = [":plain_middle_objects"],
+    dynamic_deps = [":plain_leaf"],
+    shared_lib_name = "libplain_middle.so.0",
+    user_link_flags = ["-Wl,-soname,libplain_middle.so.0"],
+)
+shared_library_cc_info(name = "plain_middle_link", shared_library = ":plain_middle")
+cc_binary(
+    name = "dynamic_deps_consumer",
+    srcs = ["dynamic_deps_main.c"],
+    deps = [":paired_middle_link", ":plain_middle_link", ":dynamic_side_objects"],
+    dynamic_deps = [":dynamic_side"],
+    linkstatic = False,
+)
+cc_test(
+    name = "plain_dynamic_deps_test",
+    srcs = ["plain_dynamic_deps_main.c"],
+    deps = [":plain_middle_link", ":dynamic_side_objects"],
+    dynamic_deps = [":dynamic_side"],
+    linkstatic = False,
+)
+py_test(
+    name = "dynamic_deps_layout_test",
+    srcs = ["layout_test.py"],
+    main = "layout_test.py",
+    args = [
+        "--needed=libplain_middle.so.0",
+        "--needed=libdynamic_side.so.0",
+        "$(location :dynamic_deps_consumer)",
+        "$(location :paired_indirect_payload.so)",
+        "libpaired_context_middle.so.0",
+        "libfirst.so.7",
+        "libsecond.so.9",
+    ],
+    data = [":dynamic_deps_consumer", ":paired_indirect_payload.so"],
+    deps = ["//deb:elf_metadata"],
+)
+linker_owners_test(name = "paired_owners_test", target_under_test = ":paired_middle_link", expected_count = 1)
+linker_owners_test(name = "plain_owners_test", target_under_test = ":plain_middle_link", expected_count = 2)

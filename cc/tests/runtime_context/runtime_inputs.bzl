@@ -54,3 +54,17 @@ def _paired_flags_test_impl(ctx):
     return analysistest.end(env)
 
 paired_flags_test = analysistest.make(_paired_flags_test_impl)
+
+def _linker_owners_test_impl(ctx):
+    """Require every forwarded linker input to be owned by the adapter target."""
+    env = analysistest.begin(ctx)
+    target = analysistest.target_under_test(env)
+    inputs = target[CcInfo].linking_context.linker_inputs.to_list()
+    asserts.equals(env, ctx.attr.expected_count, len(inputs))
+    asserts.equals(env, [target.label] * len(inputs), [item.owner for item in inputs])
+    return analysistest.end(env)
+
+linker_owners_test = analysistest.make(
+    _linker_owners_test_impl,
+    attrs = {"expected_count": attr.int(mandatory = True)},
+)

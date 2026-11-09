@@ -115,6 +115,10 @@ tests=(
   //cc/tests/runtime_context:layout_test
   //cc/tests/runtime_context:paired_layout_test
   //cc/tests/runtime_context:paired_flags_test
+  //cc/tests/runtime_context:plain_dynamic_deps_test
+  //cc/tests/runtime_context:dynamic_deps_layout_test
+  //cc/tests/runtime_context:paired_owners_test
+  //cc/tests/runtime_context:plain_owners_test
   //cc/tests/runtime_test:native_test
   //cc/tests/runtime_test:preparation_test
   //cc/tests/runtime_test:contract_test

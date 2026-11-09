@@ -19,30 +19,39 @@ def _runtime_search_flags(flags):
             result.append(flag)
     return result
 
+def _reown_linker_input(item, owner, extra_flags = [], extra_inputs = []):
+    """Re-own forwarded LinkerInput under owner so dynamic_deps filtering keeps it."""
+    return cc_common.create_linker_input(
+        owner = owner,
+        libraries = depset(item.libraries),
+        # A depset loses repeated -Xlinker tokens and breaks option pairs.
+        user_link_flags = list(item.user_link_flags) + extra_flags,
+        additional_inputs = depset(list(item.additional_inputs) + extra_inputs),
+    )
+
 def _shared_library_cc_info_impl(ctx):
     library = ctx.attr.shared_library
     shared = library[CcSharedLibraryInfo]
 
     # Reuse the producer's LibraryToLink objects and solib paths. Creating a
     # new library or importing its output would relocate the ELF again.
+    # Re-own forwarded inputs under ctx.label so rules_cc does not drop them
+    # when a consumer binary declares dynamic_deps.
     # The producer's linker_input also carries precompiled dynamic libraries.
-    linker_input = shared.linker_input
-    if ctx.attr.runtime_deps:
-        runtime_flags = []
-        runtime_inputs = []
-        for dependency in ctx.attr.runtime_deps:
-            for item in dependency[CcInfo].linking_context.linker_inputs.to_list():
-                runtime_flags.extend(_runtime_search_flags(item.user_link_flags))
-                runtime_inputs.extend(item.additional_inputs)
-        linker_input = cc_common.create_linker_input(
-            owner = linker_input.owner,
-            libraries = depset(linker_input.libraries),
-            # A depset loses repeated -Xlinker tokens and breaks option pairs.
-            user_link_flags = linker_input.user_link_flags + runtime_flags,
-            additional_inputs = depset(linker_input.additional_inputs + runtime_inputs),
-        )
+    runtime_flags = []
+    runtime_inputs = []
+    for dependency in ctx.attr.runtime_deps:
+        for item in dependency[CcInfo].linking_context.linker_inputs.to_list():
+            runtime_flags.extend(_runtime_search_flags(item.user_link_flags))
+            runtime_inputs.extend(item.additional_inputs)
+    linker_input = _reown_linker_input(
+        shared.linker_input,
+        ctx.label,
+        extra_flags = runtime_flags,
+        extra_inputs = runtime_inputs,
+    )
     linker_inputs = [linker_input] + [
-        dependency.linker_input
+        _reown_linker_input(dependency.linker_input, ctx.label)
         for dependency in shared.dynamic_deps.to_list()
     ]
     return [
