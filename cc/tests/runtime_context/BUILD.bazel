@@ -2,6 +2,7 @@ load("@bazel_lib//lib:copy_file.bzl", "copy_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_shared_library")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//cc:shared_library.bzl", "shared_library_cc_info")
+load(":runtime_inputs.bzl", "paired_flags_test", "runtime_inputs")
 
 package(default_testonly = True)
 
@@ -27,4 +28,90 @@ cc_library(
 cc_shared_library(name = "middle", deps = [":middle_objects"], shared_lib_name = "libnative_context_middle.so.0", user_link_flags = ["-Wl,-soname,libnative_context_middle.so.0"])
 shared_library_cc_info(name = "middle_link", shared_library = ":middle", runtime_deps = [":middle_objects"])
 cc_binary(name = "consumer", srcs = ["main.c"], deps = [":middle_link"], linkstatic = False)
-py_test(name = "layout_test", srcs = ["layout_test.py"], args = ["$(location :consumer)", "$(location :middle)"], data = [":consumer", ":middle"], deps = ["//deb:elf_metadata"])
+py_test(
+    name = "layout_test",
+    srcs = ["layout_test.py"],
+    args = ["$(location :consumer)", "$(location :middle)", "libnative_context_middle.so.0", "libindirect.so.7"],
+    data = [":consumer", ":middle"],
+    deps = ["//deb:elf_metadata"],
+)
+
+# Distroless passes search paths directly to ld so GCC does not copy them into
+# COLLECT_GCC_OPTIONS. Two directories require repeated -Xlinker tokens; commas
+# prevent replacing that transport with a comma-separated -Wl argument.
+cc_binary(
+    name = "first_payload.so",
+    srcs = ["leaf.c"],
+    defines = ["indirect_value=first_indirect_value"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,libfirst.so.7"],
+)
+cc_binary(
+    name = "second_payload.so",
+    srcs = ["leaf.c"],
+    defines = ["indirect_value=second_indirect_value"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,libsecond.so.9"],
+)
+copy_file(name = "first_soname", src = ":first_payload.so", out = "paired,first/libfirst.so.7", allow_symlink = True)
+copy_file(name = "second_soname", src = ":second_payload.so", out = "paired,second/libsecond.so.9", allow_symlink = True)
+copy_file(name = "paired_script", src = "paired_script.ld", out = "libpaired_script.so", allow_symlink = True)
+cc_library(name = "paired_script_dependency", srcs = [":paired_script"])
+runtime_inputs(
+    name = "paired_script_inputs",
+    dep = ":paired_script_dependency",
+    runtime_files = [":first_soname", ":second_soname"],
+    linkopts = [
+        "-Xlinker", "-L" + _FIXTURE_OUTPUT_DIR + "/paired,first",
+        "-Xlinker", "-L" + _FIXTURE_OUTPUT_DIR + "/paired,second",
+        "-Xlinker", "-rpath-link=" + _FIXTURE_OUTPUT_DIR + "/paired,first",
+        "-Xlinker", "-rpath-link=" + _FIXTURE_OUTPUT_DIR + "/paired,second",
+    ],
+)
+# This precompiled dependency needs both leaf DSOs. Its CcInfo exposes only the
+# dependency itself, as an APT library does; the linker script used to produce
+# it must not leak into the final link and resolve the leaves accidentally.
+cc_binary(
+    name = "paired_indirect_payload.so",
+    srcs = ["paired_dependency.c"],
+    deps = [":paired_script_inputs"],
+    features = ["-runtime_library_search_directories"],
+    linkshared = True,
+    linkopts = ["-Wl,-soname,libpaired_dependency.so.1"],
+)
+copy_file(name = "paired_dependency_soname", src = ":paired_indirect_payload.so", out = "libpaired_dependency.so.1", allow_symlink = True)
+cc_library(name = "paired_dependency", srcs = [":paired_dependency_soname"])
+runtime_inputs(
+    name = "paired_runtime_inputs",
+    dep = ":paired_dependency",
+    runtime_files = [":first_soname", ":second_soname"],
+    linkopts = [
+        "-Xlinker", "-L" + _FIXTURE_OUTPUT_DIR + "/paired,first",
+        "-Xlinker", "-L" + _FIXTURE_OUTPUT_DIR + "/paired,second",
+        "-Xlinker", "-rpath-link=" + _FIXTURE_OUTPUT_DIR + "/paired,first",
+        "-Xlinker", "-rpath-link=" + _FIXTURE_OUTPUT_DIR + "/paired,second",
+    ],
+)
+cc_library(
+    name = "paired_middle_objects",
+    srcs = ["paired_middle.c"],
+    deps = [":paired_runtime_inputs"],
+    alwayslink = True,
+)
+cc_shared_library(
+    name = "paired_middle",
+    deps = [":paired_middle_objects"],
+    shared_lib_name = "libpaired_context_middle.so.0",
+    user_link_flags = ["-Wl,-soname,libpaired_context_middle.so.0"],
+)
+shared_library_cc_info(name = "paired_middle_link", shared_library = ":paired_middle", runtime_deps = [":paired_runtime_inputs"])
+cc_binary(name = "paired_consumer", srcs = ["paired_main.c"], deps = [":paired_middle_link"], linkstatic = False)
+py_test(
+    name = "paired_layout_test",
+    srcs = ["layout_test.py"],
+    main = "layout_test.py",
+    args = ["$(location :paired_consumer)", "$(location :paired_indirect_payload.so)", "libpaired_context_middle.so.0", "libfirst.so.7", "libsecond.so.9"],
+    data = [":paired_consumer", ":paired_indirect_payload.so"],
+    deps = ["//deb:elf_metadata"],
+)
+paired_flags_test(name = "paired_flags_test", target_under_test = ":paired_middle_link")

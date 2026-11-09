@@ -612,19 +612,49 @@ metadata repository and archive targets consume that same lock during ordinary
 builds. `MODULE.bazel.lock` remains ignored generated resolution evidence.
 ## Oversized linker arguments
 
-BMv2's AMD64 source build can pass more than 136 KiB through `LDFLAGS`, which
-Linux rejects before GCC starts. An owner can write one literal argument per
-line after `sonic-linker-arguments-v1` in `.sonic-linker-arguments`, beside the
-existing generated compiler launcher, and pass that exact file as an `@` argument.
-The launcher expands only this private vector before its existing per-directory
-library-path shortening. Ordinary GCC response files remain opaque. Arguments
-containing newlines are not supported by this private transport.
+Linux can reject a large `LDFLAGS` environment entry before the configure shell
+starts. Source `configure_linker_flags.sh` in the existing build shell, passing a
+declared Python interpreter followed by the configure command and its arguments:
 
-The existing Libtool regression covers C and C++ links, compiler environment
-size, recursive-directory path handling and literal argument boundaries. BMv2
-owns the conversion from its shell-quoted `LDFLAGS` to this vector. This changes
-an input shared by PI, BMv2, LLDP, sFlow and Framework klish; their foreign-build
-actions may rerun even when existing Bazel caches are reused.
+```sh
+. "$BAZEL_CONFIGURE_LINKER_FLAGS" "$BAZEL_FOREIGN_TOOLS/bin/python3" \
+    /bin/sh "$BAZEL_CONFIGURE_ENV" ./configure "$@"
+```
+
+For an existing `rules_foreign_cc` consumer, declare the helper in `build_data`
+and source it through `configure_prefix` before `/bin/sh` starts. Calling it
+inside `configure.sh` is too late to repair that first process launch:
+
+```starlark
+build_data = [
+    "@sonic_build_infra//tools/build_tools:configure_linker_flags.sh",
+    "@sonic_build_infra//tools/build_tools:foreign_runtime",
+    # Retain the consumer's other declared configure inputs.
+],
+configure_prefix = 'source "$$EXT_BUILD_ROOT$$/$(execpath @sonic_build_infra//tools/build_tools:configure_linker_flags.sh)" "$${BAZEL_FOREIGN_TOOLS}/bin/python3" /bin/sh',
+env = {
+    "BAZEL_FOREIGN_TOOLS": "$(execpath @sonic_build_infra//tools/build_tools:foreign_runtime)",
+    # Retain the consumer's other environment entries.
+},
+```
+
+The helper uses shell builtins to save `LDFLAGS` and replace the environment entry
+before executing Python. It preserves shell-quoted argument boundaries and
+order, writing one literal argument per line after `sonic-linker-arguments-v1`
+in `.sonic-linker-arguments`. The configure command must invoke the existing
+`configure_environment.sh` in that same directory. Its compiler launcher expands
+only this private vector before per-directory library-path shortening. Ordinary
+GCC response files remain opaque. Arguments containing line breaks are rejected.
+`CPPFLAGS`, `CFLAGS` and `CXXFLAGS` remain unchanged; component-specific include
+policy stays with the consumer.
+
+The Libtool regression reproduces the failed process launch using at least
+160,581 bytes of `LDFLAGS` and 573 library search directories, then links and runs
+C and C++ programs from a nested directory using the shared helper. Competing
+libraries in paths with spaces verify search priority, while separate cases
+check literal empty/quoted/backslash arguments and line-break rejection. The
+existing compiler response-file, include-order and recursive Libtool checks
+continue to run.
 
 ### Verified downloads in source CI
 

@@ -36,3 +36,11 @@ assert len(argv["private_linker_commands"]) == 2
 assert all(case["linked_and_ran"] and case["max_collect_gcc_options_bytes"] < 131072
            for case in argv["private_linker_commands"])
 assert argv["private_linker_argument_boundaries_preserved"]
+preexec = argv["preexec_linker_flags"]
+assert preexec["ldflags_bytes"] >= 160581
+assert preexec["library_search_arguments"] == 573
+assert preexec["original_failed_e2big"]
+assert preexec["cppflags_preserved"]
+assert preexec["argument_boundaries_preserved"]
+assert preexec["line_breaks_rejected"]
+assert preexec["nested_links"] == ["c", "c++"]

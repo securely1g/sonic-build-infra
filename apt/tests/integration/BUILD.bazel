@@ -1,6 +1,7 @@
-load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//apt:apt_layer.bzl", "apt_layer")
+load("//cc:runtime_test.bzl", "native_runtime_test")
 load(":base.bzl", "fixture_base")
 
 package(default_visibility = ["//visibility:public"])
@@ -142,6 +143,35 @@ cc_test(
         "@trixie//libc6-dev:libm_static",
         "@trixie//zlib1g-dev:libz_static",
     ],
+)
+
+# The original Bookworm namespace must export real headers, linker inputs and
+# runtime libraries from the shared lock for the existing libyang owner.
+cc_binary(
+    name = "bookworm_library_import_probe",
+    testonly = True,
+    srcs = ["bookworm_library_import_test.c"],
+    linkstatic = False,
+    target_compatible_with = ["//platforms:bookworm"],
+    deps = [
+        "@libyang_system_bookworm//libcmocka-dev:libcmocka_cc",
+        "@libyang_system_bookworm//libpcre2-dev:libpcre2-8_cc",
+        "@libyang_system_bookworm//libxxhash-dev:libxxhash_cc",
+    ],
+)
+
+native_runtime_test(
+    name = "bookworm_library_import_test",
+    binary = ":bookworm_library_import_probe",
+    runtime_payloads = [
+        # Exercise libnl's original payload label alongside libyang's CcInfo.
+        "@libnl_bookworm_system//libc6:data",
+        "@libyang_system_bookworm//libgcc-s1:data",
+        "@libyang_system_bookworm//libcmocka0:data",
+        "@libyang_system_bookworm//libpcre2-8-0:data",
+        "@libyang_system_bookworm//libxxhash0:data",
+    ],
+    target_compatible_with = ["//platforms:bookworm"],
 )
 
 # Raw public archive labels must stay usable and retain their original DEB bytes.

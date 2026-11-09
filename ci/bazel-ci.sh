@@ -112,6 +112,8 @@ tests=(
   //cc/tests:transitive_runtime_test
   //cc/tests:shared_library_layout_test
   //cc/tests/runtime_context:layout_test
+  //cc/tests/runtime_context:paired_layout_test
+  //cc/tests/runtime_context:paired_flags_test
   //cc/tests/runtime_test:native_test
   //cc/tests/runtime_test:contract_test
   //cc/tests/runtime_test:origin_contract_test
@@ -163,7 +165,8 @@ apt_python_flags=("${flags[@]}" --@rules_python//python/config_settings:python_v
 # Explicitly exercise the individual APT library/header exports on Bookworm.
 # The same native CPU uses Trixie execution tools and a Bookworm target ABI.
 bookworm_tests=(//cc/tests/header_includes:headers_link_test
-  //toolchains/bookworm/tests:abi_test //toolchains/bookworm/tests:native_test)
+  //toolchains/bookworm/tests:abi_test //toolchains/bookworm/tests:native_test
+  //apt/tests/integration:bookworm_library_import_test)
 bookworm_flags=("${flags[@]}" --platforms="//platforms:${cpu}_bookworm")
 printf '%s\n' "${bookworm_tests[@]}" > "$artifacts/bookworm-targets.txt"
 "${bazel_cmd[@]}" aquery "${bookworm_flags[@]}" --output=jsonproto \

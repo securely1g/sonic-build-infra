@@ -34,6 +34,10 @@ def original(command):
 report = {"include_cases": [], "long_commands": [], "long_library_commands": [], "library_cases": [],
           "system_include_cases": [], "long_system_commands": [], "header_warning_cases": [],
           "private_linker_commands": []}
+# Exercise the earlier shell-to-configure process boundary before the existing
+# compiler/Libtool checks. A launcher inside configure cannot repair that exec.
+checked([str(Path(os.environ["BAZEL_FOREIGN_TOOLS"]) / "bin/python3"), "./configure_linker_flags_test.py"])
+report["preexec_linker_flags"] = json.loads(Path("configure-linker-flags-validation.json").read_text())
 for language, compiler_variable, flags_variable in (("c", "CC", "CFLAGS"), ("c++", "CXX", "CXXFLAGS")):
     compiler = shlex.split(os.environ[compiler_variable])
     flags = shlex.split(os.environ.get(flags_variable, "")) + shlex.split(os.environ.get("CPPFLAGS", ""))

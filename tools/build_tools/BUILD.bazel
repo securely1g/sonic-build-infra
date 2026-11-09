@@ -695,7 +695,10 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-exports_files(["configure_environment.sh"])
+exports_files([
+    "configure_environment.sh",
+    "configure_linker_flags.sh",
+])
 
 filegroup(
     name = "libtool_sources",
@@ -707,6 +710,7 @@ configure_make(
     build_data = [
         ":foreign_runtime",
         ":configure_environment.sh",
+        ":configure_linker_flags.sh",
     ],
     configure_command = "configure.sh",
     configure_in_place = True,
@@ -715,6 +719,7 @@ configure_make(
         "PATH": "$(execpath :foreign_runtime)/bin:$$PATH",
         "BAZEL_FOREIGN_TOOLS": "$(execpath :foreign_runtime)",
         "BAZEL_CONFIGURE_ENV": "$(execpath :configure_environment.sh)",
+        "BAZEL_CONFIGURE_LINKER_FLAGS": "$(execpath :configure_linker_flags.sh)",
     },
     features = ["-sanitize_pwd"],
     lib_source = ":libtool_sources",
