@@ -1,8 +1,8 @@
 """Bounded source/transport tests; synthetic ELF data is never executed.
 
 The transport cases use the declared build_tool launcher source and this
-test's declared interpreter as a runtime stand-in. They do not replace the
-real native/ARM runtime contract tests.
+test's declared interpreter as a runtime stand-in, plus a child observer for
+descriptor handoff. They do not replace the real native/ARM runtime tests.
 """
 import ast
 import io
@@ -13,6 +13,7 @@ import signal
 import shlex
 import stat
 import struct
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -233,6 +234,47 @@ pathlib.Path(output).write_text(json.dumps({'environment': {k: os.environ[k] for
         finally:
             if existed:
                 os.memfd_create = original
+
+    def test_closed_standard_descriptors_remain_closed_with_private_transport(self):
+        observer = self.root / "observe-transport.py"
+        observer.write_text('''import json, os, pathlib, sys
+descriptor = int(sys.argv[sys.argv.index('--caller-environment-fd') + 1])
+open_standard = []
+for candidate in range(3):
+    try: os.fstat(candidate)
+    except OSError: continue
+    open_standard.append(candidate)
+with os.fdopen(descriptor, encoding='utf-8') as stream:
+    environment = json.load(stream)
+pathlib.Path(os.environ['OBSERVATION']).write_text(json.dumps({'descriptor': descriptor, 'open_standard': open_standard, 'marker': environment['CALLER_MARKER']}))
+''')
+        tool = self.root / "observe-transport"
+        tool.write_text('#!/bin/sh\nexec ' + shlex.quote(str(TEST_PYTHON)) + ' -B -I -S ' + shlex.quote(str(observer)) + ' "$@"\n')
+        tool.chmod(0o755)
+        driver = '''import os, sys
+sys.path[:0] = sys.argv[1:3]
+from cc import runtime_test as runtime
+for descriptor in sys.argv[5:]:
+    os.close(int(descriptor))
+raise SystemExit(runtime.prepare_native(sys.argv[3], sys.argv[4], [], [], 183))
+'''
+        source_root = str(Path(runtime.__file__).resolve().parents[1])
+        metadata_root = str(Path(sys.modules["elf_metadata"].__file__).resolve().parent)
+        for closed in ((0,), (1,), (2,), (0, 1, 2)):
+            with self.subTest(closed=closed):
+                output = self.root / ("closed-" + "".join(map(str, closed)) + ".json")
+                child = subprocess.run(
+                    [str(TEST_PYTHON), "-B", "-I", "-S", "-c", driver, source_root, metadata_root,
+                     str(tool), str(self.binary), *map(str, closed)],
+                    env={"PATH": "", "TMPDIR": str(self.root), "OBSERVATION": str(output),
+                         "CALLER_MARKER": "closed-stdio"},
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                )
+                self.assertEqual(child.returncode, 0, (closed, child.stderr))
+                result = json.loads(output.read_text())
+                self.assertGreaterEqual(result["descriptor"], 3)
+                self.assertEqual(result["open_standard"], [fd for fd in range(3) if fd not in closed])
+                self.assertEqual(result["marker"], "closed-stdio")
 
     def test_named_fallback_unlinks_before_environment_write(self):
         real_dump = json.dump
