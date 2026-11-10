@@ -1362,6 +1362,17 @@
         "trixie-security"
       ]
     },
+    "radv_runtime_debian": {
+      "include_transitive": true,
+      "packages": [
+        "radvd:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
     "sysmgr_debian": {
       "include_transitive": true,
       "packages": [

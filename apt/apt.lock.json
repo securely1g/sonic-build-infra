@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "680c7a8664255881420f3ab6ef4867a9ef9db4f6bfb341ac140a3d04977c5ca6",
+    "digest": "e8f4df37f04485c73fbbaf0574cc925c4ad678cec8a4021bd593c427bd061035",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -1519,6 +1519,17 @@
           "packages": [
             "python3:amd64",
             "python3:arm64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "radv_runtime_debian": {
+          "include_transitive": true,
+          "packages": [
+            "radvd:amd64"
           ],
           "suites": [
             "trixie",
@@ -3419,6 +3430,17 @@
           "packages": [
             "python3:amd64",
             "python3:arm64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "radv_runtime_debian": {
+          "include_transitive": true,
+          "packages": [
+            "radvd:amd64"
           ],
           "suites": [
             "trixie",
@@ -7007,6 +7029,13 @@
         },
         "arm64": {
           "/trixie/python3:arm64": "3.13.5-1"
+        }
+      }
+    },
+    "radv_runtime_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/radvd:amd64": "1:2.20-1+b1"
         }
       }
     },
@@ -166455,6 +166484,52 @@
       "size": 437036,
       "suite": "trixie",
       "version": "0.68-1"
+    },
+    "/trixie/radvd:amd64=1:2.20-1+b1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/adduser:amd64=3.152",
+        "/trixie/base-passwd:amd64=3.6.7",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libattr1:amd64=1:2.5.2-3",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libbsd0:amd64=0.12.2-2",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libdebconfclient0:amd64=0.280",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libpam-modules-bin:amd64=1.7.0-5",
+        "/trixie/libpam-modules:amd64=1.7.0-5",
+        "/trixie/libpam0g:amd64=1.7.0-5",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsemanage-common:amd64=3.8.1-1",
+        "/trixie/libsemanage2:amd64=3.8.1-1",
+        "/trixie/libsepol2:amd64=3.8.1-1",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/login.defs:amd64=1:4.17.4-2",
+        "/trixie/passwd:amd64=1:4.17.4-2"
+      ],
+      "filename": "pool/main/r/radvd/radvd_2.20-1+b1_amd64.deb",
+      "files": [
+        "etc/init.d/radvd",
+        "usr/lib/systemd/system/radvd.service",
+        "usr/sbin/radvd"
+      ],
+      "name": "radvd",
+      "section": "net",
+      "sha256": "d9a78b9552f0689fe86123b75b6f64f37b804d2c1f197c9a925e0e188931fce6",
+      "size": 76136,
+      "suite": "trixie",
+      "version": "1:2.20-1+b1"
     },
     "/trixie/rake:amd64=13.2.1-1": {
       "architecture": "all",
