@@ -12,7 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: declared-build-tools-${{ github.event.pull_request.number || github.ref }}
+  # Only automatic runs for the same pull request supersede each other.
+  group: declared-build-tools-${{ github.run_attempt == '1' && github.event.pull_request.number || format('run-{0}', github.run_id) }}
   cancel-in-progress: true
 
 jobs:
