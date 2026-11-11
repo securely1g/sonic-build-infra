@@ -1904,6 +1904,32 @@
         "bookworm-updates",
         "bookworm-security"
       ]
+    },
+    "fib_deps": {
+      "packages": [
+        "libc6",
+        "libstdc++6",
+        "libgcc-s1",
+        "nlohmann-json3-dev"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
+    "fib_bookworm_deps": {
+      "packages": [
+        "libc6",
+        "libstdc++6",
+        "libgcc-s1",
+        "nlohmann-json3-dev"
+      ],
+      "suites": [
+        "bookworm",
+        "bookworm-updates",
+        "bookworm-security"
+      ]
     }
   },
   "pinned_packages": [

@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "e8f4df37f04485c73fbbaf0574cc925c4ad678cec8a4021bd593c427bd061035",
+    "digest": "d1d36748161ec82f10a7ac82a8abe9a5e56c82c07858ccdaeaaf796cabe06ac0",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -586,6 +586,34 @@
           "packages": [
             "liblua5.1-0-dev",
             "redis-server"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "fib_bookworm_deps": {
+          "include_transitive": true,
+          "packages": [
+            "libc6",
+            "libgcc-s1",
+            "libstdc++6",
+            "nlohmann-json3-dev"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
+          ]
+        },
+        "fib_deps": {
+          "include_transitive": true,
+          "packages": [
+            "libc6",
+            "libgcc-s1",
+            "libstdc++6",
+            "nlohmann-json3-dev"
           ],
           "suites": [
             "trixie",
@@ -2500,6 +2528,32 @@
           "packages": [
             "liblua5.1-0-dev",
             "redis-server"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "fib_bookworm_deps": {
+          "packages": [
+            "libc6",
+            "libstdc++6",
+            "libgcc-s1",
+            "nlohmann-json3-dev"
+          ],
+          "suites": [
+            "bookworm",
+            "bookworm-updates",
+            "bookworm-security"
+          ]
+        },
+        "fib_deps": {
+          "packages": [
+            "libc6",
+            "libstdc++6",
+            "libgcc-s1",
+            "nlohmann-json3-dev"
           ],
           "suites": [
             "trixie",
@@ -5773,6 +5827,44 @@
         "armhf": {
           "/trixie-security/redis-server:armhf": "5:8.0.2-3+deb13u2",
           "/trixie/liblua5.1-0-dev:armhf": "5.1.5-11"
+        }
+      }
+    },
+    "fib_bookworm_deps": {
+      "sets": {
+        "amd64": {
+          "/bookworm/libc6:amd64": "2.36-9+deb12u14",
+          "/bookworm/libgcc-s1:amd64": "12.2.0-14+deb12u1",
+          "/bookworm/libstdc++6:amd64": "12.2.0-14+deb12u1",
+          "/bookworm/nlohmann-json3-dev:amd64": "3.11.2-2"
+        },
+        "arm64": {
+          "/bookworm/libc6:arm64": "2.36-9+deb12u14",
+          "/bookworm/libgcc-s1:arm64": "12.2.0-14+deb12u1",
+          "/bookworm/libstdc++6:arm64": "12.2.0-14+deb12u1",
+          "/bookworm/nlohmann-json3-dev:arm64": "3.11.2-2"
+        }
+      }
+    },
+    "fib_deps": {
+      "sets": {
+        "amd64": {
+          "/trixie/libc6:amd64": "2.41-12+deb13u3",
+          "/trixie/libgcc-s1:amd64": "14.2.0-19",
+          "/trixie/libstdc++6:amd64": "14.2.0-19",
+          "/trixie/nlohmann-json3-dev:amd64": "3.11.3-2.1"
+        },
+        "arm64": {
+          "/trixie/libc6:arm64": "2.41-12+deb13u3",
+          "/trixie/libgcc-s1:arm64": "14.2.0-19",
+          "/trixie/libstdc++6:arm64": "14.2.0-19",
+          "/trixie/nlohmann-json3-dev:arm64": "3.11.3-2.1"
+        },
+        "armhf": {
+          "/trixie/libc6:armhf": "2.41-12+deb13u3",
+          "/trixie/libgcc-s1:armhf": "14.2.0-19",
+          "/trixie/libstdc++6:armhf": "14.2.0-19",
+          "/trixie/nlohmann-json3-dev:armhf": "3.11.3-2.1"
         }
       }
     },
@@ -22100,6 +22192,30 @@
       "size": 416076,
       "suite": "bookworm",
       "version": "6.4-4"
+    },
+    "/bookworm/nlohmann-json3-dev:amd64=3.11.2-2": {
+      "architecture": "all",
+      "depends_on": [],
+      "filename": "pool/main/n/nlohmann-json3/nlohmann-json3-dev_3.11.2-2_all.deb",
+      "files": [],
+      "name": "nlohmann-json3-dev",
+      "section": "libdevel",
+      "sha256": "ec57940def6b6186c30be0e0ee81d1e58f86d11a54a145b28686a1e3e4aae801",
+      "size": 258828,
+      "suite": "bookworm",
+      "version": "3.11.2-2"
+    },
+    "/bookworm/nlohmann-json3-dev:arm64=3.11.2-2": {
+      "architecture": "all",
+      "depends_on": [],
+      "filename": "pool/main/n/nlohmann-json3/nlohmann-json3-dev_3.11.2-2_all.deb",
+      "files": [],
+      "name": "nlohmann-json3-dev",
+      "section": "libdevel",
+      "sha256": "ec57940def6b6186c30be0e0ee81d1e58f86d11a54a145b28686a1e3e4aae801",
+      "size": 258828,
+      "suite": "bookworm",
+      "version": "3.11.2-2"
     },
     "/bookworm/pci.ids:amd64=0.0~2023.04.11-1": {
       "architecture": "all",
@@ -155651,6 +155767,18 @@
       "version": "3.11.3-2.1"
     },
     "/trixie/nlohmann-json3-dev:arm64=3.11.3-2.1": {
+      "architecture": "all",
+      "depends_on": [],
+      "filename": "pool/main/n/nlohmann-json3/nlohmann-json3-dev_3.11.3-2.1_all.deb",
+      "files": [],
+      "name": "nlohmann-json3-dev",
+      "section": "libdevel",
+      "sha256": "741a6a32f61a14eaf9560ba1814b27da8e78fa3b9bed9e8867ab46316ddf3793",
+      "size": 261656,
+      "suite": "trixie",
+      "version": "3.11.3-2.1"
+    },
+    "/trixie/nlohmann-json3-dev:armhf=3.11.3-2.1": {
       "architecture": "all",
       "depends_on": [],
       "filename": "pool/main/n/nlohmann-json3/nlohmann-json3-dev_3.11.3-2.1_all.deb",
