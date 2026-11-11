@@ -17,6 +17,12 @@ consumer that selects `vim`, while `syncd_vs_debug_debian` continues to select
 `vim-nox`. These are separate root selections over one package graph, so adopting
 the shared lock does not silently replace one editor package with the other.
 
+The FRR image collections retain the AMD64 runtime libraries and utilities,
+debug tools and external OpenSSH library closure requested by
+`sonic-buildimage/dockers/docker-fpm-frr`. `frr_image_test_debian` supplies only
+the private Redis fixture used by installed-image checks. FRR, libFIB and the
+OpenSSH client continue to come from their source-owned installation TARs.
+
 ## Update and check
 
 Use the fixed Bazel and Distroless versions selected by the owning workspace.
