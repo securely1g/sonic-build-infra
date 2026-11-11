@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "d1d36748161ec82f10a7ac82a8abe9a5e56c82c07858ccdaeaaf796cabe06ac0",
+    "digest": "143bd1aea679a2bef881664924b1625e662e4cca3b9c520628af783743847d24",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -797,6 +797,67 @@
             "libunwind8",
             "libunwind8-dev:amd64",
             "libunwind8-dev:arm64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libcap2:amd64",
+            "libcares2:amd64",
+            "libcrypt1:amd64",
+            "libgoogle-perftools4t64:amd64",
+            "libjson-c5:amd64",
+            "libpam0g:amd64",
+            "libpcre2-posix3:amd64",
+            "libreadline8t64:amd64",
+            "libsnmp40t64:amd64",
+            "libunwind8:amd64",
+            "logrotate:amd64",
+            "lsof:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
           ],
           "suites": [
             "trixie",
@@ -2736,6 +2797,67 @@
             "libgoogle-perftools4t64",
             "libunwind8",
             "libsnmp40t64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libcap2:amd64",
+            "libcares2:amd64",
+            "libcrypt1:amd64",
+            "libgoogle-perftools4t64:amd64",
+            "libjson-c5:amd64",
+            "libpam0g:amd64",
+            "libpcre2-posix3:amd64",
+            "libreadline8t64:amd64",
+            "libsnmp40t64:amd64",
+            "libunwind8:amd64",
+            "logrotate:amd64",
+            "lsof:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "frr_image_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
           ],
           "suites": [
             "trixie",
@@ -6073,6 +6195,55 @@
           "/trixie/libreadline8t64:armhf": "8.2-6",
           "/trixie/libunwind-dev:armhf": "1.8.1-0.1",
           "/trixie/libunwind8:armhf": "1.8.1-0.1"
+        }
+      }
+    },
+    "frr_image_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/libcares2:amd64": "1.34.5-1+deb13u1",
+          "/trixie-security/libsnmp40t64:amd64": "5.9.4+dfsg-2+deb13u1",
+          "/trixie/libcap2:amd64": "1:2.75-10+deb13u1+b1",
+          "/trixie/libcrypt1:amd64": "1:4.4.38-1",
+          "/trixie/libgoogle-perftools4t64:amd64": "2.16-1",
+          "/trixie/libjson-c5:amd64": "0.18+ds-1",
+          "/trixie/libpam0g:amd64": "1.7.0-5",
+          "/trixie/libpcre2-posix3:amd64": "10.46-1~deb13u1",
+          "/trixie/libreadline8t64:amd64": "8.2-6",
+          "/trixie/libunwind8:amd64": "1.8.1-0.1",
+          "/trixie/logrotate:amd64": "3.22.0-1",
+          "/trixie/lsof:amd64": "4.99.4+dfsg-2"
+        }
+      }
+    },
+    "frr_image_debug_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/gdb:amd64": "16.3-1",
+          "/trixie/gdbserver:amd64": "16.3-1",
+          "/trixie/libaudit1:amd64": "1:4.0.2-2+b2",
+          "/trixie/libcap-ng0:amd64": "0.8.5-4+b1",
+          "/trixie/libcbor0.10:amd64": "0.10.2-2",
+          "/trixie/libcrypt1:amd64": "1:4.4.38-1",
+          "/trixie/libedit2:amd64": "3.1-20250104-1",
+          "/trixie/libfido2-1:amd64": "1.15.0-1+b1",
+          "/trixie/libpam0g:amd64": "1.7.0-5",
+          "/trixie/libselinux1:amd64": "3.8.1-1",
+          "/trixie/libtinfo6:amd64": "6.5+20250216-2",
+          "/trixie/libudev1:amd64": "257.13-1~deb13u1",
+          "/trixie/libwrap0:amd64": "7.6.q-36",
+          "/trixie/libwtmpdb0:amd64": "0.73.0-3+deb13u1",
+          "/trixie/sshpass:amd64": "1.10-0.1",
+          "/trixie/strace:amd64": "6.13+ds-1",
+          "/trixie/vim:amd64": "2:9.1.1230-2",
+          "/trixie/zlib1g:amd64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "frr_image_test_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/redis-server:amd64": "5:8.0.2-3+deb13u2"
         }
       }
     },
@@ -38058,6 +38229,129 @@
       "size": 1568,
       "suite": "trixie",
       "version": "4:14.2.0-1"
+    },
+    "/trixie/cron-daemon-common:amd64=3.0pl1-197": {
+      "architecture": "all",
+      "depends_on": [
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/adduser:amd64=3.152",
+        "/trixie/base-passwd:amd64=3.6.7",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libapparmor1:amd64=4.1.0-1",
+        "/trixie/libattr1:amd64=1:2.5.2-3",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libblkid1:amd64=2.41-5",
+        "/trixie/libbsd0:amd64=0.12.2-2",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libdebconfclient0:amd64=0.280",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libmount1:amd64=2.41-5",
+        "/trixie/libpam-modules-bin:amd64=1.7.0-5",
+        "/trixie/libpam-modules:amd64=1.7.0-5",
+        "/trixie/libpam0g:amd64=1.7.0-5",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libseccomp2:amd64=2.6.0-2",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsemanage-common:amd64=3.8.1-1",
+        "/trixie/libsemanage2:amd64=3.8.1-1",
+        "/trixie/libsepol2:amd64=3.8.1-1",
+        "/trixie/libsmartcols1:amd64=2.41-5",
+        "/trixie/libsystemd-shared:amd64=257.13-1~deb13u1",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/login.defs:amd64=1:4.17.4-2",
+        "/trixie/mount:amd64=2.41-5",
+        "/trixie/passwd:amd64=1:4.17.4-2",
+        "/trixie/systemd:amd64=257.13-1~deb13u1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/c/cron/cron-daemon-common_3.0pl1-197_all.deb",
+      "files": [],
+      "name": "cron-daemon-common",
+      "section": "admin",
+      "sha256": "47f7f603a425ad97c1093ff9512328da0b8bfa1ab29c2cddc13f06eab45ed9a6",
+      "size": 17792,
+      "suite": "trixie",
+      "version": "3.0pl1-197"
+    },
+    "/trixie/cron:amd64=3.0pl1-197": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/adduser:amd64=3.152",
+        "/trixie/base-passwd:amd64=3.6.7",
+        "/trixie/cron-daemon-common:amd64=3.0pl1-197",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/init-system-helpers:amd64=1.69~deb13u1",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libapparmor1:amd64=4.1.0-1",
+        "/trixie/libattr1:amd64=1:2.5.2-3",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libblkid1:amd64=2.41-5",
+        "/trixie/libbsd0:amd64=0.12.2-2",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libdebconfclient0:amd64=0.280",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libmount1:amd64=2.41-5",
+        "/trixie/libpam-modules-bin:amd64=1.7.0-5",
+        "/trixie/libpam-modules:amd64=1.7.0-5",
+        "/trixie/libpam-runtime:amd64=1.7.0-5",
+        "/trixie/libpam0g:amd64=1.7.0-5",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libseccomp2:amd64=2.6.0-2",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsemanage-common:amd64=3.8.1-1",
+        "/trixie/libsemanage2:amd64=3.8.1-1",
+        "/trixie/libsepol2:amd64=3.8.1-1",
+        "/trixie/libsmartcols1:amd64=2.41-5",
+        "/trixie/libsystemd-shared:amd64=257.13-1~deb13u1",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/login.defs:amd64=1:4.17.4-2",
+        "/trixie/mount:amd64=2.41-5",
+        "/trixie/passwd:amd64=1:4.17.4-2",
+        "/trixie/sensible-utils:amd64=0.0.25",
+        "/trixie/systemd:amd64=257.13-1~deb13u1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/c/cron/cron_3.0pl1-197_amd64.deb",
+      "files": [
+        "etc/default/cron",
+        "etc/init.d/cron",
+        "etc/pam.d/cron",
+        "etc/supercat/spcrc-crontab",
+        "etc/supercat/spcrc-crontab-light",
+        "usr/bin/crontab",
+        "usr/lib/systemd/system/cron.service",
+        "usr/sbin/cron",
+        "usr/share/bug/cron/control",
+        "usr/share/bug/cron/script"
+      ],
+      "name": "cron",
+      "section": "admin",
+      "sha256": "32d7fc3e00dc504401c61682ac31c4a60068721b4e267e8439a04754af914c5b",
+      "size": 87416,
+      "suite": "trixie",
+      "version": "3.0pl1-197"
     },
     "/trixie/curl:amd64=8.14.1-2+deb13u4": {
       "architecture": "amd64",
@@ -124787,6 +125081,27 @@
       "suite": "trixie",
       "version": "14.2.0-19"
     },
+    "/trixie/liblsof0:amd64=4.99.4+dfsg-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libselinux1:amd64=3.8.1-1"
+      ],
+      "filename": "pool/main/l/lsof/liblsof0_4.99.4+dfsg-2_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/liblsof.so.0",
+        "usr/lib/x86_64-linux-gnu/liblsof.so.0.0.0"
+      ],
+      "name": "liblsof0",
+      "section": "libs",
+      "sha256": "9d21722d696fb8c7fd92f389ab84f0919455c77ea736c6f43d8e98b6751cca5a",
+      "size": 133732,
+      "suite": "trixie",
+      "version": "4.99.4+dfsg-2"
+    },
     "/trixie/libltdl-dev:amd64=2.5.4-4": {
       "architecture": "amd64",
       "control_sha256": "2f5ade63294ffbbf31634ddb2a92f7e703c6a3a35beaa1e10d64c6af6619249e",
@@ -154105,6 +154420,75 @@
       "suite": "trixie",
       "version": "1:4.17.4-2"
     },
+    "/trixie/logrotate:amd64=3.22.0-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/adduser:amd64=3.152",
+        "/trixie/base-passwd:amd64=3.6.7",
+        "/trixie/cron-daemon-common:amd64=3.0pl1-197",
+        "/trixie/cron:amd64=3.0pl1-197",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/init-system-helpers:amd64=1.69~deb13u1",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libapparmor1:amd64=4.1.0-1",
+        "/trixie/libattr1:amd64=1:2.5.2-3",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libblkid1:amd64=2.41-5",
+        "/trixie/libbsd0:amd64=0.12.2-2",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libdebconfclient0:amd64=0.280",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libmount1:amd64=2.41-5",
+        "/trixie/libpam-modules-bin:amd64=1.7.0-5",
+        "/trixie/libpam-modules:amd64=1.7.0-5",
+        "/trixie/libpam-runtime:amd64=1.7.0-5",
+        "/trixie/libpam0g:amd64=1.7.0-5",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libpopt0:amd64=1.19+dfsg-2",
+        "/trixie/libseccomp2:amd64=2.6.0-2",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsemanage-common:amd64=3.8.1-1",
+        "/trixie/libsemanage2:amd64=3.8.1-1",
+        "/trixie/libsepol2:amd64=3.8.1-1",
+        "/trixie/libsmartcols1:amd64=2.41-5",
+        "/trixie/libsystemd-shared:amd64=257.13-1~deb13u1",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/login.defs:amd64=1:4.17.4-2",
+        "/trixie/mount:amd64=2.41-5",
+        "/trixie/passwd:amd64=1:4.17.4-2",
+        "/trixie/sensible-utils:amd64=0.0.25",
+        "/trixie/systemd:amd64=257.13-1~deb13u1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/l/logrotate/logrotate_3.22.0-1_amd64.deb",
+      "files": [
+        "etc/cron.daily/logrotate",
+        "etc/logrotate.conf",
+        "etc/logrotate.d/btmp",
+        "etc/logrotate.d/wtmp",
+        "usr/lib/systemd/system/logrotate.service",
+        "usr/lib/systemd/system/logrotate.timer",
+        "usr/sbin/logrotate",
+        "usr/share/bug/logrotate/script"
+      ],
+      "name": "logrotate",
+      "section": "admin",
+      "sha256": "6acd9410fb2f2c9b439e7ee83c7095140e56e343ce7bc90d31fd95bf23f296b7",
+      "size": 61956,
+      "suite": "trixie",
+      "version": "3.22.0-1"
+    },
     "/trixie/logsave:amd64=1.47.2-3+b11": {
       "architecture": "amd64",
       "depends_on": [
@@ -154174,6 +154558,39 @@
       "size": 4584,
       "suite": "trixie",
       "version": "11.6"
+    },
+    "/trixie/lsof:amd64=4.99.4+dfsg-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libgssapi-krb5-2:amd64=1.21.3-5+deb13u1",
+        "/trixie-security/libk5crypto3:amd64=1.21.3-5+deb13u1",
+        "/trixie-security/libkrb5-3:amd64=1.21.3-5+deb13u1",
+        "/trixie-security/libkrb5support0:amd64=1.21.3-5+deb13u1",
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcom-err2:amd64=1.47.2-3+b11",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libkeyutils1:amd64=1.6.3-6",
+        "/trixie/liblsof0:amd64=4.99.4+dfsg-2",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libtirpc-common:amd64=1.3.6+ds-1",
+        "/trixie/libtirpc3t64:amd64=1.3.6+ds-1",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/l/lsof/lsof_4.99.4+dfsg-2_amd64.deb",
+      "files": [
+        "usr/bin/lsof"
+      ],
+      "name": "lsof",
+      "section": "utils",
+      "sha256": "76ca9b82da6d5dabd66609937675768a593c20c5e544171a2d9544060a1780b7",
+      "size": 315732,
+      "suite": "trixie",
+      "version": "4.99.4+dfsg-2"
     },
     "/trixie/lynx-common:amd64=2.9.2-1": {
       "architecture": "all",
