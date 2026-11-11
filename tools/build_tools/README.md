@@ -598,11 +598,12 @@ runtime checks.
 ### Refresh the worker inputs
 
 Add worker package requests to the existing `build_tools` collection in
-`apt/requests.json`, then use the shared updater from the repository root:
+`apt/requests.json`, then use the [bootstrap interpreter](../../apt/README.md#update-and-check)
+to regenerate the stale lock from the repository root:
 
 ```sh
-python3 apt/lock.py update --bazel /path/to/bazel-8.5.1
-python3 apt/lock.py check
+"$BOOTSTRAP_PYTHON" apt/lock.py update --bazel /path/to/bazel-8.5.1
+bazel run //apt:lock -- check
 bazel test //tools/build_tools:installer_worker_debs_test
 ```
 

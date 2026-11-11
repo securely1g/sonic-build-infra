@@ -194,7 +194,7 @@ class DebianTransportTest(unittest.TestCase):
                 root = Path(os.environ['TEST_ROOT'])
                 with (root / 'calls.jsonl').open('a') as out:
                     out.write(json.dumps({'cwd': str(Path.cwd()), 'args': args}) + '\\n')
-                command = next(a for a in args if a in ['aquery', 'test', 'build', 'cquery', 'mod', 'query'])
+                command = next(a for a in args if a in ['run', 'aquery', 'test', 'build', 'cquery', 'mod', 'query'])
                 if command == 'query':
                     print('The Debian sysroot contains unexpected absolute symlinks')
                     sys.exit(1)
@@ -238,10 +238,10 @@ class DebianTransportTest(unittest.TestCase):
             with self.subTest(selected=selected):
                 result, calls, config, root = self.run_general_script(selected)
                 self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-                self.assertEqual(len(calls), 17)  # Eleven literal calls, seven cquery loop iterations.
-                commands = [next(a for a in call['args'] if a in ['aquery', 'test', 'build', 'cquery', 'mod', 'query']) for call in calls]
+                self.assertEqual(len(calls), 18)
+                commands = [next(a for a in call['args'] if a in ['run', 'aquery', 'test', 'build', 'cquery', 'mod', 'query']) for call in calls]
                 self.assertEqual({name: commands.count(name) for name in set(commands)},
-                                 {'aquery': 3, 'test': 4, 'build': 1, 'cquery': 7, 'mod': 1, 'query': 1})
+                                 {'run': 1, 'aquery': 3, 'test': 4, 'build': 1, 'cquery': 7, 'mod': 1, 'query': 1})
                 self.assertEqual(sum(call['cwd'] == root + '/tests/shared_api_consumer' for call in calls), 2)
                 for call in calls:
                     expected_config = config if selected else root + '/ci/source_mirrors.cfg'
@@ -250,6 +250,9 @@ class DebianTransportTest(unittest.TestCase):
                     self.assertIn('--ignore_all_rc_files', call['args'])
                     self.assertIn('--registry=https://bcr.bazel.build/', call['args'])
                     self.assertIn('--lockfile_mode=update', call['args'])
+                lock_check = next(c for c in calls if 'run' in c['args'])
+                self.assertEqual(lock_check['cwd'], root)
+                self.assertEqual(lock_check['args'][-3:], ['//apt:lock', '--', 'check'])
                 root_tests = next(c['args'] for c in calls if 'test' in c['args'])
                 self.assertIn('//tools/build_tools:kernel_runtime_test', root_tests)
                 self.assertNotIn('//tools/build_tools:kernel_runtime_tools_test', root_tests)
