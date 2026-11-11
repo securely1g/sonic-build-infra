@@ -23,10 +23,17 @@ CI evidence; the generated module lock remains ignored.
 
 The GitHub-hosted AMD64 and ARM64 source workflows download and verify the
 [registry's public downloader configuration](https://github.com/securely1g/sonic-bazel-registry/blob/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg).
-Both source workflows pass its absolute path to Bazel, including sysroot
+They prepend the checked-in `ci/source_mirrors.cfg` to the verified configuration,
+trying the SONiC mirror first for the reviewed Debian and security snapshots,
+then Cloudflare and the original snapshot. The registry's CDN, content-addressed
+and release-asset fallback rules remain intact. Rules match canonical input URLs;
+the mirror URLs do not need reverse rewrite rules.
+Both source workflows pass the combined configuration's absolute path to Bazel, including sysroot
 validation, the nested shared-API workspace and the fresh-output cache check.
-CI artifacts record the public file, its URL and its SHA256. Local source checks
-default to the checked-in `ci/source_mirrors.cfg`.
+CI artifacts record the verified public file as `shared-source-mirrors.cfg`,
+its URL, and the effective `source-mirrors.cfg` with its SHA256. Local source
+checks default to the checked-in `ci/source_mirrors.cfg`, which retains
+Cloudflare and original-snapshot fallbacks without fetching the registry config.
 
 Distroless patches, upstream regressions and package-import consumer tests live
 with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).

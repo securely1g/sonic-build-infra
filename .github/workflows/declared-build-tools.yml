@@ -73,8 +73,9 @@ jobs:
           config="$RUNNER_TEMP/declared-tools-downloads.cfg"
           curl --fail --location --retry 3 --max-time 60 --output "$config.tmp" "$SOURCE_MIRRORS_URL"
           printf '%s  %s\n' "$SOURCE_MIRRORS_SHA256" "$config.tmp" | sha256sum --check --strict
-          mv "$config.tmp" "$config"
+          cat ci/source_mirrors.cfg "$config.tmp" > "$config"
           mkdir -p ci-artifacts
+          mv "$config.tmp" ci-artifacts/shared-source-mirrors.cfg
           cp "$config" ci-artifacts/source-mirrors.cfg
           printf '%s\n' "$SOURCE_MIRRORS_URL" > ci-artifacts/source-mirrors-url.txt
           sha256sum ci-artifacts/source-mirrors.cfg > ci-artifacts/source-mirrors.sha256
