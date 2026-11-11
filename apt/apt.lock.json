@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "143bd1aea679a2bef881664924b1625e662e4cca3b9c520628af783743847d24",
+    "digest": "f9a7615663ee4bcd8670bae167d1321aafe0f764d3b01949d2809628c1e653e8",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -1619,6 +1619,20 @@
           "include_transitive": true,
           "packages": [
             "radvd:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sflow_debian": {
+          "include_transitive": true,
+          "packages": [
+            "dmidecode:amd64",
+            "libhiredis1.1.0:amd64",
+            "libmnl0:amd64",
+            "lsb-base:amd64"
           ],
           "suites": [
             "trixie",
@@ -3617,6 +3631,20 @@
           "include_transitive": true,
           "packages": [
             "radvd:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "sflow_debian": {
+          "include_transitive": true,
+          "packages": [
+            "dmidecode:amd64",
+            "libhiredis1.1.0:amd64",
+            "libmnl0:amd64",
+            "lsb-base:amd64"
           ],
           "suites": [
             "trixie",
@@ -7299,6 +7327,16 @@
       "sets": {
         "amd64": {
           "/trixie/radvd:amd64": "1:2.20-1+b1"
+        }
+      }
+    },
+    "sflow_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/dmidecode:amd64": "3.6-2",
+          "/trixie/libhiredis1.1.0:amd64": "1.2.0-6+b3",
+          "/trixie/libmnl0:amd64": "1.0.5-3",
+          "/trixie/lsb-base:amd64": "11.6"
         }
       }
     },
@@ -39343,6 +39381,27 @@
       "size": 377920,
       "suite": "trixie",
       "version": "1:3.10-4"
+    },
+    "/trixie/dmidecode:amd64=3.6-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19"
+      ],
+      "filename": "pool/main/d/dmidecode/dmidecode_3.6-2_amd64.deb",
+      "files": [
+        "usr/sbin/biosdecode",
+        "usr/sbin/dmidecode",
+        "usr/sbin/ownership",
+        "usr/sbin/vpddecode"
+      ],
+      "name": "dmidecode",
+      "section": "utils",
+      "sha256": "6ad5a5483752ea05e425e77adc9ccf58ce9da22cca28d8932ea316d641f199d3",
+      "size": 69044,
+      "suite": "trixie",
+      "version": "3.6-2"
     },
     "/trixie/dmsetup:amd64=2:1.02.205-2": {
       "architecture": "amd64",

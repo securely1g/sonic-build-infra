@@ -40,11 +40,27 @@ distributions from overwriting each other's source or file map. The existing
 merge validates their suite-qualified identities and produces one production
 lock. Ordinary imports need no partitioning or package-index access.
 
-From the infra source directory:
+Use `bazel run` for Python maintenance tools with a Bazel entry point. The
+`//apt:lock` target runs the updater with the Python toolchain registered in
+`MODULE.bazel`. Its default inputs and output are in the invoking checkout's
+`apt/` directory, located through `BUILD_WORKSPACE_DIRECTORY`.
+
+A bootstrap tool must be able to start before Bazel evaluates the dependencies
+it prepares. For example, run `tools/rust/prepare.py` before evaluating crate
+extensions that read the generated `Cargo.Bazel.lock`. Keep the existing
+preparation command until a Bazel entry point can start from a clean checkout
+with those inputs missing or stale.
+
+The APT updater also needs this exception when requests or sources change.
+The root module imports the production lock during Bazel analysis, so a stale
+lock prevents `//apt:lock` from starting. Set `BOOTSTRAP_PYTHON` to the
+absolute path of a pinned Python 3 interpreter provisioned independently of
+this workspace. Regenerate the lock from the infra source directory, then
+check the resulting file through Bazel:
 
 ```sh
-python3 apt/lock.py update --bazel /path/to/bazel-8.5.1
-python3 apt/lock.py check
+"$BOOTSTRAP_PYTHON" apt/lock.py update --bazel /path/to/bazel-8.5.1
+bazel run //apt:lock -- check
 ```
 
 For a local, reviewed registry candidate use repeated `--registry` arguments
@@ -53,7 +69,7 @@ explicit settings to build, cquery and info; pass values containing a leading
 `--` using `=`. For example:
 
 ```sh
-python3 apt/lock.py update \
+"$BOOTSTRAP_PYTHON" apt/lock.py update \
   --bazel /path/to/bazel-8.5.1 \
   --registry file:///path/to/sonic-bazel-registry \
   --registry https://bcr.bazel.build/ \

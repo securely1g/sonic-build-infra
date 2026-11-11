@@ -1373,6 +1373,20 @@
         "trixie-security"
       ]
     },
+    "sflow_debian": {
+      "include_transitive": true,
+      "packages": [
+        "dmidecode:amd64",
+        "libhiredis1.1.0:amd64",
+        "libmnl0:amd64",
+        "lsb-base:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
     "sysmgr_debian": {
       "include_transitive": true,
       "packages": [

@@ -404,7 +404,10 @@ def resolve_partition(sources, requests, previous, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=["update", "check", "merge"])
-    root = Path(__file__).resolve().parent
+    # Under `bazel run`, default paths resolve against the invoking workspace,
+    # never the runfiles copy of this script.
+    workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    root = Path(workspace, "apt") if workspace else Path(__file__).resolve().parent
     parser.add_argument("--sources", type=Path, default=root / "sources.json")
     parser.add_argument("--requests", type=Path, default=root / "requests.json")
     parser.add_argument("--lock", type=Path, default=root / "apt.lock.json")

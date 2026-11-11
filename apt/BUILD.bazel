@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@sonic_apt_pip//:requirements.bzl", "requirement")
 
 package(default_visibility = ["//visibility:public"])
@@ -35,6 +35,14 @@ exports_files([
     "export_inputs.py",
     "requirements_lock.txt",
 ])
+
+# Check the reviewed lock with the registered interpreter. Regenerating a stale
+# lock requires the bootstrap command documented in README.md.
+py_binary(
+    name = "lock",
+    srcs = ["lock.py"],
+    imports = ["."],
+)
 
 py_test(
     name = "lock_test",

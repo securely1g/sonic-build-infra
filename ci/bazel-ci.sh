@@ -19,7 +19,6 @@ cp /etc/os-release "$artifacts/os-release"
 uname -a > "$artifacts/uname.txt"
 dpkg-query -W > "$artifacts/host-packages.txt"
 git rev-parse HEAD HEAD^{tree} > "$artifacts/revisions.txt"
-python3 apt/lock.py check | tee "$artifacts/apt-lock-check.log"
 mkdir -p "$artifacts/apt" "$artifacts/ci"
 cp apt/apt.lock.json apt/sources.json apt/requests.json "$artifacts/apt/"
 cp ci/source_mirrors.cfg "$artifacts/ci/"
@@ -40,6 +39,7 @@ platform="//platforms:${cpu}_trixie"
 flags=("${resolution[@]}" --platforms="$platform" --host_platform="$platform" --jobs=4
        '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$')
 bazel_cmd=(bazel --ignore_all_rc_files)
+"${bazel_cmd[@]}" run "${flags[@]}" //apt:lock -- check | tee "$artifacts/apt-lock-check.log"
 # Exercise cold repository setup and lock-change invalidation with queries only.
 # The workflow runs this on both native AMD64 and ARM64 hosts.
 python3 -B apt/tests/integration/inputs_repository_test.py --bazel bazel
