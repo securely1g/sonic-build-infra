@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "f9a7615663ee4bcd8670bae167d1321aafe0f764d3b01949d2809628c1e653e8",
+    "digest": "cb0519bf41f2d191e54ed5ccca4e2c1feeba5d1a9001c611a77ee49052388a1a",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -934,6 +934,57 @@
           ],
           "suites": [
             "trixie"
+          ]
+        },
+        "gnmi_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libpam0g:amd64",
+            "libpython3.13:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "gnmi_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "gnmi_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
           ]
         },
         "hsflowd_deps": {
@@ -2948,6 +2999,57 @@
           ],
           "suites": [
             "trixie"
+          ]
+        },
+        "gnmi_debian": {
+          "include_transitive": true,
+          "packages": [
+            "libpam0g:amd64",
+            "libpython3.13:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "gnmi_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "gnmi_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
           ]
         },
         "hsflowd_deps": {
@@ -6341,6 +6443,45 @@
           "/trixie/libstdc++6:arm64": "14.2.0-19",
           "/trixie/libzstd1:arm64": "1.5.7+dfsg-1",
           "/trixie/zlib1g:arm64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "gnmi_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-updates/libpython3.13:amd64": "3.13.5-2+deb13u4",
+          "/trixie/libpam0g:amd64": "1.7.0-5"
+        }
+      }
+    },
+    "gnmi_debug_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/gdb:amd64": "16.3-1",
+          "/trixie/gdbserver:amd64": "16.3-1",
+          "/trixie/libaudit1:amd64": "1:4.0.2-2+b2",
+          "/trixie/libcap-ng0:amd64": "0.8.5-4+b1",
+          "/trixie/libcbor0.10:amd64": "0.10.2-2",
+          "/trixie/libcrypt1:amd64": "1:4.4.38-1",
+          "/trixie/libedit2:amd64": "3.1-20250104-1",
+          "/trixie/libfido2-1:amd64": "1.15.0-1+b1",
+          "/trixie/libpam0g:amd64": "1.7.0-5",
+          "/trixie/libselinux1:amd64": "3.8.1-1",
+          "/trixie/libtinfo6:amd64": "6.5+20250216-2",
+          "/trixie/libudev1:amd64": "257.13-1~deb13u1",
+          "/trixie/libwrap0:amd64": "7.6.q-36",
+          "/trixie/libwtmpdb0:amd64": "0.73.0-3+deb13u1",
+          "/trixie/sshpass:amd64": "1.10-0.1",
+          "/trixie/strace:amd64": "6.13+ds-1",
+          "/trixie/vim:amd64": "2:9.1.1230-2",
+          "/trixie/zlib1g:amd64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "gnmi_test_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/redis-server:amd64": "5:8.0.2-3+deb13u2"
         }
       }
     },
