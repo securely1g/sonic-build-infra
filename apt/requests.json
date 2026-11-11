@@ -2005,6 +2005,57 @@
         "trixie-updates",
         "trixie-security"
       ]
+    },
+    "gnmi_debian": {
+      "include_transitive": true,
+      "packages": [
+        "libpam0g:amd64",
+        "libpython3.13:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
+    "gnmi_debug_debian": {
+      "include_transitive": true,
+      "packages": [
+        "gdb:amd64",
+        "gdbserver:amd64",
+        "libaudit1:amd64",
+        "libcap-ng0:amd64",
+        "libcbor0.10:amd64",
+        "libcrypt1:amd64",
+        "libedit2:amd64",
+        "libfido2-1:amd64",
+        "libpam0g:amd64",
+        "libselinux1:amd64",
+        "libtinfo6:amd64",
+        "libudev1:amd64",
+        "libwrap0:amd64",
+        "libwtmpdb0:amd64",
+        "sshpass:amd64",
+        "strace:amd64",
+        "vim:amd64",
+        "zlib1g:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
+    "gnmi_test_debian": {
+      "include_transitive": true,
+      "packages": [
+        "redis-server:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
     }
   },
   "pinned_packages": [
