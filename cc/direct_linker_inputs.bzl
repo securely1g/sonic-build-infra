@@ -2,6 +2,15 @@
 
 Use before cc_static_library when an installed archive contains selected direct
 objects while its transitive libraries are supplied separately by consumers.
+
+Why this exists: cc_static_library archives the entire transitive object
+closure, while Debian's automake-produced -dev archives contain only each
+library's own objects. For example, libnl-route-3.a holds route and parser
+objects but no libnl-3 core objects, which ship separately in libnl-3.a.
+Filtering a CcInfo down to the direct producers' own linker inputs keeps the
+Bazel-built archive matched to the Debian dev-package contract without
+rebuilding or copying any artifact. The merged compilation context still
+propagates every producer's headers and defines to consumers.
 """
 
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
