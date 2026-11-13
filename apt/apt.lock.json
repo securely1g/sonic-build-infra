@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "cb0519bf41f2d191e54ed5ccca4e2c1feeba5d1a9001c611a77ee49052388a1a",
+    "digest": "77f1347720e6fec780c975c3bce63fce2bedb8250313b05705fd0ee63de25a55",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -1684,6 +1684,60 @@
             "libhiredis1.1.0:amd64",
             "libmnl0:amd64",
             "lsb-base:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_debian": {
+          "include_transitive": true,
+          "packages": [
+            "ipmitool:amd64",
+            "python3-hiredis:amd64",
+            "python3-smbus:amd64",
+            "snmp:amd64",
+            "snmpd:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
           ],
           "suites": [
             "trixie",
@@ -3747,6 +3801,60 @@
             "libhiredis1.1.0:amd64",
             "libmnl0:amd64",
             "lsb-base:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_debian": {
+          "include_transitive": true,
+          "packages": [
+            "ipmitool:amd64",
+            "python3-hiredis:amd64",
+            "python3-smbus:amd64",
+            "snmp:amd64",
+            "snmpd:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_debug_debian": {
+          "include_transitive": true,
+          "packages": [
+            "gdb:amd64",
+            "gdbserver:amd64",
+            "libaudit1:amd64",
+            "libcap-ng0:amd64",
+            "libcbor0.10:amd64",
+            "libcrypt1:amd64",
+            "libedit2:amd64",
+            "libfido2-1:amd64",
+            "libpam0g:amd64",
+            "libselinux1:amd64",
+            "libtinfo6:amd64",
+            "libudev1:amd64",
+            "libwrap0:amd64",
+            "libwtmpdb0:amd64",
+            "sshpass:amd64",
+            "strace:amd64",
+            "vim:amd64",
+            "zlib1g:amd64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "snmp_test_debian": {
+          "include_transitive": true,
+          "packages": [
+            "redis-server:amd64"
           ],
           "suites": [
             "trixie",
@@ -7478,6 +7586,48 @@
           "/trixie/libhiredis1.1.0:amd64": "1.2.0-6+b3",
           "/trixie/libmnl0:amd64": "1.0.5-3",
           "/trixie/lsb-base:amd64": "11.6"
+        }
+      }
+    },
+    "snmp_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/snmp:amd64": "5.9.4+dfsg-2+deb13u1",
+          "/trixie-security/snmpd:amd64": "5.9.4+dfsg-2+deb13u1",
+          "/trixie/ipmitool:amd64": "1.8.19-9",
+          "/trixie/python3-hiredis:amd64": "2.3.2-2+b3",
+          "/trixie/python3-smbus:amd64": "4.4-2"
+        }
+      }
+    },
+    "snmp_debug_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/gdb:amd64": "16.3-1",
+          "/trixie/gdbserver:amd64": "16.3-1",
+          "/trixie/libaudit1:amd64": "1:4.0.2-2+b2",
+          "/trixie/libcap-ng0:amd64": "0.8.5-4+b1",
+          "/trixie/libcbor0.10:amd64": "0.10.2-2",
+          "/trixie/libcrypt1:amd64": "1:4.4.38-1",
+          "/trixie/libedit2:amd64": "3.1-20250104-1",
+          "/trixie/libfido2-1:amd64": "1.15.0-1+b1",
+          "/trixie/libpam0g:amd64": "1.7.0-5",
+          "/trixie/libselinux1:amd64": "3.8.1-1",
+          "/trixie/libtinfo6:amd64": "6.5+20250216-2",
+          "/trixie/libudev1:amd64": "257.13-1~deb13u1",
+          "/trixie/libwrap0:amd64": "7.6.q-36",
+          "/trixie/libwtmpdb0:amd64": "0.73.0-3+deb13u1",
+          "/trixie/sshpass:amd64": "1.10-0.1",
+          "/trixie/strace:amd64": "6.13+ds-1",
+          "/trixie/vim:amd64": "2:9.1.1230-2",
+          "/trixie/zlib1g:amd64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "snmp_test_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie-security/redis-server:amd64": "5:8.0.2-3+deb13u2"
         }
       }
     },
@@ -30508,6 +30658,137 @@
       "suite": "trixie-security",
       "version": "5:8.0.2-3+deb13u2"
     },
+    "/trixie-security/snmp:amd64=5.9.4+dfsg-2+deb13u1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libsnmp-base:amd64=5.9.4+dfsg-2+deb13u1",
+        "/trixie-security/libsnmp40t64:amd64=5.9.4+dfsg-2+deb13u1",
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libgdbm-compat4t64:amd64=1.24-2",
+        "/trixie/libgdbm6t64:amd64=1.24-2",
+        "/trixie/libpci3:amd64=1:3.13.0-2",
+        "/trixie/libperl5.40:amd64=5.40.1-6",
+        "/trixie/libsensors-config:amd64=1:3.6.2-2",
+        "/trixie/libsensors5:amd64=1:3.6.2-2",
+        "/trixie/libudev1:amd64=257.13-1~deb13u1",
+        "/trixie/libwrap0:amd64=7.6.q-36",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/pci.ids:amd64=0.0~2025.06.09-1",
+        "/trixie/perl-base:amd64=5.40.1-6",
+        "/trixie/perl-modules-5.40:amd64=5.40.1-6",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/updates/main/n/net-snmp/snmp_5.9.4+dfsg-2+deb13u1_amd64.deb",
+      "files": [
+        "usr/bin/agentxtrap",
+        "usr/bin/encode_keychange",
+        "usr/bin/fixproc",
+        "usr/bin/snmp-bridge-mib",
+        "usr/bin/snmpbulkget",
+        "usr/bin/snmpbulkwalk",
+        "usr/bin/snmpcheck",
+        "usr/bin/snmpconf",
+        "usr/bin/snmpdelta",
+        "usr/bin/snmpdf",
+        "usr/bin/snmpget",
+        "usr/bin/snmpgetnext",
+        "usr/bin/snmpinform",
+        "usr/bin/snmpnetstat",
+        "usr/bin/snmpping",
+        "usr/bin/snmpps",
+        "usr/bin/snmpset",
+        "usr/bin/snmpstatus",
+        "usr/bin/snmptable",
+        "usr/bin/snmptest",
+        "usr/bin/snmptls",
+        "usr/bin/snmptranslate",
+        "usr/bin/snmptrap",
+        "usr/bin/snmpusm",
+        "usr/bin/snmpvacm",
+        "usr/bin/snmpwalk"
+      ],
+      "name": "snmp",
+      "section": "net",
+      "sha256": "74ef3198171dfaf78582e62a06114c06780554eea9c524c350a1758c7be585b8",
+      "size": 177568,
+      "suite": "trixie-security",
+      "version": "5.9.4+dfsg-2+deb13u1"
+    },
+    "/trixie-security/snmpd:amd64=5.9.4+dfsg-2+deb13u1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libsnmp-base:amd64=5.9.4+dfsg-2+deb13u1",
+        "/trixie-security/libsnmp40t64:amd64=5.9.4+dfsg-2+deb13u1",
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/adduser:amd64=3.152",
+        "/trixie/base-passwd:amd64=3.6.7",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/init-system-helpers:amd64=1.69~deb13u1",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libattr1:amd64=1:2.5.2-3",
+        "/trixie/libaudit-common:amd64=1:4.0.2-2",
+        "/trixie/libaudit1:amd64=1:4.0.2-2+b2",
+        "/trixie/libbsd0:amd64=0.12.2-2",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libcap-ng0:amd64=0.8.5-4+b1",
+        "/trixie/libcap2:amd64=1:2.75-10+deb13u1+b1",
+        "/trixie/libcrypt1:amd64=1:4.4.38-1",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libdebconfclient0:amd64=0.280",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libgdbm-compat4t64:amd64=1.24-2",
+        "/trixie/libgdbm6t64:amd64=1.24-2",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libpam-modules-bin:amd64=1.7.0-5",
+        "/trixie/libpam-modules:amd64=1.7.0-5",
+        "/trixie/libpam0g:amd64=1.7.0-5",
+        "/trixie/libpci3:amd64=1:3.13.0-2",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libperl5.40:amd64=5.40.1-6",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsemanage-common:amd64=3.8.1-1",
+        "/trixie/libsemanage2:amd64=3.8.1-1",
+        "/trixie/libsensors-config:amd64=1:3.6.2-2",
+        "/trixie/libsensors5:amd64=1:3.6.2-2",
+        "/trixie/libsepol2:amd64=3.8.1-1",
+        "/trixie/libsystemd0:amd64=257.13-1~deb13u1",
+        "/trixie/libudev1:amd64=257.13-1~deb13u1",
+        "/trixie/libwrap0:amd64=7.6.q-36",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/login.defs:amd64=1:4.17.4-2",
+        "/trixie/passwd:amd64=1:4.17.4-2",
+        "/trixie/pci.ids:amd64=0.0~2025.06.09-1",
+        "/trixie/perl-base:amd64=5.40.1-6",
+        "/trixie/perl-modules-5.40:amd64=5.40.1-6",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/updates/main/n/net-snmp/snmpd_5.9.4+dfsg-2+deb13u1_amd64.deb",
+      "files": [
+        "etc/default/snmpd",
+        "etc/init.d/snmpd",
+        "etc/snmp/snmpd.conf",
+        "usr/bin/net-snmp-create-v3-user",
+        "usr/lib/systemd/system/snmpd.service",
+        "usr/sbin/snmpd"
+      ],
+      "name": "snmpd",
+      "section": "net",
+      "sha256": "0b4a6088524946e91425912235e7b02c8043d0eaa0e2939d64011e3e705d2d66",
+      "size": 57740,
+      "suite": "trixie-security",
+      "version": "5.9.4+dfsg-2+deb13u1"
+    },
     "/trixie-updates/libpython3.13-dev:amd64=3.13.5-2+deb13u4": {
       "architecture": "amd64",
       "depends_on": [
@@ -41158,6 +41439,18 @@
       "suite": "trixie",
       "version": "2.005-1"
     },
+    "/trixie/freeipmi-common:amd64=1.6.15-1": {
+      "architecture": "all",
+      "depends_on": [],
+      "filename": "pool/main/f/freeipmi/freeipmi-common_1.6.15-1_all.deb",
+      "files": [],
+      "name": "freeipmi-common",
+      "section": "admin",
+      "sha256": "dc54520d7ccb413715ec19d77f3232b1df31cda9d42c57702646c9a409ff74b2",
+      "size": 356576,
+      "suite": "trixie",
+      "version": "1.6.15-1"
+    },
     "/trixie/g++-14-aarch64-linux-gnu:amd64=14.2.0-19cross1": {
       "architecture": "amd64",
       "depends_on": [],
@@ -45636,6 +45929,39 @@
       "size": 22884,
       "suite": "trixie",
       "version": "0.35.0+20060710.6"
+    },
+    "/trixie/ipmitool:amd64=1.8.19-9": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libgcrypt20:amd64=1.11.0-7+deb13u1",
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie/freeipmi-common:amd64=1.6.15-1",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/init-system-helpers:amd64=1.69~deb13u1",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libfreeipmi17:amd64=1.6.15-1",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libgpg-error0:amd64=1.51-4",
+        "/trixie/libreadline8t64:amd64=8.2-6",
+        "/trixie/libtinfo6:amd64=6.5+20250216-2",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/readline-common:amd64=8.2-6",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/i/ipmitool/ipmitool_1.8.19-9_amd64.deb",
+      "files": [
+        "etc/init.d/ipmievd",
+        "usr/bin/ipmitool",
+        "usr/lib/systemd/system/ipmievd.service",
+        "usr/sbin/ipmievd"
+      ],
+      "name": "ipmitool",
+      "section": "utils",
+      "sha256": "692752b073210398aadb7d3f3fffe875ccb9a02e5ee538b84479653ecccd9d36",
+      "size": 2041664,
+      "suite": "trixie",
+      "version": "1.8.19-9"
     },
     "/trixie/iproute2:amd64=6.15.0-1": {
       "architecture": "amd64",
@@ -117103,6 +117429,28 @@
       "suite": "trixie",
       "version": "2.15.0-2.3"
     },
+    "/trixie/libfreeipmi17:amd64=1.6.15-1": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libgcrypt20:amd64=1.11.0-7+deb13u1",
+        "/trixie/freeipmi-common:amd64=1.6.15-1",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libgpg-error0:amd64=1.51-4"
+      ],
+      "filename": "pool/main/f/freeipmi/libfreeipmi17_1.6.15-1_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libfreeipmi.so.17",
+        "usr/lib/x86_64-linux-gnu/libfreeipmi.so.17.2.13"
+      ],
+      "name": "libfreeipmi17",
+      "section": "libs",
+      "sha256": "2eb073cca8a5b1298dd79886f686a144f901a4fb0d3ef47900ff66b17aff3da0",
+      "size": 1043656,
+      "suite": "trixie",
+      "version": "1.6.15-1"
+    },
     "/trixie/libfribidi0:amd64=1.0.16-1": {
       "architecture": "amd64",
       "depends_on": [
@@ -122077,6 +122425,25 @@
       "size": 141600,
       "suite": "trixie",
       "version": "2.12.0-4"
+    },
+    "/trixie/libi2c0:amd64=4.4-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libgcc-s1:amd64=14.2.0-19"
+      ],
+      "filename": "pool/main/i/i2c-tools/libi2c0_4.4-2_amd64.deb",
+      "files": [
+        "usr/lib/x86_64-linux-gnu/libi2c.so.0",
+        "usr/lib/x86_64-linux-gnu/libi2c.so.0.1.1"
+      ],
+      "name": "libi2c0",
+      "section": "libs",
+      "sha256": "1ce7a519db7a97b2f624febc2f6e7fdb267a3168020c0981dfea91a2a2c7879b",
+      "size": 9756,
+      "suite": "trixie",
+      "version": "4.4-2"
     },
     "/trixie/libibmad5:amd64=56.1-1": {
       "architecture": "amd64",
@@ -162031,6 +162398,64 @@
       "suite": "trixie",
       "version": "1.51.1-6"
     },
+    "/trixie/python3-hiredis:amd64=2.3.2-2+b3": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie-updates/libpython3.13-minimal:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/libpython3.13-stdlib:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/python3.13-minimal:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/python3.13:amd64=3.13.5-2+deb13u4",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/dpkg:amd64=1.22.22",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libexpat1:amd64=2.7.1-2",
+        "/trixie/libffi8:amd64=3.4.8-2",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libhiredis1.1.0:amd64=1.2.0-6+b3",
+        "/trixie/liblzma5:amd64=5.8.1-1+deb13u1",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libncursesw6:amd64=6.5+20250216-2",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libpython3-stdlib:amd64=3.13.5-1",
+        "/trixie/libreadline8t64:amd64=8.2-6",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsqlite3-0:amd64=3.46.1-7+deb13u1",
+        "/trixie/libtinfo6:amd64=6.5+20250216-2",
+        "/trixie/libuuid1:amd64=2.41-5",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/media-types:amd64=13.0.0",
+        "/trixie/netbase:amd64=6.5",
+        "/trixie/python3-minimal:amd64=3.13.5-1",
+        "/trixie/python3:amd64=3.13.5-1",
+        "/trixie/readline-common:amd64=8.2-6",
+        "/trixie/tar:amd64=1.35+dfsg-3.1",
+        "/trixie/tzdata:amd64=2026b-0+deb13u1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/p/python-hiredis/python3-hiredis_2.3.2-2+b3_amd64.deb",
+      "files": [
+        "usr/lib/python3/dist-packages/hiredis-2.3.2.egg-info/PKG-INFO",
+        "usr/lib/python3/dist-packages/hiredis-2.3.2.egg-info/dependency_links.txt",
+        "usr/lib/python3/dist-packages/hiredis-2.3.2.egg-info/top_level.txt",
+        "usr/lib/python3/dist-packages/hiredis/__init__.py",
+        "usr/lib/python3/dist-packages/hiredis/hiredis.cpython-313-x86_64-linux-gnu.so",
+        "usr/lib/python3/dist-packages/hiredis/hiredis.pyi",
+        "usr/lib/python3/dist-packages/hiredis/py.typed",
+        "usr/lib/python3/dist-packages/hiredis/version.py"
+      ],
+      "name": "python3-hiredis",
+      "section": "python",
+      "sha256": "c54cba9d59c2db7894af62943a3df76ffdb8280ab95c91c25d155daa38adc1e6",
+      "size": 13976,
+      "suite": "trixie",
+      "version": "2.3.2-2+b3"
+    },
     "/trixie/python3-idna:amd64=3.10-1+deb13u1": {
       "architecture": "all",
       "depends_on": [
@@ -165500,6 +165925,60 @@
       "size": 16476,
       "suite": "trixie",
       "version": "1.17.0-1"
+    },
+    "/trixie/python3-smbus:amd64=4.4-2": {
+      "architecture": "amd64",
+      "depends_on": [
+        "/trixie-security/libssl3t64:amd64=3.5.6-1~deb13u2",
+        "/trixie-security/openssl-provider-legacy:amd64=3.5.6-1~deb13u2",
+        "/trixie-updates/libpython3.13-minimal:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/libpython3.13-stdlib:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/python3.13-minimal:amd64=3.13.5-2+deb13u4",
+        "/trixie-updates/python3.13:amd64=3.13.5-2+deb13u4",
+        "/trixie/debconf:amd64=1.5.91",
+        "/trixie/dpkg:amd64=1.22.22",
+        "/trixie/gcc-14-base:amd64=14.2.0-19",
+        "/trixie/libacl1:amd64=2.3.2-2+b1",
+        "/trixie/libbz2-1.0:amd64=1.0.8-6",
+        "/trixie/libc6:amd64=2.41-12+deb13u3",
+        "/trixie/libdb5.3t64:amd64=5.3.28+dfsg2-9",
+        "/trixie/libexpat1:amd64=2.7.1-2",
+        "/trixie/libffi8:amd64=3.4.8-2",
+        "/trixie/libgcc-s1:amd64=14.2.0-19",
+        "/trixie/libi2c0:amd64=4.4-2",
+        "/trixie/liblzma5:amd64=5.8.1-1+deb13u1",
+        "/trixie/libmd0:amd64=1.1.0-2+b1",
+        "/trixie/libncursesw6:amd64=6.5+20250216-2",
+        "/trixie/libpcre2-8-0:amd64=10.46-1~deb13u1",
+        "/trixie/libpython3-stdlib:amd64=3.13.5-1",
+        "/trixie/libreadline8t64:amd64=8.2-6",
+        "/trixie/libselinux1:amd64=3.8.1-1",
+        "/trixie/libsqlite3-0:amd64=3.46.1-7+deb13u1",
+        "/trixie/libtinfo6:amd64=6.5+20250216-2",
+        "/trixie/libuuid1:amd64=2.41-5",
+        "/trixie/libzstd1:amd64=1.5.7+dfsg-1",
+        "/trixie/media-types:amd64=13.0.0",
+        "/trixie/netbase:amd64=6.5",
+        "/trixie/python3-minimal:amd64=3.13.5-1",
+        "/trixie/python3:amd64=3.13.5-1",
+        "/trixie/readline-common:amd64=8.2-6",
+        "/trixie/tar:amd64=1.35+dfsg-3.1",
+        "/trixie/tzdata:amd64=2026b-0+deb13u1",
+        "/trixie/zlib1g:amd64=1:1.3.dfsg+really1.3.1-1+b1"
+      ],
+      "filename": "pool/main/i/i2c-tools/python3-smbus_4.4-2_amd64.deb",
+      "files": [
+        "usr/lib/python3/dist-packages/smbus-1.1.egg-info/PKG-INFO",
+        "usr/lib/python3/dist-packages/smbus-1.1.egg-info/dependency_links.txt",
+        "usr/lib/python3/dist-packages/smbus-1.1.egg-info/top_level.txt",
+        "usr/lib/python3/dist-packages/smbus.cpython-313-x86_64-linux-gnu.so"
+      ],
+      "name": "python3-smbus",
+      "section": "python",
+      "sha256": "1619f0106ed6ea956f946e9a6161c007045091fc9e00aec1c0164278c4244fba",
+      "size": 12676,
+      "suite": "trixie",
+      "version": "4.4-2"
     },
     "/trixie/python3-snowballstemmer:amd64=2.2.0-4": {
       "architecture": "all",
