@@ -2061,8 +2061,6 @@
       "include_transitive": true,
       "packages": [
         "ipmitool:amd64",
-        "python3-hiredis:amd64",
-        "python3-smbus:amd64",
         "snmp:amd64",
         "snmpd:amd64"
       ],
