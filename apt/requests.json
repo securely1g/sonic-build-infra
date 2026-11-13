@@ -2110,6 +2110,44 @@
         "trixie-updates",
         "trixie-security"
       ]
+    },
+    "dhcpmon_debian": {
+      "include_transitive": true,
+      "packages": [
+        "libboost-system1.83-dev:amd64",
+        "libboost-system1.83-dev:arm64",
+        "libboost-thread1.83-dev:amd64",
+        "libboost-thread1.83-dev:arm64",
+        "libc6:amd64",
+        "libc6:arm64",
+        "libevent-2.1-7t64:amd64",
+        "libevent-2.1-7t64:arm64",
+        "libevent-dev:amd64",
+        "libevent-dev:arm64",
+        "libevent-pthreads-2.1-7t64:amd64",
+        "libevent-pthreads-2.1-7t64:arm64",
+        "libexplain-dev:amd64 (= 1.4.D001-16)",
+        "libexplain-dev:arm64 (= 1.4.D001-16)",
+        "libexplain51t64:amd64 (= 1.4.D001-16)",
+        "libexplain51t64:arm64 (= 1.4.D001-16)",
+        "libgcc-s1:amd64",
+        "libgcc-s1:arm64",
+        "libhiredis-dev:amd64",
+        "libhiredis-dev:arm64",
+        "libhiredis1.1.0:amd64",
+        "libhiredis1.1.0:arm64",
+        "libpcap0.8-dev:amd64",
+        "libpcap0.8-dev:arm64",
+        "libpcap0.8t64:amd64",
+        "libpcap0.8t64:arm64",
+        "libstdc++6:amd64",
+        "libstdc++6:arm64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
     }
   },
   "pinned_packages": [
