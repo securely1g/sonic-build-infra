@@ -1,196 +1,47 @@
 name: Declared build tools
-
-on:
-  pull_request:
-    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', 'ci/source_mirrors.cfg', 'ci/tests/debian_transport_test.py', '.github/workflows/declared-build-tools.yml']
-  push:
-    branches: [master]
-    paths: ['apt/**', 'toolchains/bookworm/**', 'toolchains/gcc/**', 'tools/build_tools/**', 'MODULE.bazel', 'ci/source_mirrors.cfg', 'ci/tests/debian_transport_test.py', '.github/workflows/declared-build-tools.yml']
-  workflow_dispatch:
-
+on: workflow_dispatch
 permissions:
   contents: read
-
-concurrency:
-  # Only automatic runs for the same pull request supersede each other.
-  group: declared-build-tools-${{ github.run_attempt == '1' && github.event.pull_request.number || format('run-{0}', github.run_id) }}
-  cancel-in-progress: true
-
 jobs:
-  native:
-    name: Build tools (${{ matrix.architecture }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - architecture: amd64
-            runner: ubuntu-24.04
-            platform: x86_64_trixie
-            bazel_arch: x86_64
-            bazel_sha: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
-          - architecture: arm64
-            runner: ubuntu-24.04-arm
-            platform: aarch64_trixie
-            bazel_arch: arm64
-            bazel_sha: b7f2a85595e8a87d54843bc656c1e379fd9b8c1b5f783dc41717c1d7eb7cc49f
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    container: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
-    defaults:
-      run:
-        shell: bash
+  resolve:
+    name: Generate shared APT lock for DHCPMon on amd64 and arm64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
-      ARCHITECTURE: ${{ matrix.architecture }}
-      PLATFORM: ${{ matrix.platform }}
-      BAZEL_ARCH: ${{ matrix.bazel_arch }}
-      BAZEL_SHA: ${{ matrix.bazel_sha }}
-      SONIC_BAZEL_REGISTRY: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+      BAZEL_VERSION: 8.5.1
+      BAZEL_SHA: 61d89402f0368e64b6c827be5de79d8e65382e8124c3cbb97325611a1851392e
     steps:
-      - name: Prepare Bazel bootstrap dependencies
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 tar xz-utils
-          [[ "$(dpkg --print-architecture)" == "$ARCHITECTURE" ]]
-          test ! -e /usr/bin/aspell
-          test ! -e /usr/bin/doxygen
-          curl --fail --location --retry 3 --output /usr/local/bin/bazel \
-            "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-$BAZEL_ARCH"
-          printf '%s  %s\n' "$BAZEL_SHA" /usr/local/bin/bazel | sha256sum --check --strict
-          chmod +x /usr/local/bin/bazel
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Check downloader configuration
-        run: python3 -B ci/tests/debian_transport_test.py
-      - name: Fetch the verified shared downloader configuration
-        env:
-          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg
-          SOURCE_MIRRORS_SHA256: ddd6f40504a30e138a62be0d728e1a352391d0f781c927eaf4ea45c44d8a0720
+      - name: Install verified Bazel
+        shell: bash
         run: |
           set -euo pipefail
-          config="$RUNNER_TEMP/declared-tools-downloads.cfg"
-          curl --fail --location --retry 3 --max-time 60 --output "$config.tmp" "$SOURCE_MIRRORS_URL"
-          printf '%s  %s\n' "$SOURCE_MIRRORS_SHA256" "$config.tmp" | sha256sum --check --strict
-          mv "$config.tmp" "$config"
-          mkdir -p ci-artifacts
-          cp "$config" ci-artifacts/source-mirrors.cfg
-          printf '%s\n' "$SOURCE_MIRRORS_URL" > ci-artifacts/source-mirrors-url.txt
-          sha256sum ci-artifacts/source-mirrors.cfg > ci-artifacts/source-mirrors.sha256
-      - name: Build executable tools and exercise sandboxed invocation
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o bazel "https://releases.bazel.build/$BAZEL_VERSION/release/bazel-$BAZEL_VERSION-linux-x86_64"
+          printf '%s  bazel\n' "$BAZEL_SHA" | sha256sum -c -
+          chmod +x bazel
+      - name: Generate and check the reviewed request graph
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ci-artifacts
-          printf '%s\n' "$SONIC_BAZEL_REGISTRY" > ci-artifacts/registry.txt
-          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD HEAD^{tree} > ci-artifacts/revisions.txt
-          printf '%s\n' "$GITHUB_RUN_ID" > ci-artifacts/github-run-id.txt
-          uname -a > ci-artifacts/uname.txt
-          dpkg --print-architecture > ci-artifacts/architecture.txt
-          cp /etc/os-release ci-artifacts/os-release
-          python3 apt/lock.py check | tee ci-artifacts/apt-lock-check.log
-          mkdir -p ci-artifacts/apt ci-artifacts/ci
-          cp apt/apt.lock.json apt/sources.json apt/requests.json ci-artifacts/apt/
-          cp ci/source_mirrors.cfg ci-artifacts/ci/
-          sha256sum MODULE.bazel apt/apt.lock.json apt/sources.json apt/requests.json ci/source_mirrors.cfg > ci-artifacts/inputs.sha256
-          flags=(--registry="$SONIC_BAZEL_REGISTRY" \
-                 --registry=https://bcr.bazel.build/ --platforms="//platforms:$PLATFORM" \
-                 --host_platform="//platforms:$PLATFORM" \
-                 --downloader_config="$RUNNER_TEMP/declared-tools-downloads.cfg" \
-                 '--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$' \
-                 --repository_cache="$RUNNER_TEMP/configure-tools-repository-cache" \
-                 --disk_cache="$RUNNER_TEMP/configure-tools-cache" --lockfile_mode=update)
-          bazel --ignore_all_rc_files build "${flags[@]}" \
-            --build_event_json_file="$PWD/ci-artifacts/build-events.jsonl" \
-            //tools/build_tools:aspell //tools/build_tools:doxygen \
-            //tools/build_tools:make //tools/build_tools:m4 \
-            //tools/build_tools:pkgconf //tools/build_tools:perl \
-            //tools/build_tools:bison //tools/build_tools:flex \
-            //tools/build_tools:autoconf //tools/build_tools:autoheader //tools/build_tools:autom4te \
-            //tools/build_tools:patchelf //tools/build_tools:gawk //tools/build_tools:swig \
-            //tools/build_tools:patch //tools/build_tools:xmllint //tools/build_tools:xsltproc \
-            //tools/build_tools:launcher_action_check 2>&1 | tee ci-artifacts/build.log
-          cp bazel-bin/tools/build_tools/launcher_action_check.json ci-artifacts/
-          worker_tests=()
-          if [[ "$ARCHITECTURE" == amd64 ]]; then
-            worker_tests+=(//tools/build_tools:installer_worker_debs_test)
-          fi
-          bazel --ignore_all_rc_files test "${flags[@]}" --nocache_test_results \
-            --test_output=errors --build_event_json_file="$PWD/ci-artifacts/test-events.jsonl" \
-            //tests:host_patchelf_test //tests:source_host_tools_test \
-            //tools/build_tools:runtime_test \
-            //tools/build_tools:runtime_launcher_test \
-            //tools/autoconf:launcher_test \
-            //tools/autoconf:argv_paths_test \
-            //tools/autoconf/tests:declared_tools_test //tools/autoconf/tests:relocatable_pkgconfig_test \
-            //tools/build_tools:gdb_runtime_test \
-            //cc/tests/toolchain_variant:library_provider_test \
-            //cc/tests/toolchain_variant:shared_provider_test \
-            //cc/tests/toolchain_variant:symbols_provider_test \
-            //cc/tests/toolchain_variant:binary_runfiles_test \
-            //cc/tests/toolchain_variant:imported_shared_consumer_test \
-            //tools/build_tools:configure_runtime_test \
-            //tools/build_tools:foreign_runtime_test //tools/build_tools:libtool_test \
-            //tools/build_tools:kerberos_runtime_test \
-            //tools/build_tools:test_runtime_test \
-            //tools/build_tools:perl_bookworm_test \
-            //tools/build_tools:bookworm_test_runtime_test \
-            //tools/build_tools:configure_make_test \
-            //tools/build_tools:prepare_rootfs_test //tools/build_tools:kernel_runtime_test \
-            "${worker_tests[@]}" \
-            2>&1 | tee ci-artifacts/test.log
-          mkdir -p ci-artifacts/libtool
-          bazel --ignore_all_rc_files cquery "${flags[@]}" --output=files \
-            'set(//tools/build_tools:libtool_program //tools/build_tools:libtool_library //tools/build_tools:libtool_c_library //tools/build_tools:libtool_config //tools/build_tools:libtool_argv_validation)' \
-            > ci-artifacts/libtool/outputs.txt
-          while IFS= read -r file; do cp -L "$file" ci-artifacts/libtool/; done < ci-artifacts/libtool/outputs.txt
-          (cd ci-artifacts/libtool && sha256sum probe libprobe.so.0 libcprobe.so.0 config.log compiler-argv-validation.json > SHA256SUMS)
-          bazel --ignore_all_rc_files aquery "${flags[@]}" --output=jsonproto \
-            'deps(//tools/build_tools:configure_make_test)' > ci-artifacts/configure-actions.json
-          test -s MODULE.bazel.lock
-          cp -aL bazel-testlogs ci-artifacts/initial-testlogs
-          bazel --ignore_all_rc_files --output_user_root="$RUNNER_TEMP/configure-tools-fresh" \
-            test "${flags[@]}" --nocache_test_results --test_output=errors \
-            --build_event_json_file="$PWD/ci-artifacts/cache-test-events.jsonl" \
-            --execution_log_json_file="$PWD/ci-artifacts/cache-spawns.json" \
-            --execution_log_sort=false \
-            //tools/build_tools:configure_runtime_test //tools/build_tools:foreign_runtime_test \
-            //tools/build_tools:kernel_runtime_test \
-            2>&1 | tee ci-artifacts/cache-test.log
-          python3 - <<'PYTHON'
-          import json
-          import os
-          from pathlib import Path
-          data = Path("ci-artifacts/cache-spawns.json").read_text()
-          decoder = json.JSONDecoder()
-          offset, runtimes = 0, []
-          while offset < len(data):
-              record, offset = decoder.raw_decode(data, offset)
-              if record.get("mnemonic") in ("PrepareBuildTools", "PrepareBuildToolsRootfs"):
-                  runtimes.append({key: record.get(key) for key in ("mnemonic", "targetLabel", "listedOutputs", "runner", "cacheHit")})
-              while offset < len(data) and data[offset].isspace():
-                  offset += 1
-          # Compiled tools may need multiple target/exec runtime configurations.
-          # Both runtime kinds must be restored for every required config.
-          assert {row["mnemonic"] for row in runtimes} == {"PrepareBuildTools", "PrepareBuildToolsRootfs"}, runtimes
-          kernel_label = "//tools/build_tools:kernel_runtime_" + os.environ["ARCHITECTURE"]
-          assert any(row["mnemonic"] == "PrepareBuildToolsRootfs"
-                     and str(row["targetLabel"]).endswith(kernel_label) for row in runtimes), runtimes
-          assert all(item["cacheHit"] and item["runner"] == "disk cache hit"
-                     for item in runtimes), runtimes
-          Path("ci-artifacts/cache-reuse.json").write_text(json.dumps(runtimes, indent=2) + "\n")
-          PYTHON
-      - name: Collect resolution and test evidence
-        if: always()
-        run: |
-          mkdir -p ci-artifacts
-          cp MODULE.bazel ci-artifacts/
-          if [[ -f MODULE.bazel.lock ]]; then cp MODULE.bazel.lock ci-artifacts/; fi
-          if [[ -d bazel-testlogs ]]; then cp -aL bazel-testlogs ci-artifacts/testlogs; fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          python3 apt/lock.py update --bazel "$RUNNER_TEMP/bazel" \
+            --work-dir "$RUNNER_TEMP/apt-prepare" \
+            --bazel-startup-option=--ignore_all_rc_files \
+            --bazel-option="--downloader_config=$GITHUB_WORKSPACE/ci/source_mirrors.cfg"
+          python3 apt/lock.py check
+          mkdir -p "$RUNNER_TEMP/verified-lock"
+          cp apt/apt.lock.json apt/requests.json apt/sources.json "$RUNNER_TEMP/verified-lock"
+          git rev-parse HEAD > "$RUNNER_TEMP/verified-lock/revision.txt"
+          (cd "$RUNNER_TEMP/verified-lock"; sha256sum *.json > SHA256SUMS)
+      - name: Keep resolver output and logs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: declared-build-tools-${{ matrix.architecture }}
-          path: ci-artifacts/
-          if-no-files-found: error
-          retention-days: 30
+          name: shared-dhcpmon-lock
+          path: |
+            ${{ runner.temp }}/verified-lock/
+            ${{ runner.temp }}/apt-prepare/partition-*/resolve.log
+          if-no-files-found: warn
+          retention-days: 14
