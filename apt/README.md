@@ -23,6 +23,11 @@ their existing locked identities. WPA and the shared SWSS parent remain
 source-owned; the image reuses `sysmgr_debug_debian` for debug tools and
 `frr_image_test_debian` for its private Redis fixture.
 
+P4RT uses `p4rt_debian` for the AMD64 runtime, `p4rt_debug_debian` for
+debug tools and `p4rt_test_debian` for the private Redis fixture. DASH engine
+uses `dash_engine_debian` and `dash_engine_debug_debian` for its AMD64 runtime
+and debug packages. The runtime includes `supervisor` 4.2.5-3 from Trixie.
+
 The FRR image collections retain the AMD64 runtime libraries and utilities,
 debug tools and external OpenSSH library closure requested by
 `sonic-buildimage/dockers/docker-fpm-frr`. `frr_image_test_debian` supplies only
