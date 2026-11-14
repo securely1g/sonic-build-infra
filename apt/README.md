@@ -17,6 +17,12 @@ consumer that selects `vim`, while `syncd_vs_debug_debian` continues to select
 `vim-nox`. These are separate root selections over one package graph, so adopting
 the shared lock does not silently replace one editor package with the other.
 
+`macsec_debian` selects the AMD64 DBus, PCSC, readline, terminal, LSB and account
+support packages used by `sonic-buildimage/dockers/docker-macsec`. It reuses
+their existing locked identities. WPA and the shared SWSS parent remain
+source-owned; the image reuses `sysmgr_debug_debian` for debug tools and
+`frr_image_test_debian` for its private Redis fixture.
+
 The FRR image collections retain the AMD64 runtime libraries and utilities,
 debug tools and external OpenSSH library closure requested by
 `sonic-buildimage/dockers/docker-fpm-frr`. `frr_image_test_debian` supplies only
