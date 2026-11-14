@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "7e327b5f85e67515e1dd88eae36717a732c362d4aa4780cf6854b223c3059c8a",
+    "digest": "58941e1889b5a74cf2d11af4449b25c104b04bd2fc14b6b6b338e430b711d419",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -1373,6 +1373,20 @@
           "suites": [
             "trixie",
             "trixie-security"
+          ]
+        },
+        "macsec_debian": {
+          "include_transitive": true,
+          "packages": [
+            "adduser:amd64",
+            "libdbus-1-3:amd64",
+            "libpcsclite1:amd64",
+            "libreadline8t64:amd64",
+            "libtinfo6:amd64",
+            "lsb-base:amd64"
+          ],
+          "suites": [
+            "trixie"
           ]
         },
         "manual_tools": {
@@ -3529,6 +3543,19 @@
           "suites": [
             "trixie",
             "trixie-security"
+          ]
+        },
+        "macsec_debian": {
+          "packages": [
+            "adduser:amd64",
+            "libdbus-1-3:amd64",
+            "libpcsclite1:amd64",
+            "libreadline8t64:amd64",
+            "libtinfo6:amd64",
+            "lsb-base:amd64"
+          ],
+          "suites": [
+            "trixie"
           ]
         },
         "manual_tools": {
@@ -7194,6 +7221,18 @@
           "/trixie/rpcsvc-proto:amd64": "1.4.3-1",
           "/trixie/zlib1g-dev:amd64": "1:1.3.dfsg+really1.3.1-1+b1",
           "/trixie/zlib1g:amd64": "1:1.3.dfsg+really1.3.1-1+b1"
+        }
+      }
+    },
+    "macsec_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/adduser:amd64": "3.152",
+          "/trixie/libdbus-1-3:amd64": "1.16.2-2",
+          "/trixie/libpcsclite1:amd64": "2.3.3-1",
+          "/trixie/libreadline8t64:amd64": "8.2-6",
+          "/trixie/libtinfo6:amd64": "6.5+20250216-2",
+          "/trixie/lsb-base:amd64": "11.6"
         }
       }
     },
