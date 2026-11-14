@@ -6,6 +6,12 @@ reviewed production graph, shared by Docker/rootfs payloads, target development
 libraries and execution tools. A package identity is stored once; dependency
 sets select their required packages and architecture contexts.
 
+The canonical sources and lock retain `snapshot.debian.org` URLs. SONiC
+mirror-first routing belongs in the Bazel downloader configuration, not in the
+package graph, so existing snapshot-keyed fallback rules continue to match.
+See the [CI transport policy](../ci/README.md) for mirror ordering and fallbacks.
+Changing only downloader routing does not require regenerating the APT lock.
+
 Registered libnl/libyang consumers retain their historical
 `//toolchains/bookworm:apt.bzl` namespace. Its library views import this same
 production lock, including CMocka, PCRE2 and xxHash headers and libraries;

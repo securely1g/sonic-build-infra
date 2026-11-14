@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -25,6 +26,39 @@ def script(name, workflow=WORKFLOW):
 
 
 class DebianTransportTest(unittest.TestCase):
+    def test_sonic_mirror_first_with_canonical_snapshot_fallbacks(self):
+        rules = [line.split() for line in (ROOT / 'ci/source_mirrors.cfg').read_text().splitlines()
+                 if line.startswith('rewrite ')]
+        sources = json.loads((ROOT / 'apt/sources.json').read_text())['sources']
+        mirrors = {
+            'debian': '20260727T000818Z',
+            'debian-security': '20260727T000824Z',
+        }
+        for source in sources:
+            for uri in source['uris']:
+                self.assertTrue(uri.startswith('https://snapshot.debian.org/archive/'), uri)
+                archive = uri.split('/')[-2]
+                for path in ['pool/main/p/package/package_1.0+deb13u1_arm64.deb',
+                             'dists/trixie/main/binary-amd64/Packages.xz']:
+                    url = uri + '/' + path
+                    candidates = []
+                    for _, pattern, replacement in rules:
+                        match = re.fullmatch(pattern, url.removeprefix('https://'))
+                        if match:
+                            candidates.append(replacement.replace('$1', match.group(1)))
+                    self.assertEqual(candidates, [
+                        'https://packages.trafficmanager.net/snapshot/' + archive + '/' + mirrors[archive] + '/' + path,
+                        url.replace('snapshot.debian.org', 'snapshot-cloudflare.debian.org'),
+                        url,
+                    ])
+        for archive in mirrors:
+            url = 'snapshot.debian.org/archive/' + archive + '/20260101T000000Z/pool/example.deb'
+            self.assertEqual([replacement.replace('$1', match.group(1))
+                              for _, pattern, replacement in rules
+                              if (match := re.fullmatch(pattern, url))],
+                             ['https://' + url.replace('snapshot.debian.org', 'snapshot-cloudflare.debian.org'),
+                              'https://' + url])
+
     def test_exact_public_config_pin_and_early_test_wiring(self):
         workflow = WORKFLOW.read_text()
         fetch = step('Fetch the verified shared downloader configuration')
@@ -42,7 +76,10 @@ class DebianTransportTest(unittest.TestCase):
             commands = root / 'bin'
             commands.mkdir()
             payload = root / 'payload'
-            payload.write_bytes(b'rewrite files.example/(.*) https://mirror.example/$1\n')
+            payload.write_bytes(
+                b'rewrite snapshot\\.debian\\.org/archive/debian/(.*) https://deb.debian.org/debian/$1\n'
+                b'rewrite snapshot\\.debian\\.org/archive/debian/(.*) https://snapshot.debian.org/file/reviewed-hash\n'
+                b'rewrite snapshot\\.debian\\.org/archive/debian/(.*) https://github.com/example/releases/download/package.deb\n')
             curl = commands / 'curl'
             curl.write_text('#!/usr/bin/python3\n' + textwrap.dedent('''
                 import json, os, sys
@@ -60,6 +97,9 @@ class DebianTransportTest(unittest.TestCase):
             for corrupt in [True, False]:
                 run_root = root / str(corrupt)
                 run_root.mkdir()
+                (run_root / 'ci').mkdir()
+                local_config = (ROOT / 'ci/source_mirrors.cfg').read_bytes()
+                (run_root / 'ci/source_mirrors.cfg').write_bytes(local_config)
                 env = dict(os.environ, PATH=str(commands) + ':/usr/bin:/bin', RUNNER_TEMP=str(run_root),
                            SOURCE_MIRRORS_URL=URL, SOURCE_MIRRORS_SHA256=hashlib.sha256(payload.read_bytes()).hexdigest(),
                            TEST_PAYLOAD=str(payload), TEST_CORRUPT=str(corrupt).lower())
@@ -72,8 +112,10 @@ class DebianTransportTest(unittest.TestCase):
                 self.assertEqual(args[-1], URL)
                 self.assertEqual(args[args.index('--max-time') + 1], '60')
                 if not corrupt:
-                    self.assertEqual((run_root / 'ci-artifacts/source-mirrors.cfg').read_bytes(), payload.read_bytes())
-                    self.assertEqual((run_root / 'declared-tools-downloads.cfg').read_bytes(), payload.read_bytes())
+                    combined = local_config + payload.read_bytes()
+                    self.assertEqual((run_root / 'ci-artifacts/source-mirrors.cfg').read_bytes(), combined)
+                    self.assertEqual((run_root / 'declared-tools-downloads.cfg').read_bytes(), combined)
+                    self.assertEqual((run_root / 'ci-artifacts/shared-source-mirrors.cfg').read_bytes(), payload.read_bytes())
                     self.assertEqual((run_root / 'ci-artifacts/source-mirrors-url.txt').read_text().strip(), URL)
 
     def test_all_five_existing_bazel_invocations_use_one_config(self):
