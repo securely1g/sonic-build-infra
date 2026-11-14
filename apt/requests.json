@@ -1133,6 +1133,18 @@
         "trixie-security"
       ]
     },
+    "otel_debian": {
+      "packages": [
+        "ca-certificates:amd64",
+        "curl:amd64",
+        "wget:amd64"
+      ],
+      "suites": [
+        "trixie",
+        "trixie-updates",
+        "trixie-security"
+      ]
+    },
     "p4c_deps": {
       "include_transitive": true,
       "packages": [

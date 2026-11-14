@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "5b6dfeed19651e0dbc283ffd851c7fc53c87798249a1eb952bee12fee13525fc",
+    "digest": "094375ebffffeb685f321a1f9548eaceffc10a1afde2450d0befbe378b6152ad",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -1680,6 +1680,19 @@
             "gdbserver:arm64",
             "strace:amd64",
             "strace:arm64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "otel_debian": {
+          "include_transitive": true,
+          "packages": [
+            "ca-certificates:amd64",
+            "curl:amd64",
+            "wget:amd64"
           ],
           "suites": [
             "trixie",
@@ -3899,6 +3912,18 @@
             "gdbserver:arm64",
             "strace:amd64",
             "strace:arm64"
+          ],
+          "suites": [
+            "trixie",
+            "trixie-updates",
+            "trixie-security"
+          ]
+        },
+        "otel_debian": {
+          "packages": [
+            "ca-certificates:amd64",
+            "curl:amd64",
+            "wget:amd64"
           ],
           "suites": [
             "trixie",
@@ -7701,6 +7726,15 @@
           "/trixie/gdb:arm64": "16.3-1",
           "/trixie/gdbserver:arm64": "16.3-1",
           "/trixie/strace:arm64": "6.13+ds-1"
+        }
+      }
+    },
+    "otel_debian": {
+      "sets": {
+        "amd64": {
+          "/trixie/ca-certificates:amd64": "20250419",
+          "/trixie/curl:amd64": "8.14.1-2+deb13u4",
+          "/trixie/wget:amd64": "1.25.0-2"
         }
       }
     },
