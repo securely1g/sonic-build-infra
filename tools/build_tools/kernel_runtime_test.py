@@ -182,10 +182,12 @@ def main():
             listing.write_text("\n".join(str(root) + line if line.startswith("/") else line
                                          for line in listing.read_text().splitlines()) + "\n")
         environment = {"PATH": str(root / "bin"), "LANG": "C", "LC_ALL": "C",
-                       "HOME": str(work), "TMPDIR": str(work), "SOURCE_DATE_EPOCH": "0",
+                       "TMPDIR": str(work), "SOURCE_DATE_EPOCH": "0",
                        "DPKG_ADMINDIR": str(database), "DEB_RULES_REQUIRES_ROOT": "no",
                        "MAGIC": "/undeclared-magic-must-not-be-used",
                        "LD_LIBRARY_PATH": "/undeclared-libraries-must-not-be-used"}
+        if "HOME" in os.environ:
+            environment["HOME"] = os.environ["HOME"]
 
         def run(command):
             if command[0].startswith(("/usr/bin/", "/bin/")):

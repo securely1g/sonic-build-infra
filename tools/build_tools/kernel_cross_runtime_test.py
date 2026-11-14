@@ -30,9 +30,11 @@ def main():
         for listing in (database / "info").glob("*.list"):
             listing.write_text("\n".join(str(runtime) + line if line.startswith("/") else line
                                          for line in listing.read_text().splitlines()) + "\n")
-        environment = {"PATH": str(runtime / "bin"), "HOME": str(work), "TMPDIR": str(work),
+        environment = {"PATH": str(runtime / "bin"), "TMPDIR": str(work),
                        "LANG": "C", "LC_ALL": "C", "DPKG_ADMINDIR": str(database),
                        "DEB_RULES_REQUIRES_ROOT": "no"}
+        if "HOME" in os.environ:
+            environment["HOME"] = os.environ["HOME"]
 
         def run(command):
             result = subprocess.run(command, cwd=work, env=environment, text=True, capture_output=True)
