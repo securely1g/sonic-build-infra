@@ -5,10 +5,55 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from tools.autoconf.probe_runner import resolve_binutils, validate_pkg_config_paths
+from tools.autoconf.probe_runner import _PkgConfigPathIndex, resolve_binutils, validate_pkg_config_paths
 
 
 class PkgConfigInputsTest(unittest.TestCase):
+    def test_raw_and_reused_index_preserve_logical_input_boundaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "execroot"
+            header = root / "sdk/include/marker.h"
+            library = root / "sdk/lib/libmarker.so"
+            tree_header = root / "tree/nested/include/tree.h"
+            outside = parent / "outside/physical.h"
+            for path in (header, library, tree_header, outside):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(path.name)
+            ambient = root / "ambient"
+            ambient.mkdir()
+            file_link = root / "declared-link.h"
+            file_link.symlink_to(outside)
+            tree_link = root / "declared-tree-link"
+            tree_link.symlink_to(outside.parent, target_is_directory=True)
+            undeclared_link = root / "undeclared-include-link"
+            undeclared_link.symlink_to(header.parent, target_is_directory=True)
+            missing = root / "sdk/include/missing.h"
+            inputs = ["sdk/include/marker.h", "sdk/lib/libmarker.so", "tree",
+                      "declared-link.h", "declared-tree-link", str(missing), str(outside)]
+            accepted = [(["-Isdk/include"], header),
+                        (["-Isdk/../sdk/include"], header),
+                        ([str(library)], library),
+                        (["-Itree/nested/include"], tree_header),
+                        (["-Wl," + str(tree_header)], tree_header),
+                        ([str(file_link)], file_link),
+                        (["-Ideclared-tree-link"], tree_link / "physical.h")]
+            rejected = [["-I" + str(ambient)], ["-I" + str(parent)], [str(outside)],
+                        [str(missing)], ["-Itree/missing"], ["-Iundeclared-include-link"]]
+            for declared in (inputs, _PkgConfigPathIndex(root, inputs)):
+                for argv, readable in accepted:
+                    with self.subTest(indexed=isinstance(declared, _PkgConfigPathIndex), argv=argv):
+                        validate_pkg_config_paths(argv, root, declared)
+                        self.assertEqual(readable.read_text(), readable.resolve().name)
+                for argv in rejected:
+                    with self.subTest(indexed=isinstance(declared, _PkgConfigPathIndex), argv=argv):
+                        with self.assertRaisesRegex(ValueError, "not a declared accessible input"):
+                            validate_pkg_config_paths(argv, root, declared)
+            for declared in ([], _PkgConfigPathIndex(root, [])):
+                validate_pkg_config_paths([], root, declared)
+                with self.assertRaisesRegex(ValueError, "not a declared accessible input"):
+                    validate_pkg_config_paths(["-I" + str(root)], root, declared)
+
     def test_declared_paths_in_all_gcc_forms_and_absolute_libraries(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

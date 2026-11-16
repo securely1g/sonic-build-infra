@@ -24,8 +24,8 @@ def absolute_arguments(arguments, root):
         elif argument in ("-I", "-L", "-isystem", "-iquote", "-idirafter", "--sysroot", "-B"):
             result.append(argument)
             path_next = True
-        elif argument.startswith(("-Wl,-rpath,", "-Wl,-rpath=", "-Wl,-rpath-link,", "-Wl,-rpath-link=")):
-            prefix = next(p for p in ("-Wl,-rpath,", "-Wl,-rpath=", "-Wl,-rpath-link,", "-Wl,-rpath-link=") if argument.startswith(p))
+        elif argument.startswith(("-Wl,-rpath,", "-Wl,-rpath=", "-Wl,-rpath-link,", "-Wl,-rpath-link=", "-rpath-link=", "--rpath-link=")):
+            prefix = next(p for p in ("-Wl,-rpath,", "-Wl,-rpath=", "-Wl,-rpath-link,", "-Wl,-rpath-link=", "-rpath-link=", "--rpath-link=") if argument.startswith(p))
             paths = argument[len(prefix):].split(":")
             result.append(prefix + ":".join(str(root / p) if p and not p.startswith(("/", "$")) else p for p in paths))
         elif argument.startswith("-Wl,"):
@@ -120,18 +120,26 @@ def pkg_config_paths(arguments):
     return paths
 
 
+class _PkgConfigPathIndex:
+    """Index declared logical paths; resolving symlinks would change their scope."""
+    def __init__(self, root, inputs):
+        root = Path(os.path.abspath(root))
+        self.files = {Path(os.path.abspath(root / name)) for name in inputs}
+        self.trees = {path for path in self.files if path.is_dir()}
+        self.directories = {parent for path in self.files for parent in path.parents}
+
+
 def validate_pkg_config_paths(arguments, root, inputs):
     # A directory's existence alone would accept host /usr/include. It must
     # contain declared files (or be within a declared tree artifact).
     root = Path(os.path.abspath(root))
-    files = {Path(os.path.abspath(root / name)) for name in inputs}
-    trees = {path for path in files if path.is_dir()}
+    index = inputs if isinstance(inputs, _PkgConfigPathIndex) else _PkgConfigPathIndex(root, inputs)
     for value in pkg_config_paths(arguments):
         path = Path(os.path.abspath(root / value))
         accessible = path.is_relative_to(root) and path.exists() and (
-            path in files
-            or any(path.is_relative_to(tree) for tree in trees)
-            or path.is_dir() and any(file.is_relative_to(path) for file in files)
+            path in index.files
+            or any(parent in index.trees for parent in path.parents)
+            or path in index.directories and path.is_dir()
         )
         if not accessible:
             raise ValueError("pkg-config path is not a declared accessible input: " + value)
@@ -320,12 +328,13 @@ def main():
             raise ValueError("cache answer must name an Autoconf cache variable: " + key)
         environment[key] = value
     pkg_queries = []
+    pkg_config_inputs = _PkgConfigPathIndex(root, spec["inputs"]) if spec["pkg_config_files"] else None
     for path in spec["pkg_config_files"]:
         query = subprocess.run([environment["PKG_CONFIG"], "--cflags", "--libs", Path(path).stem],
                                env=environment, cwd=root, text=True, capture_output=True)
         if query.returncode:
             raise ValueError("declared pkg-config query failed: " + path + ": " + query.stderr)
-        validate_pkg_config_paths(shlex.split(query.stdout), root, spec["inputs"])
+        validate_pkg_config_paths(shlex.split(query.stdout), root, pkg_config_inputs)
         pkg_queries.append({"file": path, "stdout": query.stdout, "stderr": query.stderr})
     write_json(output / "pkg-config.json", pkg_queries)
     configuration = spec["configuration"]

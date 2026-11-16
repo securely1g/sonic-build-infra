@@ -7,10 +7,39 @@ import sys
 import tempfile
 import unittest
 
-from probe_runner import launcher, relative_arguments
+from probe_runner import absolute_arguments, launcher, relative_arguments
 
 
 class ProbeArgvPathsTest(unittest.TestCase):
+    def test_joined_linker_search_paths_resolve_from_each_working_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "execroot"
+            relative_paths = ["bazel-out/runtime one", "external/runtime two"]
+            for value in relative_paths:
+                directory = root / value
+                directory.mkdir(parents=True)
+                (directory / "marker").write_text(value)
+            outside = Path(temporary) / "outside"
+            outside.mkdir()
+            (outside / "marker").write_text("absolute input")
+            unchanged_paths = [str(outside), "$ORIGIN/plugins", "${ORIGIN}/plugins", "", ""]
+            for prefix in ("-rpath-link=", "--rpath-link="):
+                args = ["-Wl,--push-state", "-Wl,--as-needed", "-Xlinker",
+                        prefix + ":".join(relative_paths + unchanged_paths),
+                        "-Wl,--pop-state", "-Xlinker", "-rpath", "-Xlinker",
+                        "$ORIGIN/../runtime", "-Wl,-rpath,$ORIGIN/runtime"]
+                absolute = absolute_arguments(args, root)
+                for cwd in (root / "configuration", root / "configuration/nested"):
+                    with self.subTest(option=prefix, cwd=cwd):
+                        cwd.mkdir(parents=True, exist_ok=True)
+                        result = relative_arguments(absolute, root, cwd)
+                        paths = result[3].split("=", 1)[1].split(":")
+                        for value, expected in zip(paths[:2], relative_paths):
+                            self.assertEqual((cwd / value / "marker").read_text(), expected)
+                        self.assertEqual((cwd / paths[2] / "marker").read_text(), "absolute input")
+                        self.assertEqual(paths[2:], unchanged_paths)
+                        self.assertEqual(result[:3] + result[4:], args[:3] + args[4:])
+
     def test_input_paths_resolve_from_each_working_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
