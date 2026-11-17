@@ -1,2 +1,5 @@
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+common --registry=https://bcr.bazel.build/
+
 # Native ARM64 CI can forward the same config used by its component build.
 common:aarch64 --platforms=@platforms//host:host
