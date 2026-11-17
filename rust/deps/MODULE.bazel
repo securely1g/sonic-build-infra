@@ -9,7 +9,7 @@ module(
 
 bazel_dep(name = "rules_rs", version = "0.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.22")
-bazel_dep(name = "rules_python", version = "1.8.0")
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
 
 # Apply the owned compatibility fix through rules_rs's public patch API.
 rules_rust_patches = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")

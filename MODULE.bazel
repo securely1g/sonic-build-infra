@@ -10,7 +10,7 @@ module(
 
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
 bazel_dep(name = "rules_cc", version = "0.2.20")
-bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+bazel_dep(name = "rules_foreign_cc", version = "0.16.0.sonic.1")
 # Preserve complete source-install/wheel metadata and explicit payload modes.
 bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -19,8 +19,7 @@ bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
 sysroot_tar = use_extension("@tar.bzl//tar:extensions.bzl", "toolchains")
 use_repo(sysroot_tar, "bsd_tar_toolchains_linux_amd64", "bsd_tar_toolchains_linux_arm64")
 
-# Root builds must select the patch even when another dependency requests the
-# upstream release, which sorts above its SONiC prerelease version.
+# Keep the patched tar implementation selected for standalone builds.
 single_version_override(
     module_name = "tar.bzl",
     version = "0.10.5.sonic.2",
@@ -416,7 +415,7 @@ register_toolchains(
 
 # Tests use the consuming root's selected Go SDK. The development SDK below
 # registers the same reviewed version for standalone infrastructure tests.
-bazel_dep(name = "rules_go", version = "0.64.1", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_go", version = "0.65.0.sonic.1", repo_name = "io_bazel_rules_go")
 
 go_sdk = use_extension("@io_bazel_rules_go//go:extensions.bzl", "go_sdk", dev_dependency = True)
 go_sdk.download(

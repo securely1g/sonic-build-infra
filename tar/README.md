@@ -31,7 +31,7 @@ tar(
 ```
 
 Timestamp handling belongs to the patched `tar.bzl` module
-`0.10.5-sonic.1`, published through the SONiC registry. The option accepts a
+`0.10.5.sonic.2`, published through the SONiC registry. The option accepts a
 string: choose another fallback or use `""` to retain the original behavior.
 It works with inline and file-label manifests; the dependency owns parsing and
 regressions for directives, continuations and escaped paths. Paths, payloads,
@@ -39,11 +39,8 @@ ownership, modes and explicit timestamps are preserved. No SONiC tar wrapper is
 needed. `sonic_deploy_tar(default_mtime = ...)` forwards an override for its
 runtime archive; its separate debug archive retains its generated manifest.
 
-A consuming root must select the patched tar module. Upstream `0.10.5` sorts
-above `0.10.5-sonic.1`, so the root `MODULE.bazel` also needs
-`single_version_override(module_name = "tar.bzl", version = "0.10.5-sonic.1")`
-while other dependencies request the upstream release. Overrides declared by
-non-root modules do not affect resolution.
+Consumers can request the timestamp support with
+`bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")`.
 
 `//tests:deploy_tar_timestamps_test` checks actual archives from both the direct
 tar and deployment paths, including stripped programs, explicit zero timestamps,
