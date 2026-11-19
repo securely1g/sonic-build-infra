@@ -97,8 +97,8 @@ _strip_binary_rule = rule(
             doc = "Reads the ELF build-id using the declared execution runtime.",
         ),
         "compress_debug_sections": attr.bool(
-            default = False,
-            doc = "Compress extracted DWARF with GNU objcopy before computing the runtime debuglink. Default preserves the existing uncompressed format.",
+            default = True,
+            doc = "Compress extracted DWARF with GNU objcopy before computing the runtime debuglink, as Debhelper does for dbgsym packages. Set False to keep uncompressed sections.",
         ),
         "install_rpath": attr.string(
             default = "",

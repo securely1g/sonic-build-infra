@@ -703,30 +703,30 @@ py_test(
     data = [":source_python_embed", "//tools/build_tools:foreign_runtime"],
 )
 
-# Debhelper dbgsym compression is an installation choice. Keep the original
-# default and opt-in cases observable through the public TAR interface.
+# Debhelper compresses dbgsym DWARF by default. Keep the default and opt-out
+# cases observable through the public TAR interface.
+sonic_deploy_tar(
+    name = "hello_debug_uncompressed",
+    binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_cpp"},
+    compress_debug_sections = False,
+    force_debug_build = True,
+)
 sonic_deploy_tar(
     name = "hello_debug_default",
     binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_cpp"},
     force_debug_build = True,
-)
-sonic_deploy_tar(
-    name = "hello_debug_compressed",
-    binaries = {"usr/bin/hello type=file uid=0 gid=0 mode=0755": ":hello_cpp"},
-    force_debug_build = True,
-    compress_debug_sections = True,
 )
 py_test(
     name = "debug_compression_test",
     srcs = ["debug_compression_test.py"],
     args = ["$(location //toolchains/binutils:readelf)"] + [
         "$(location :hello_debug_" + mode + suffix + ")"
-        for mode in ["default", "compressed"]
+        for mode in ["uncompressed", "default"]
         for suffix in ["", ".debug_symbols"]
     ],
     data = ["//toolchains/binutils:readelf"] + [
         ":hello_debug_" + mode + suffix
-        for mode in ["default", "compressed"]
+        for mode in ["uncompressed", "default"]
         for suffix in ["", ".debug_symbols"]
     ],
 )

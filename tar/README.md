@@ -59,11 +59,11 @@ regressions live with the tar.bzl patch. These targets produce no DEBs.
 symbols. Keep the native binary's build-tree search paths for Bazel consumers;
 the installation step edits a writable copy before splitting it.
 
-Set `compress_debug_sections = True` when the original installation compresses
-DWARF, such as Debhelper's dbgsym flow. GNU objcopy compresses the extracted
-sections before the runtime debuglink is computed. The default `False` retains
-the existing uncompressed format. These attributes are also available on
-`//binary:strip_binary.bzl`'s `strip_binary` macro.
+Extracted DWARF is compressed by default, matching Debhelper's dbgsym
+packages. GNU objcopy compresses the extracted sections before the runtime
+debuglink is computed. Set `compress_debug_sections = False` when the original
+installation ships uncompressed debug sections. These attributes are also
+available on `//binary:strip_binary.bzl`'s `strip_binary` macro.
 
 `//tests:debug_compression_test` checks both compression policies through actual
 runtime/debug archives, verifies unchanged DWARF and executable code, checks

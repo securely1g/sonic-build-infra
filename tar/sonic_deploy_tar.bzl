@@ -140,8 +140,8 @@ The binary will then be replaced with its stripped version behind the scenes. Mi
             configurable = False,
         ),
         "compress_debug_sections": attr.bool(
-            default = False,
-            doc = "Compress extracted DWARF before pairing runtime ELF and symbols. Enable when the original installation contract requires compressed debug sections.",
+            default = True,
+            doc = "Compress extracted DWARF before pairing runtime ELF and symbols, as Debhelper does for dbgsym packages. Set False when the original installation ships uncompressed debug sections.",
         ),
         "install_rpath": attr.string(
             default = "",
