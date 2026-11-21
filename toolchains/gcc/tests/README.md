@@ -71,3 +71,12 @@ receipt checks the actual BFD backend path printed by the compiler, rejects
 host tools/libraries, and verifies that the link opened libraries from the
 shared target sysroot. Existing native AMD64 and ARM64 CI runs cover the same
 wrapper implementation; cross-compiler validation remains unchanged.
+
+## Preprocessed assembly headers
+
+`bazel test //toolchains/gcc/tests:assembly_include_test` compiles a `.S` file
+that includes `<sys/syscall.h>` and links it into a C program. Preprocessed
+assembly needs the same `-nostdinc` and shared sysroot include directories as C
+compiles. Without them GCC reads the sysroot's `stdc-predef.h` and headers
+through paths Bazel has not declared, and the action fails with "absolute path
+inclusion(s)". BoringSSL's assembly sources, used by gRPC, hit this.

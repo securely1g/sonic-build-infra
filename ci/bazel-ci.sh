@@ -140,6 +140,7 @@ tests=(
   //tests:hello_runpath_installation_test
   //tests:installation_rpath_tar_test
   //toolchains/gcc/tests:prefix_map_test
+  //toolchains/gcc/tests:assembly_include_test
 )
 # These feature-specific targets are explicit; adding either public rule family
 # includes its existing regression tests in this shared workflow.

@@ -113,7 +113,11 @@ PLATFORM_DEPENDENT_ARGS = [
     ),
     struct(
         suffix = "_c_includes",
-        actions = ["@rules_cc//cc/toolchains/actions:c_compile"],
+        # Preprocessed assembly (.S) reads the same C system headers.
+        actions = [
+            "@rules_cc//cc/toolchains/actions:c_compile",
+            "@rules_cc//cc/toolchains/actions:preprocess_assemble",
+        ],
         args = _C_INCLUDES_ARGS,
     ),
     struct(

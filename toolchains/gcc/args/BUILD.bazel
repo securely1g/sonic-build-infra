@@ -19,6 +19,7 @@ cc_args(
     actions = [
         "@rules_cc//cc/toolchains/actions:c_compile",
         "@rules_cc//cc/toolchains/actions:cpp_compile_actions",
+        "@rules_cc//cc/toolchains/actions:preprocess_assemble",
     ],
     args = ["-nostdinc"],
     visibility = ["//visibility:public"],
