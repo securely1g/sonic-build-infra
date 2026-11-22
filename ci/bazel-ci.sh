@@ -173,13 +173,13 @@ if [[ "$cpu" == x86_64 ]]; then
   tests+=(//tools/build_tools:p4rt_owner_tools_test)
 fi
 # Audit every selected runtime target before execution. Only the explicit
-# deb-fixtures suite adds the dedicated package-producing analysis test; its
+# deb-fixtures suite adds dedicated package-producing tests; their
 # outputs are outside this no-DEB runtime audit. The full kernel fixture creates
 # packages inside TestRunner, so the suite selection also gates that test body.
 printf '%s\n' "${tests[@]}" "${outputs[@]}" > "$artifacts/targets.txt"
 audit_tests=()
 for target in "${tests[@]}"; do
-  if [[ "$target" != //tests:hello_deb_optional_fields_build_test ]]; then
+  if [[ " ${deb_fixture_tests[*]} " != *" $target "* ]]; then
     audit_tests+=("$target")
   fi
 done

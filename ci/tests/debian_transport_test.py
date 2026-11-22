@@ -293,6 +293,11 @@ class DebianTransportTest(unittest.TestCase):
         self.assertEqual(package_targets - runtime_targets, {
             '//tools/build_tools:kernel_runtime_test', '//tests:hello_deb_optional_fields_build_test',
             '//deb/tests:archive_format_test'})
+        audit = next(c['args'] for c in package_calls if 'aquery' in c['args'])
+        graph = ' '.join(audit)
+        self.assertNotIn('//deb/tests:archive_format_test', graph)
+        self.assertNotIn('//tests:hello_deb_optional_fields_build_test', graph)
+        self.assertIn('//deb:assemble_test', graph)
 
     def test_suite_receipt_distinguishes_workflow_coverage(self):
         for suite in ['tar-runtime', 'deb-fixtures']:
