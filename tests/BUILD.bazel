@@ -430,11 +430,24 @@ sonic_deb(
     version = "1.0",
 )
 
+# A debug payload can have a basename and a link target longer than 100 bytes.
+_LONG_DEBUG_NAME = "module_" + ("x" * 100) + ".ko.debug"
+
+tar(
+    name = "long_debug_paths",
+    testonly = True,
+    srcs = ["//tests/testdata:file.txt"],
+    mtree = [
+        "./usr/lib/debug/{} type=file uid=0 gid=0 mode=0640 time=0 content=$(location //tests/testdata:file.txt)".format(_LONG_DEBUG_NAME),
+        "./usr/lib/debug/by-name type=link uid=0 gid=0 mode=0777 time=0 link={}".format(_LONG_DEBUG_NAME),
+    ],
+)
+
 # Preserve the public scalar API when optional descriptive fields are absent or empty.
 sonic_deb(
     name = "hello_deb_optional_omitted",
     testonly = True,
-    data = ":hello_deb_data",
+    data = ":long_debug_paths",
     package = "hello-optional-omitted",
     version = "1.0",
 )
@@ -467,9 +480,18 @@ sonic_deb(
     description = "Optional fields compatibility",
 )
 
-build_test(
+py_test(
     name = "hello_deb_optional_fields_build_test",
-    targets = [
+    srcs = ["deb_unpack_test.py"],
+    main = "deb_unpack_test.py",
+    tags = ["requires-fakeroot"],
+    args = [
+        "$(location :hello_deb_optional_omitted)",
+        "$(location //tests/testdata:file.txt)",
+        _LONG_DEBUG_NAME,
+    ],
+    data = [
+        "//tests/testdata:file.txt",
         ":hello_deb_optional_omitted",
         ":hello_deb_optional_empty",
         ":hello_deb_optional_maintainer",

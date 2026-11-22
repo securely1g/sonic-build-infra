@@ -172,10 +172,11 @@ def assemble(args):
             item.chmod(0o755 if item.name in SCRIPTS else 0o644)
             os.utime(item, (0, 0))
         os.utime(control, (0, 0))
-        # The control archive has Debian-defined ownership; payload owners stay intact.
-        gzip_tar([str(args.tar), '-cf', '-', '--format=pax', '--uid=0', '--gid=0',
+        # dpkg accepts GNU longname/longlink records but rejects PAX headers.
+        # Keep control ownership fixed and preserve the payload's numeric owners.
+        gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--uid=0', '--gid=0',
                   '--numeric-owner', '-C', str(control), '.'], root / 'control.tar.gz', args.pigz)
-        gzip_tar([str(args.tar), '-cf', '-', '--format=pax', '--numeric-owner', '@' + str(data)],
+        gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--numeric-owner', '@' + str(data)],
                  root / 'data.tar.gz', args.pigz)
         (root / 'debian-binary').write_bytes(b'2.0\n')
         filename = '{}_{}_{}.deb'.format(fields['Package'], fields['Version'], fields['Architecture'])
