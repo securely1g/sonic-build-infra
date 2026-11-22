@@ -8,7 +8,7 @@ case "$ci_suite" in
     ;;
   deb-fixtures)
     kernel_runtime_test=//tools/build_tools:kernel_runtime_test
-    deb_fixture_tests=(//tests:hello_deb_optional_fields_build_test)
+    deb_fixture_tests=(//tests:hello_deb_optional_fields_build_test //deb/tests:archive_format_test)
     ;;
   *)
     echo "Unknown SONIC_BAZEL_CI_SUITE: $ci_suite (expected tar-runtime or deb-fixtures)" >&2

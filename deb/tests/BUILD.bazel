@@ -1,6 +1,38 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("//deb:changelogs.bzl", "debian_changelogs")
+load("//deb:sonic_deb.bzl", "sonic_deb")
+load("@tar.bzl//tar:tar.bzl", "tar")
+
+# Long debug paths and build-id links must survive actual Debian packaging.
+tar(
+    name = "archive_format_payload",
+    srcs = ["fixtures/archive_payload.txt"],
+    mtree = [
+        "./usr/lib/debug/" + "kernel-component-" * 8 + ".debug type=file uid=123 gid=456 mode=0640 time=0 content=$(location fixtures/archive_payload.txt)",
+        "./usr/lib/debug/current type=link uid=0 gid=0 mode=0777 time=0 link=" + "kernel-component-" * 8 + ".debug",
+    ],
+    testonly = True,
+)
+
+sonic_deb(
+    name = "archive_format_fixture",
+    architecture = "all",
+    data = ":archive_format_payload",
+    description = "Debian long-path and symlink compatibility fixture",
+    maintainer = "SONiC Build <sonicbuild@microsoft.com>",
+    package = "archive-format-contract",
+    version = "1.0",
+    testonly = True,
+)
+
+py_test(
+    name = "archive_format_test",
+    srcs = ["archive_format_test.py"],
+    args = ["$(rootpath :archive_format_fixture)"],
+    data = [":archive_format_fixture"],
+    deps = ["//apt:lib"],
+)
 
 ARCH = select({
     "@platforms//cpu:x86_64": "amd64",

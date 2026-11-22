@@ -173,9 +173,10 @@ def assemble(args):
             os.utime(item, (0, 0))
         os.utime(control, (0, 0))
         # The control archive has Debian-defined ownership; payload owners stay intact.
-        gzip_tar([str(args.tar), '-cf', '-', '--format=pax', '--uid=0', '--gid=0',
+        gzip_tar([str(args.tar), '-cf', '-', '--format=ustar', '--uid=0', '--gid=0',
                   '--numeric-owner', '-C', str(control), '.'], root / 'control.tar.gz', args.pigz)
-        gzip_tar([str(args.tar), '-cf', '-', '--format=pax', '--numeric-owner', '@' + str(data)],
+        # Debian supports GNU long names and links, but rejects PAX headers.
+        gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--numeric-owner', '@' + str(data)],
                  root / 'data.tar.gz', args.pigz)
         (root / 'debian-binary').write_bytes(b'2.0\n')
         filename = '{}_{}_{}.deb'.format(fields['Package'], fields['Version'], fields['Architecture'])

@@ -291,7 +291,8 @@ class DebianTransportTest(unittest.TestCase):
         package_targets = {a for a in next(c['args'] for c in package_calls if 'test' in c['args']) if a.startswith('//')}
         self.assertEqual(runtime_targets - package_targets, {'//tools/build_tools:kernel_runtime_tools_test'})
         self.assertEqual(package_targets - runtime_targets, {
-            '//tools/build_tools:kernel_runtime_test', '//tests:hello_deb_optional_fields_build_test'})
+            '//tools/build_tools:kernel_runtime_test', '//tests:hello_deb_optional_fields_build_test',
+            '//deb/tests:archive_format_test'})
 
     def test_suite_receipt_distinguishes_workflow_coverage(self):
         for suite in ['tar-runtime', 'deb-fixtures']:
