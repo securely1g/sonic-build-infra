@@ -1,9 +1,9 @@
 module(name = "cargo_release_consumer")
 
-bazel_dep(name = "sonic-build-infra", version = "0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e", repo_name = "sonic_build_infra")
-bazel_dep(name = "sonic-rust-deps", version = "0.0.5-dd364f207d7b320a5af12c81da6d10893f292205", repo_name = "sonic_rust_deps")
+bazel_dep(name = "sonic-build-infra", version = "0.0.44-35726399908a3beb947174e9359f902077928289", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-rust-deps", version = "0.0.5-5bf69bc0a7d9ea9f4a5606264be592867cd29d1e", repo_name = "sonic_rust_deps")
 bazel_dep(name = "rules_rs", version = "0.1.0")
-bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.2")
 
 # An unchanged real consumer, fetched directly instead of vendoring its source.
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")

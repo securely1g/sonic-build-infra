@@ -11,8 +11,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / '.github/workflows/declared-build-tools.yml'
 GENERAL = ROOT / '.github/workflows/bazel.yml'
-REVISION = '97cc502556b7ec3435d2d67b105315bcc18bb47e'
-CHECKSUM = 'ddd6f40504a30e138a62be0d728e1a352391d0f781c927eaf4ea45c44d8a0720'
+REVISION = 'b5907cdbdf6489f248cdd79eb4c6e2fdf7445eb9'
+CHECKSUM = 'c28e6882aa9ebed84fd32586112e5fbfe9684af4e4aaa9942170919a3cbd308e'
 URL = 'https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/' + REVISION + '/ci/source_mirrors.cfg'
 def step(name, workflow=WORKFLOW):
     text = workflow.read_text()

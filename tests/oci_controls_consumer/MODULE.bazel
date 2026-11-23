@@ -1,4 +1,4 @@
 module(name = "oci_controls_consumer")
 bazel_dep(name = "sonic-build-infra", version = "0.0.37", repo_name = "sonic_build_infra")
 local_path_override(module_name = "sonic-build-infra", path = "../..")
-bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.2")

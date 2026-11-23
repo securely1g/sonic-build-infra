@@ -1,6 +1,6 @@
 module(name = "managed_uv_runtime_lock_tests")
-bazel_dep(name = "sonic-build-infra", version = "0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e", repo_name = "sonic_build_infra", dev_dependency = True)
-bazel_dep(name = "rules_python", version = "1.9.0.sonic.1", dev_dependency = True)
+bazel_dep(name = "sonic-build-infra", version = "0.0.44-35726399908a3beb947174e9359f902077928289", repo_name = "sonic_build_infra", dev_dependency = True)
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.2", dev_dependency = True)
 uv = use_extension("@rules_python//python/uv:uv.bzl", "uv", dev_dependency = True)
 uv.configure(
     version = "0.12.18",
