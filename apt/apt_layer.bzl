@@ -28,7 +28,8 @@ def _apt_selection_impl(ctx):
             for key, payload, control in zip(ctx.attr.package_keys, payloads, controls)
         ],
     }))
-    selected = ctx.actions.declare_directory(ctx.attr.name + ".archives")
+    selected = (ctx.actions.declare_file(ctx.attr.name + ".tar") if ctx.attr.direct_layer else
+                ctx.actions.declare_directory(ctx.attr.name + ".archives"))
     receipt = ctx.actions.declare_file(ctx.attr.name + ".selection.json")
     args = ctx.actions.args()
     args.add("--base", ctx.file.base.path)
@@ -42,12 +43,21 @@ def _apt_selection_impl(ctx):
         policy_inputs.append(ctx.file.policy)
     args.add("--mapping", mapping)
     args.add("--variant", ctx.attr.variant)
-    args.add("--out-dir", selected.path)
+    args.add("--out-tar" if ctx.attr.direct_layer else "--out-dir", selected.path)
     args.add("--receipt", receipt)
     inherited_metadata = []
+    if ctx.files.layer_excludes or ctx.attr.layer_includes:
+        if not ctx.attr.direct_layer:
+            fail("APT payload filters require a direct layer output")
+        args.add_all(ctx.files.layer_excludes, before_each = "--exclude")
+        args.add_all(ctx.attr.layer_includes, before_each = "--include")
+        inherited_metadata.extend(ctx.files.layer_excludes)
+    if ctx.file.base_inventory:
+        args.add("--base-inventory", ctx.file.base_inventory)
+        inherited_metadata.append(ctx.file.base_inventory)
     if ctx.file.base_package_metadata:
         args.add("--base-package-metadata", ctx.file.base_package_metadata)
-        inherited_metadata = [ctx.file.base_package_metadata]
+        inherited_metadata.append(ctx.file.base_package_metadata)
     ctx.actions.run(
         executable = ctx.attr.selector[DefaultInfo].files_to_run,
         arguments = [args],
@@ -63,10 +73,14 @@ _apt_selection = rule(
     attrs = {
         "architecture": attr.string(mandatory = True),
         "base": attr.label(allow_single_file = True, mandatory = True),
+        "base_inventory": attr.label(allow_single_file = [".json"]),
         "base_package_metadata": attr.label(allow_single_file = [".json"]),
         "controls": attr.label_list(allow_files = True),
         "data": attr.label_list(allow_files = True),
         "dependency_set": attr.string(mandatory = True),
+        "direct_layer": attr.bool(),
+        "layer_excludes": attr.label_list(allow_files = True),
+        "layer_includes": attr.string_list(),
         "lock": attr.label(allow_single_file = [".json"], mandatory = True),
         "package_keys": attr.string_list(),
         "policy": attr.label(allow_single_file = [".json"]),
@@ -87,7 +101,7 @@ _selected_layer = rule(
     attrs = {"layer": attr.label(), "selection": attr.label()},
 )
 
-def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = None, selector = None, variant = None, architecture = "amd64", base_package_metadata = None, policy = None, **kwargs):
+def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = None, selector = None, variant = None, architecture = "amd64", base_package_metadata = None, policy = None, base_inventory = None, direct_layer = False, layer_excludes = [], layer_includes = [], **kwargs):
     """Select from all reviewed candidates and flatten their unchanged archives.
 
     packages maps lock keys to public package labels, e.g. @image_apt//tcpdump.
@@ -107,10 +121,14 @@ def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = No
         name = name + "_selection",
         architecture = architecture,
         base = base,
+        base_inventory = base_inventory,
+        direct_layer = direct_layer,
         base_package_metadata = base_package_metadata,
         controls = [packages[key] + ":control" for key in keys],
         data = [packages[key] + ":data" for key in keys],
         dependency_set = dependency_set,
+        layer_excludes = layer_excludes,
+        layer_includes = layer_includes,
         lock = lock,
         package_keys = keys,
         policy = policy,
@@ -119,12 +137,15 @@ def apt_layer(name, packages, lock, dependency_set, base, retained_manifest = No
         variant = variant,
         visibility = ["//visibility:private"],
     )
-    flatten(
-        name = name + "_flatten",
-        tars = [":" + name + "_selection"],
-        # Package archives share directory headers. Preserve normal TAR
-        # overlay semantics while emitting each OCI path only once.
-        deduplicate = True,
-        visibility = ["//visibility:private"],
-    )
-    _selected_layer(name = name, layer = ":" + name + "_flatten", selection = ":" + name + "_selection", **kwargs)
+    layer = ":" + name + "_selection"
+    if not direct_layer:
+        flatten(
+            name = name + "_flatten",
+            tars = [":" + name + "_selection"],
+            # Package archives share directory headers. Preserve normal TAR
+            # overlay semantics while emitting each OCI path only once.
+            deduplicate = True,
+            visibility = ["//visibility:private"],
+        )
+        layer = ":" + name + "_flatten"
+    _selected_layer(name = name, layer = layer, selection = ":" + name + "_selection", **kwargs)

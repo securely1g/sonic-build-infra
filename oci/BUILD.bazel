@@ -5,6 +5,17 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["installed_packages.bzl"])
 
+py_binary(
+    name = "layer_assembly",
+    srcs = ["layer_assembly.py"],
+)
+
+py_library(
+    name = "layer_assembly_lib",
+    srcs = ["layer_assembly.py"],
+    imports = ["."],
+)
+
 # The package inventory owns its OCI reader. Account merging and its base
 # validation are provided independently by rules_distroless.
 py_library(
