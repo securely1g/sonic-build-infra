@@ -6,6 +6,16 @@ load("@rules_rs//rs:rust_library.bzl", "rust_library")
 load("@rules_rs//rs:rust_test.bzl", "rust_test")
 
 rust_test(
+    name = "host_process_api_test",
+    srcs = ["host_process_api_test.rs"],
+    deps = [
+        "//:procfs_0_18",
+        "//:regex",
+        "//:sysinfo_0_40",
+    ],
+)
+
+rust_test(
     name = "serde_roundtrip_test",
     srcs = ["serde_roundtrip_test.rs"],
     deps = [

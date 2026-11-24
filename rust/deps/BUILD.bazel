@@ -55,7 +55,6 @@ _DIRECT_CRATES = [
     "opentelemetry_sdk",
     "paste",
     "pnet",
-    "procfs",
     "psutil",
     "pretty_assertions",
     "proc-macro2",
@@ -79,7 +78,6 @@ _DIRECT_CRATES = [
     "strum",
     "strum_macros",
     "syn",
-    "sysinfo",
     "syslog",
     "syslog-tracing",
     "tabled",
@@ -108,6 +106,20 @@ _DIRECT_CRATES = [
         actual = "@crates//:" + name,
     )
     for name in _DIRECT_CRATES
+]
+
+# Keep the existing public labels stable for consumers of the earlier APIs.
+[
+    alias(
+        name = name,
+        actual = "@crates//:" + target,
+    )
+    for name, target in [
+        ("procfs", "procfs-0.17.0"),
+        ("procfs_0_18", "procfs-0.18.0"),
+        ("sysinfo", "sysinfo-0.35.2"),
+        ("sysinfo_0_40", "sysinfo-0.40.3"),
+    ]
 ]
 
 # serde_core is transitive in Cargo, so rules_rs exposes its versioned name.

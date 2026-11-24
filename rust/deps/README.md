@@ -20,7 +20,7 @@ features from Common, SWSS and the Rust supervisor listener, including their tes
 existing crates.io packages keep their pins. SONiC source packages remain in their
 owning modules instead of this lock.
 
-The graph uses `rules_rs` 0.1.0 and provides a pinned Rust 1.90.0 toolchain for
+The graph uses `rules_rs` 0.1.0 and provides a pinned Rust 1.95.0 toolchain for
 standalone and external native AMD64 and ARM64 builds. A consuming root can
 select its own toolchain for all imported targets.
 Different platforms or configurations may compile separate artifacts.
@@ -152,13 +152,9 @@ No OpenTelemetry dependency upgrade is included.
 
 ## VS host dependency additions
 
-Public daemonize, pnet, procfs, psutil, sysinfo and syslog targets preserve
-the original VS host components' Cargo-lock versions. The regex target exposes
-1.12.2 already present in the shared lock, compatible with the host workspace
-request `regex = "1.10"`. Every previously locked
-package identity and checksum remains unchanged. Dependency names acquire version
-qualifiers where the added graph requires two versions; that disambiguation is
-not an upgrade of the existing package.
+Host Services uses `//:procfs_0_18`, `//:sysinfo_0_40` and `//:regex`
+for Cargo’s 0.18.0, 0.40.3 and 1.13.1 pins. The existing `//:procfs` and
+`//:sysinfo` labels retain their earlier APIs. sysinfo 0.40.3 requires Rust 1.95.
 
 The parent module's `//rust:release.bzl` exports `cargo_release_binary`. Unlike
 per-crate `rustc_flags`, its transition selects Cargo's original default release
