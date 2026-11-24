@@ -28,7 +28,7 @@ cp apt/apt.lock.json apt/sources.json apt/requests.json "$artifacts/apt/"
 cp ci/source_mirrors.cfg "$artifacts/ci/"
 # Use the maintained SONiC registry by default.
 # Record the effective endpoint with the generated module lock.
-registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main}
+registry=${SONIC_BAZEL_REGISTRY:-https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/main}
 printf '%s\n' "$registry" > "$artifacts/registry.txt"
 # Explicit CI transport must also reach the nested shared-API workspace.
 # Ordinary local callers retain the checked-in mirror configuration.
