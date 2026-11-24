@@ -23,14 +23,14 @@ plus BCR. It checks the committed APT lock before building, generates
 CI evidence; the generated module lock remains ignored.
 
 The GitHub-hosted AMD64 and ARM64 source workflows download and verify the
-[registry's public downloader configuration](https://github.com/securely1g/sonic-bazel-registry/blob/97cc502556b7ec3435d2d67b105315bcc18bb47e/ci/source_mirrors.cfg).
+[registry's public downloader configuration](https://github.com/sonic-net/sonic-bazel-registry/blob/e73724fb0134430da236e501e0770fe4d273782b/ci/source_mirrors.cfg).
 Both source workflows pass its absolute path to Bazel, including sysroot
 validation, the nested shared-API workspace and the fresh-output cache check.
 CI artifacts record the public file, its URL and its SHA256. Local source checks
 default to the checked-in `ci/source_mirrors.cfg`.
 
 Distroless patches, upstream regressions and package-import consumer tests live
-with the [registry module](https://github.com/securely1g/sonic-bazel-registry/tree/main/modules/rules_distroless).
+with the [registry module](https://github.com/sonic-net/sonic-bazel-registry/tree/main/modules/rules_distroless).
 This repository tests its own SONiC rules, toolchains and APT adapters against
 the selected dependency recipe; it does not maintain a second Distroless
 patch archive or test suite.
