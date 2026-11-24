@@ -85,6 +85,7 @@ jobs:
             //:futures-util //:hex //:human-panic //:hyper-util //:pretty_assertions \
             //:proc-macro2 //:prost-build //:quote //:serde_serializer_quick_unsupported \
             //:serde_with //:signal-hook //:strum //:strum_macros //:syn //:tabled \
+            //:serde_serializer_quick_unsupported1 //:syn3 //:thiserror //:thiserror2 \
             //:tokio-util //:tonic-build //:tower //:tracing-error //:uuid \
             2>&1 | tee ci-artifacts/ha-dependencies.log
           bazel cquery --noimplicit_deps 'kind("rust_library rule", deps(//:serde))' > ci-artifacts/serde-dependencies.txt
