@@ -97,11 +97,13 @@ tower = { version = "0.4", features = ["util"] }
 tracing-error = { version = "0.2" }
 uuid = { version = "=1.15.1", features = ["v4"] }
 
-# Original VS host crate pins; regex reuses the already locked shared version.
+# Keep the earlier sysinfo and procfs APIs available to other VS consumers.
 daemonize = { version = "=0.5.0" }
 pnet = { version = "=0.35.0" }
 procfs = { version = "=0.17.0" }
+procfs_0_18 = { package = "procfs", version = "=0.18.0" }
 psutil = { version = "=3.3.0" }
 sysinfo = { version = "=0.35.2" }
+sysinfo_0_40 = { package = "sysinfo", version = "=0.40.3" }
 syslog = { version = "=6.1.1" }
-regex = { version = "=1.12.2" }
+regex = { version = "=1.13.1" }
