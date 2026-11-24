@@ -13,7 +13,7 @@ py_binary(
 py_binary(
     name = "assemble",
     srcs = ["assemble.py"],
-    deps = ["//apt:lib"],
+    deps = ["//apt:lib", ":mtree"],
 )
 
 exports_files(["assert_control.py"])
@@ -24,7 +24,9 @@ py_test(
         "assemble.py",
         "assemble_test.py",
     ],
-    deps = ["//apt:lib"],
+    data = ["//tools/build_tools:pigz"],
+    env = {"DEB_TEST_PIGZ": "$(rootpath //tools/build_tools:pigz)"},
+    deps = ["//apt:lib", ":mtree"],
 )
 
 load("@rules_python//python:py_library.bzl", "py_library")
@@ -45,3 +47,10 @@ py_binary(
     main = "changelogs.py",
     deps = ["//oci:runtime_packages_lib"],
 )
+
+py_library(
+    name = "mtree",
+    srcs = ["mtree.py"],
+    visibility = ["//visibility:public"],
+)
+exports_files(["mtree.py"], visibility = ["//visibility:public"])

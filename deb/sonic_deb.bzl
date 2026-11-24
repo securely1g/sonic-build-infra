@@ -1,4 +1,10 @@
-"""Unified Debian packaging from source installation TARs and final controls."""
+"""Unified Debian packaging from declared payloads and final controls.
+
+The default data_format="tar" retains archive input semantics. data_format="mtree"
+accepts a flat specification with explicit file/dir/link entries and parent
+metadata. data_srcs declares every file/tree referenced by its contents fields.
+The assembler reads source bytes directly and streams the GNU TAR through pigz.
+"""
 
 load("@bazel_lib//lib:utils.bzl", "propagate_common_rule_attributes")
 load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
@@ -20,11 +26,12 @@ def _assemble(ctx):
     tool = ctx.attr._assembler[DefaultInfo].files_to_run
     args = ctx.actions.args()
     args.add("--data", ctx.file.data)
+    args.add("--data-format", ctx.attr.data_format)
     args.add("--target-architecture", ctx.attr.target_architecture)
     args.add("--tar", tar.tarinfo.binary)
     args.add("--ar", ar)
     args.add("--pigz", ctx.executable._pigz)
-    inputs = [ctx.file.data]
+    inputs = [ctx.file.data] + ctx.files.data_srcs
     if ctx.file.control:
         output = ctx.actions.declare_directory(ctx.label.name + ".debs")
         inputs.append(ctx.file.control)
@@ -58,6 +65,8 @@ _assemble_deb = rule(
     implementation = _assemble,
     attrs = {
         "data": attr.label(allow_single_file = True, mandatory = True),
+        "data_format": attr.string(default = "tar", values = ["tar", "mtree"]),
+        "data_srcs": attr.label_list(allow_files = True),
         "control": attr.label(allow_single_file = True),
         "control_files": attr.string_keyed_label_dict(allow_files = True),
         "package": attr.string(),
@@ -74,7 +83,7 @@ _assemble_deb = rule(
     toolchains = use_cc_toolchain() + [_TAR_TOOLCHAIN],
 )
 
-def _sonic_deb_impl(name, visibility, data, package, version, maintainer, description, depends, control, control_files, architecture, **kwargs):
+def _sonic_deb_impl(name, visibility, data, data_format, data_srcs, package, version, maintainer, description, depends, control, control_files, architecture, **kwargs):
     if control and (package or version or maintainer or description or depends or architecture != "target"):
         fail("sonic_deb: control and scalar identity/relationship fields are mutually exclusive")
     if not control and (not package or not version):
@@ -82,6 +91,8 @@ def _sonic_deb_impl(name, visibility, data, package, version, maintainer, descri
     _assemble_deb(
         name = name,
         data = data,
+        data_format = data_format,
+        data_srcs = data_srcs,
         control = control,
         control_files = control_files,
         package = package,
@@ -100,6 +111,8 @@ sonic_deb = macro(
     inherit_attrs = "common",
     attrs = {
         "data": attr.label(allow_files = True, mandatory = True, configurable = False),
+        "data_format": attr.string(default = "tar", values = ["tar", "mtree"], configurable = False),
+        "data_srcs": attr.label_list(allow_files = True, configurable = False),
         "control": attr.label(allow_files = True, configurable = False),
         "control_files": attr.string_keyed_label_dict(allow_files = True, configurable = False),
         "package": attr.string(configurable = False),
