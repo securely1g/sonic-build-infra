@@ -70,19 +70,16 @@ _DIRECT_CRATES = [
     "scopeguard",
     "serde",
     "serde_json",
-    "serde_serializer_quick_unsupported",
     "serde_with",
     "serde_yaml",
     "serial_test",
     "signal-hook",
     "strum",
     "strum_macros",
-    "syn",
     "syslog",
     "syslog-tracing",
     "tabled",
     "tempfile",
-    "thiserror",
     "tokio",
     "tokio-stream",
     "tokio-util",
@@ -108,7 +105,8 @@ _DIRECT_CRATES = [
     for name in _DIRECT_CRATES
 ]
 
-# Keep the existing public labels stable for consumers of the earlier APIs.
+# The generated hub can point an unversioned name at a newer direct dependency.
+# Pin both public labels when consumers use different major versions.
 [
     alias(
         name = name,
@@ -117,8 +115,14 @@ _DIRECT_CRATES = [
     for name, target in [
         ("procfs", "procfs-0.17.0"),
         ("procfs_0_18", "procfs-0.18.0"),
+        ("serde_serializer_quick_unsupported", "serde_serializer_quick_unsupported-0.1.2"),
+        ("serde_serializer_quick_unsupported1", "serde_serializer_quick_unsupported-1.0.1"),
+        ("syn", "syn-2.0.111"),
+        ("syn3", "syn-3.0.10"),
         ("sysinfo", "sysinfo-0.35.2"),
         ("sysinfo_0_40", "sysinfo-0.40.3"),
+        ("thiserror", "thiserror-1.0.69"),
+        ("thiserror2", "thiserror-2.0.21"),
     ]
 ]
 
