@@ -78,7 +78,7 @@ jobs:
           install -d -m 0700 "$RUNNER_TEMP/sonic-infra-rust"
           raw="$RUNNER_TEMP/sonic-infra-rust"
           cd rust/deps
-          bazel test --jobs=2 --lockfile_mode=update --test_output=errors --build_event_json_file="$raw/test-events.json" //tests:serde_roundtrip_test //tests:tracing_test //tests:supervisor_io_test //tests:panic_runtime_test //tests:dash_ha_contract_test 2>&1 | tee ci-artifacts/tests.log
+          bazel test --jobs=2 --lockfile_mode=update --test_output=errors --build_event_json_file="$raw/test-events.json" //tests:host_process_api_test //tests:serde_roundtrip_test //tests:tracing_test //tests:supervisor_io_test //tests:panic_runtime_test //tests:dash_ha_contract_test 2>&1 | tee ci-artifacts/tests.log
           bazel build --jobs=2 --build_event_json_file="$raw/ha-dependency-events.json" \
             //:anyhow //:atomic_enum //:better-panic //:bollard //:contracts \
             //:dashmap //:derivative //:enumset //:file-rotate //:futures-core \
