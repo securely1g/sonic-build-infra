@@ -97,6 +97,11 @@ tower = { version = "0.4", features = ["util"] }
 tracing-error = { version = "0.2" }
 uuid = { version = "=1.15.1", features = ["v4"] }
 
+# DASH HA uses these majors alongside the older shared consumer interfaces.
+syn3 = { package = "syn", version = "=3.0.10" }
+thiserror2 = { package = "thiserror", version = "=2.0.21" }
+serde_serializer_quick_unsupported1 = { package = "serde_serializer_quick_unsupported", version = "=1.0.1" }
+
 # Keep the earlier sysinfo and procfs APIs available to other VS consumers.
 daemonize = { version = "=0.5.0" }
 pnet = { version = "=0.35.0" }

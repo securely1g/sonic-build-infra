@@ -64,3 +64,27 @@ async fn cancellation_uses_the_selected_shared_runtime() {
     tracker.wait().await;
     assert_eq!(completed.await.unwrap(), 42);
 }
+
+#[test]
+fn derive_input_and_serializer_use_the_dash_ha_apis() {
+    #[derive(Debug, thiserror::Error)]
+    #[error("unsupported field")]
+    struct UnsupportedField;
+
+    struct FieldSerializer;
+    impl serde::Serializer for FieldSerializer {
+        type Ok = ();
+        type Error = serde::de::value::Error;
+        serde_serializer_quick_unsupported::serializer_unsupported! {
+            err = (<Self::Error as serde::ser::Error>::custom(UnsupportedField));
+            bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str bytes none some unit
+            unit_struct unit_variant newtype_struct newtype_variant seq tuple tuple_struct
+            tuple_variant map struct struct_variant i128 u128
+        }
+    }
+
+    let input: syn::DeriveInput = syn::parse_str("struct Scope;").unwrap();
+    assert_eq!(input.ident, "Scope");
+    let err = true.serialize(FieldSerializer).unwrap_err();
+    assert_eq!(err.to_string(), "unsupported field");
+}
