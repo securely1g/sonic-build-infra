@@ -561,7 +561,7 @@ def resolve_partition(sources, requests, previous, args):
         'apt.export_lock(name = "apt_lock_export", previous_lock = "//:previous.lock.json")\n'
         'use_repo(apt, "apt_lock_export")\n'
     )
-    registries = args.registry or ["https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main", "https://bcr.bazel.build/"]
+    registries = args.registry or ["https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/main", "https://bcr.bazel.build/"]
     bazel = shutil.which(args.bazel) or str(Path(args.bazel).resolve())
     startup = [bazel] + args.bazel_startup_option
     command = startup + ["build"]
