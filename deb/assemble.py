@@ -12,6 +12,8 @@ import tempfile
 from debian.deb822 import Deb822
 from debian.debian_support import Version
 
+from deb.mtree import summarize_mtree
+
 ARCHITECTURES = ('amd64', 'arm64', 'armhf')
 SCRIPTS = {'preinst', 'postinst', 'prerm', 'postrm', 'config'}
 RESERVED = {'control', 'md5sums', 'debian-binary'}
@@ -113,12 +115,31 @@ def gzip_tar(command, output, pigz):
     """Stream the archive once through the declared deterministic gzip tool."""
     with subprocess.Popen(command, stdout=subprocess.PIPE) as producer:
         try:
-            with output.open('wb') as destination:
-                subprocess.run([str(pigz), '-n', '-c'], stdin=producer.stdout, stdout=destination, check=True)
+            subprocess.run([str(pigz), '-n', '-c'], stdin=producer.stdout, stdout=output, check=True)
         finally:
             producer.stdout.close()
         if producer.wait():
             raise subprocess.CalledProcessError(producer.returncode, command)
+
+
+def append_gzip_tar(command, archive, name, pigz):
+    """Write a compressed ar member in place, then fill its decimal size."""
+    with archive.open('r+b', buffering=0) as output:
+        output.seek(0, os.SEEK_END)
+        header_offset = output.tell()
+        output.write(b' ' * 60)
+        gzip_tar(command, output, pigz)
+        end = output.tell()
+        size = end - header_offset - 60
+        # deb(5): common ar headers allow ten decimal digits for member size.
+        require(len(str(size)) <= 10, 'compressed Debian member exceeds ar size field')
+        header = '{:<16}{:<12}{:<6}{:<6}{:<8}{:<10}`\n'.format(name + '/', 0, 0, 0, '644', size)
+        require(len(header) == 60, 'invalid Debian ar member name: ' + name)
+        output.seek(header_offset)
+        output.write(header.encode('ascii'))
+        output.seek(end)
+        if size % 2:
+            output.write(b'\n')
 
 
 def assemble(args):
@@ -150,9 +171,13 @@ def assemble(args):
         root = Path(temporary)
         data = root / 'data.tar'
         raw_data = root / 'unordered-data.tar'
-        subprocess.run([str(args.tar), '-cf', str(raw_data), '--format=pax', '--numeric-owner', '@' + str(args.data)], check=True)
-        order_payload(raw_data, data)
-        entries, installed_size, sums = summarize(data, fields['Architecture'])
+        if getattr(args, 'data_format', 'tar') == 'mtree':
+            data = args.data
+            entries, installed_size, sums = summarize_mtree(data, fields['Architecture'])
+        else:
+            subprocess.run([str(args.tar), '-cf', str(raw_data), '--format=pax', '--numeric-owner', '@' + str(args.data)], check=True)
+            order_payload(raw_data, data)
+            entries, installed_size, sums = summarize(data, fields['Architecture'])
         if 'conffiles' in control_files:
             for line in control_files['conffiles'].read_text().splitlines():
                 path = line.strip()
@@ -160,7 +185,7 @@ def assemble(args):
                     continue
                 require(path.startswith('/'), 'conffiles paths must be absolute: ' + path)
                 name = relative(path[1:])
-                require(name in entries and entries[name].isfile(), 'conffile absent from payload: ' + path)
+                require(name in entries and (entries[name]['type'] == 'file' if isinstance(entries[name], dict) else entries[name].isfile()), 'conffile absent from payload: ' + path)
         fields['Installed-Size'] = str(installed_size)
         control = root / 'control'
         control.mkdir()
@@ -174,10 +199,6 @@ def assemble(args):
         os.utime(control, (0, 0))
         # dpkg accepts GNU longname/longlink records but rejects PAX headers.
         # Keep control ownership fixed and preserve the payload's numeric owners.
-        gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--uid=0', '--gid=0',
-                  '--numeric-owner', '-C', str(control), '.'], root / 'control.tar.gz', args.pigz)
-        gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--numeric-owner', '@' + str(data)],
-                 root / 'data.tar.gz', args.pigz)
         (root / 'debian-binary').write_bytes(b'2.0\n')
         filename = '{}_{}_{}.deb'.format(fields['Package'], fields['Version'], fields['Architecture'])
         if args.output_dir:
@@ -186,13 +207,24 @@ def assemble(args):
         else:
             result = args.output
             require(result.name == filename, 'declared output name differs from binary control')
-        subprocess.run([str(args.ar), 'rcD', str(result), str(root / 'debian-binary'),
-                        str(root / 'control.tar.gz'), str(root / 'data.tar.gz')], check=True)
+        # Start a fresh archive: rcD would otherwise retain stale members.
+        result.unlink(missing_ok=True)
+        try:
+            subprocess.run([str(args.ar), 'rcD', str(result), str(root / 'debian-binary')], check=True)
+            append_gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--uid=0', '--gid=0',
+                             '--numeric-owner', '-C', str(control), '.'], result, 'control.tar.gz', args.pigz)
+            append_gzip_tar([str(args.tar), '-cf', '-', '--format=gnutar', '--numeric-owner', '@' + str(data)],
+                            result, 'data.tar.gz', args.pigz)
+        except BaseException:
+            result.unlink(missing_ok=True)
+            raise
+
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', type=Path, required=True)
+    parser.add_argument('--data-format', choices=('tar', 'mtree'), default='tar')
     parser.add_argument('--control', type=Path)
     parser.add_argument('--control-file', action='append', default=[])
     parser.add_argument('--field', action='append', default=[])

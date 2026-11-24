@@ -5,6 +5,9 @@ because .build-id preceded usr/lib/debug. Missing parents are a separate valid
 input category; the assembler supplies root-owned 0755 directories. These tests
 inspect archive semantics, not the directory insertion algorithm.
 """
+import gzip
+import os
+import sys
 import hashlib
 import io
 import struct
@@ -15,7 +18,7 @@ import unittest
 
 from types import SimpleNamespace
 
-from deb.assemble import assemble, order_payload, summarize
+from deb.assemble import append_gzip_tar, assemble, order_payload, summarize, summarize_mtree
 
 
 class PayloadTest(unittest.TestCase):
@@ -110,6 +113,67 @@ class PayloadTest(unittest.TestCase):
                     self.assertTrue(entry.isdir())
                     self.assertEqual((entry.uid, entry.gid, entry.mode, entry.mtime), (0, 0, 0o755, 0))
                 self.assertEqual(archive.extractfile('opt/custom/payload').read(), b'x')
+
+
+class MtreePayloadTest(unittest.TestCase):
+    # The mtree input must preserve the same file bytes and installation
+    # metadata as a Debian payload, including escaped paths and real links.
+    def test_file_sources_and_links_determine_checksums_and_installed_size(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'source file'
+            content = b'independent payload' * 100
+            source.write_bytes(content)
+            spec = root / 'data.mtree'
+            escaped = str(source).replace(' ', r'\040')
+            spec.write_text('#mtree\n./. type=dir\n./usr type=dir\n'
+                            './usr/debug\\040file type=file mode=0640 contents=' + escaped + '\n'
+                            './usr/current type=link link=debug\\040file\n')
+            entries, installed_size, sums = summarize_mtree(spec, 'amd64')
+            self.assertEqual(entries['usr/debug file']['mode'], '0640')
+            self.assertEqual(installed_size, 5)  # two dirs, two KiB, one symlink
+            self.assertEqual(sums, hashlib.md5(content).hexdigest() + '  usr/debug file\n')
+            self.assertEqual(source.read_bytes(), content)
+
+    def test_missing_parent_and_unsafe_path_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            spec = Path(temporary) / 'data.mtree'
+            for text, error in [('./usr/lib type=dir', 'missing mtree parent'),
+                                ('../escape type=dir', 'unsafe data path'),
+                                ('./. type=dir\n./. type=dir', 'duplicate mtree path')]:
+                with self.subTest(text=text):
+                    spec.write_text('#mtree\n' + text + '\n')
+                    with self.assertRaisesRegex(ValueError, error):
+                        summarize_mtree(spec, 'amd64')
+
+
+class StreamingMemberTest(unittest.TestCase):
+    # deb(5) requires ar members with decimal lengths and even-byte alignment.
+    # A standard gzip decoder must recover the exact bytes of each member.
+    def test_compressed_members_preserve_bytes_and_ar_alignment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / 'example.deb'
+            archive.write_bytes(b'!<arch>\n')
+            payloads = [('control.tar.gz', b''), ('data.tar.gz', b'a')]
+            for name, content in payloads:
+                command = [sys.executable, '-c', 'import sys;sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))', content.hex()]
+                append_gzip_tar(command, archive, name, Path(os.environ['DEB_TEST_PIGZ']).resolve())
+            parities = set()
+            with archive.open('rb') as stream:
+                self.assertEqual(stream.read(8), b'!<arch>\n')
+                for name, content in payloads:
+                    header = stream.read(60)
+                    self.assertEqual(header[:16].decode().rstrip(' /'), name)
+                    self.assertEqual(header[58:], b'`\n')
+                    self.assertEqual(tuple(int(header[a:b]) for a, b in [(16, 28), (28, 34), (34, 40)]), (0, 0, 0))
+                    self.assertEqual(int(header[40:48], 8), 0o644)
+                    size = int(header[48:58])
+                    self.assertEqual(gzip.decompress(stream.read(size)), content)
+                    parities.add(size % 2)
+                    if size % 2:
+                        self.assertEqual(stream.read(1), b'\n')
+                self.assertEqual(stream.read(), b'')
+            self.assertEqual(parities, {0, 1})
 
 
 class ControlTest(unittest.TestCase):
