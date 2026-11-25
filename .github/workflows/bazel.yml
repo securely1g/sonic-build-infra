@@ -79,6 +79,14 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/bazel "https://releases.bazel.build/8.5.1/release/bazel-8.5.1-linux-${BAZEL_ARCH}"
           printf '%s  %s\n' "$BAZEL_SHA" /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
+      - name: Exercise the default APT lock updater
+        if: matrix.arch == 'AMD64'
+        run: |
+          fixture=apt/tests/testdata/refresh
+          inputs=(--sources "$fixture/sources.json" --requests "$fixture/requests.json"
+                  --lock "$RUNNER_TEMP/apt-refresh.lock.json")
+          python3 apt/lock.py update "${inputs[@]}"
+          python3 apt/lock.py check "${inputs[@]}"
       - name: Check downloader configuration
         run: python3 -B ci/tests/debian_transport_test.py
       - name: Fetch the verified shared downloader configuration

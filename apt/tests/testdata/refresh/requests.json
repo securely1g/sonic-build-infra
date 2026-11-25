@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependency_sets": {
+    "firmware": {
+      "packages": ["firmware-iwlwifi"],
+      "suites": ["trixie"]
+    }
+  },
+  "pinned_packages": [{
+    "name": "firmware-iwlwifi",
+    "version": "20250410-2",
+    "architecture": "all",
+    "suite": "trixie",
+    "sha256": "ec0e18c0214abb1402b244c41e8f6769ffb3f4d75486536c007c5bef95f08cf5"
+  }]
+}
