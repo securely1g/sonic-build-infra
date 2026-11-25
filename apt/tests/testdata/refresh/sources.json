@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "sources": [{
+    "uris": ["https://snapshot.debian.org/archive/debian/20260727T143429Z"],
+    "suites": ["trixie"],
+    "components": ["non-free-firmware"],
+    "architectures": ["amd64"]
+  }]
+}

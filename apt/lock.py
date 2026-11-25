@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 
 
-RESOLVER_VERSION = "0.9.4.sonic.20"
+RESOLVER_VERSION = "0.9.4.sonic.26"
 IDENTITY_FIELDS = ("name", "version", "architecture", "suite", "filename", "sha256")
 
 

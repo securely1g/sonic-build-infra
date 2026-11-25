@@ -4,7 +4,7 @@
     "notice": "AUTO-GENERATED. DO NOT EDIT MANUALLY."
   },
   "_inputs": {
-    "digest": "e5c26575b69688e18790f2641e1380810f98716810573ad86da5f0f75678bb92",
+    "digest": "bb44e9378160394f5bf809cc7f4181aec99b5ffe9c67c9e3210beb3fcac9fcb9",
     "module_requests_document": {
       "dependency_sets": {
         "base_debian": {
@@ -6858,7 +6858,7 @@
     },
     "resolver": {
       "name": "rules_distroless",
-      "version": "0.9.4.sonic.20"
+      "version": "0.9.4.sonic.26"
     },
     "source_document": {
       "sources": [
@@ -10119,10 +10119,10 @@
     "trixie/non-free-firmware/arm64/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-3NPa7eEBASEw5+QovP7AOzzp8q/62qmRCAYMYuiYc6I=",
     "trixie/non-free-firmware/armhf/Contents/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
     "trixie/non-free-firmware/armhf/Packages/https://snapshot.debian.org/archive/debian/20260727T143429Z": "sha256-nk1A0wrTCLemY3kLHSzlVwV72e6TPjsulgXyCIaQp8E=",
-    "trixie/stable/amd64/Contents/https://download.docker.com/linux/debian": "sha256-RC3dGkb4BCckvhPiOdo0dZva3e9SURz+1Qg7yp6OzLM=",
-    "trixie/stable/amd64/Packages/https://download.docker.com/linux/debian": "sha256-P9X4nP8CBayczocTv4v/j2sc110fHbdQmDAK7IiE6/c=",
-    "trixie/stable/arm64/Contents/https://download.docker.com/linux/debian": "sha256-U9FWiLESl5eStKC7Uhy1mIG2hqVUDzIaotjeAx06vEk=",
-    "trixie/stable/arm64/Packages/https://download.docker.com/linux/debian": "sha256-mIrb9hnFPO8p7ZZAUUyUNOFT4/7qs+eOF1qDKTV8LXY="
+    "trixie/stable/amd64/Contents/https://download.docker.com/linux/debian": "sha256-NC2yhdnzYMsXAjOyV4DoxSM1g7sbEtApTmib1Ijj97w=",
+    "trixie/stable/amd64/Packages/https://download.docker.com/linux/debian": "sha256-KHUR+VK57qhNa1sp/LmwgsTJgSvEo4FpNIEFQ+5rHaA=",
+    "trixie/stable/arm64/Contents/https://download.docker.com/linux/debian": "sha256-/3iEM96M9zL1htZHRlypQL/VlE90CdMNN8Ngm0pzc7Q=",
+    "trixie/stable/arm64/Packages/https://download.docker.com/linux/debian": "sha256-q+2lc2vjSKNGORB+oo4FNqjqeEDPlRhhWif3tu4/Pt4="
   },
   "packages": {
     "/bookworm-security/libgcrypt20:amd64=1.10.1-3+deb12u1": {
