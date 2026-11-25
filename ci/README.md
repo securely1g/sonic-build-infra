@@ -23,7 +23,7 @@ plus BCR. It checks the committed APT lock before building, generates
 CI evidence; the generated module lock remains ignored.
 
 The GitHub-hosted AMD64 and ARM64 source workflows download and verify the
-[registry's public downloader configuration](https://github.com/sonic-net/sonic-bazel-registry/blob/e73724fb0134430da236e501e0770fe4d273782b/ci/source_mirrors.cfg).
+[registry's public downloader configuration](https://github.com/sonic-net/sonic-bazel-registry/blob/55c38af2284155eee8c7bf2481e719ec23fa2695/ci/source_mirrors.cfg).
 Both source workflows pass its absolute path to Bazel, including sysroot
 validation, the nested shared-API workspace and the fresh-output cache check.
 CI artifacts record the public file, its URL and its SHA256. Local source checks

@@ -83,7 +83,7 @@ jobs:
         run: python3 -B ci/tests/debian_transport_test.py
       - name: Fetch the verified shared downloader configuration
         env:
-          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/e73724fb0134430da236e501e0770fe4d273782b/ci/source_mirrors.cfg
+          SOURCE_MIRRORS_URL: https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/55c38af2284155eee8c7bf2481e719ec23fa2695/ci/source_mirrors.cfg
           SOURCE_MIRRORS_SHA256: c28e6882aa9ebed84fd32586112e5fbfe9684af4e4aaa9942170919a3cbd308e
         run: |
           set -euo pipefail
