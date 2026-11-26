@@ -246,6 +246,10 @@ BEGIN {
     my $root = __FILE__;
     $root =~ s{/share/sonic-build-tools/Sonic/BuildTools.pm$}{};
     $^X = "$root/bin/perl";
+    # Core modules such as diagnostics read data via Config, independently of @INC.
+    require Config;
+    my $config = tied %Config::Config;
+    $config->{privlibexp} = $root . $Config::Config{privlibexp};
 }
 1;
 """)
