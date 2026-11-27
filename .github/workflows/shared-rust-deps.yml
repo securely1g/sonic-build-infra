@@ -141,6 +141,7 @@ jobs:
             rust/deps/ci-artifacts/release-tests.log
             rust/deps/ci-artifacts/cargo-release-tests.log
             rust/deps/ci-artifacts/serde-dependencies.txt
+            rust/deps/ci-artifacts/containercfgd-io-test.xml
             rust/deps/ci-artifacts/serde-test.xml
             rust/deps/ci-artifacts/tracing-test.xml
             rust/deps/ci-artifacts/supervisor-io-test.xml
