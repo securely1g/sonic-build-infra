@@ -6,6 +6,16 @@ load("@rules_rs//rs:rust_library.bzl", "rust_library")
 load("@rules_rs//rs:rust_test.bzl", "rust_test")
 
 rust_test(
+    name = "containercfgd_io_test",
+    srcs = ["containercfgd_io_test.rs"],
+    edition = "2021",
+    deps = [
+        "//:epoll",
+        "//:rustix",
+    ],
+)
+
+rust_test(
     name = "host_process_api_test",
     srcs = ["host_process_api_test.rs"],
     deps = [
