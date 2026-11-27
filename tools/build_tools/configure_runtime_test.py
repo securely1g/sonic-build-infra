@@ -61,6 +61,14 @@ def main():
                                 cwd=root, env=env | {"PATH": str(links)}, text=True, capture_output=True)
         assert result.returncode == 0 and "symlink make works" in result.stdout, result
 
+        # diagnostics looks up perldiag.pod through Config even when the host
+        # also has Perl installed. It must follow the relocated runtime.
+        privlib = subprocess.check_output(
+            [links / "perl", "-MConfig", "-Mdiagnostics", "-e", "print $Config{privlibexp}"],
+            cwd=root, env=env, text=True,
+        )
+        assert Path(privlib).is_relative_to(runtime), privlib
+
         # The bootstrap must be native and independent of a host ELF loader.
         executable = (runtime / "bin/make").read_bytes()
         assert executable[:6] == b"\x7fELF\x02\x01"

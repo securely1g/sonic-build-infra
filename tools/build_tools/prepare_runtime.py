@@ -234,6 +234,15 @@ def prepare_configure(root: Path, architecture: str, loader: Path, libraries: li
     for module in ("Config.pm", "strict.pm", "DynaLoader.pm"):
         if not any((directory / module).is_file() for directory in perl_directories):
             raise RuntimeError(f"configure packages contain no Perl core module: {module}")
+    # diagnostics reads its POD through Config, including when loaded by a
+    # command-line -M flag before the PERL5OPT bootstrap runs.
+    for directory in perl_directories:
+        config = directory / "Config.pm"
+        if config.is_file():
+            content = config.read_text().replace(
+                "privlibexp => '/", "privlibexp => ($ENV{SONIC_BUILD_TOOLS_ROOT} // '') . '/", 1,
+            )
+            config.write_text(content)
     bootstrap = root / "share/sonic-build-tools/Sonic/BuildTools.pm"
     bootstrap.parent.mkdir(parents=True, exist_ok=True)
     quoted = ", ".join("'" + path.replace("'", "\\'") + "'" for path in builtins)
@@ -305,6 +314,7 @@ export autom4te_perllibdir AC_MACRODIR AUTOM4TE_CFG trailer_m4 AUTOM4TE M4
         if name == "make":
             script += 'MAKE="$root/bin/make"\nexport MAKE\n'
         if name == "perl":
+            script += 'export SONIC_BUILD_TOOLS_ROOT="$root"\n'
             script += 'PERL5LIB="' + perl_path + '"\ncase " ${PERL5OPT:-} " in *" -MSonic::BuildTools "*) ;; *) PERL5OPT="-MSonic::BuildTools${PERL5OPT:+ $PERL5OPT}" ;; esac\nexport PERL5LIB PERL5OPT\n'
         if name == "pkgconf":
             # No host /usr/lib/pkgconfig fallback; foreign_cc supplies explicit
