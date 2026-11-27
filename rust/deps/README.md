@@ -25,6 +25,9 @@ standalone and external native AMD64 and ARM64 builds. A consuming root can
 select its own toolchain for all imported targets.
 Different platforms or configurations may compile separate artifacts.
 
+The container configuration daemon uses `//:epoll` 4.4.0 for its event loop
+and `//:rustix` 1.1.6 with the `fs` and `linux_5_11` features for file replacement.
+
 Features are combined deliberately. Serde 1.0.228 includes Common's `rc`
 support, derive macros, and SWSS's `alloc` support. Its public `serde_core`
 target is also 1.0.228 and comes from the same graph. Tokio includes the
